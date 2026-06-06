@@ -27,6 +27,13 @@ export type ExecutionStatus =
 
 export interface ExecutionOptions {
   maxSteps?: number
+  importedPrograms?: Program[]
+}
+
+interface ImportedFunctionDefinition {
+  name: string
+  program: Program
+  node: ProgramNode
 }
 
 interface ForLoopFrame {
@@ -105,6 +112,7 @@ interface FunctionCallRequest {
 }
 
 interface SuspendedFrame {
+  program: Program
   currentNodeId: string | null
   environment: Environment
   forLoops: Record<string, ForLoopFrame>
@@ -116,7 +124,9 @@ interface SuspendedFrame {
 }
 
 export interface ExecutionState {
+  rootProgram: Program
   program: Program
+  importedFunctions: ImportedFunctionDefinition[]
   currentNodeId: string | null
   environment: Environment
   forLoops: Record<string, ForLoopFrame>
@@ -148,14 +158,24 @@ export function createExecution(
   inputQueue: string[],
   options: ExecutionOptions = {},
 ): ExecutionState {
-  const validation = validateProgram(program)
+  const importedFunctions = buildImportedFunctionDefinitions(
+    program,
+    options.importedPrograms ?? [],
+  )
+  const validation = validateProgram(program, {
+    externalFunctionNames: new Set(
+      importedFunctions.map((definition) => definition.name),
+    ),
+  })
   const mainFunction = program.nodes.find(
     (node) => node.type === 'function' && node.text.trim() === 'main',
   )
 
   if (!validation.valid || !mainFunction) {
     return {
+      rootProgram: program,
       program,
+      importedFunctions,
       currentNodeId: null,
       environment: {},
       forLoops: {},
@@ -171,7 +191,9 @@ export function createExecution(
   }
 
   return {
+    rootProgram: program,
     program,
+    importedFunctions,
     currentNodeId: mainFunction.id,
     environment: {},
     forLoops: {},
@@ -498,6 +520,7 @@ function completeReturn(
   return executePendingNode(
     {
       ...state,
+      program: callerFrame.program,
       currentNodeId: callerFrame.currentNodeId,
       environment: callerFrame.environment,
       forLoops: callerFrame.forLoops,
@@ -568,14 +591,28 @@ function startFunctionCall(
     (candidate) =>
       candidate.type === 'function' && candidate.text.trim() === call.name,
   )
+  const rootFunctionNode =
+    state.program === state.rootProgram
+      ? functionNode
+      : findFunctionNode(state.rootProgram, call.name)
+  const activeFunctionNode = rootFunctionNode ?? functionNode
+  const importedFunction =
+    activeFunctionNode ? undefined : findImportedFunction(state, call.name)
+  const targetProgram = rootFunctionNode
+    ? state.rootProgram
+    : activeFunctionNode
+      ? state.program
+      : importedFunction?.program
+  const targetFunctionNode = activeFunctionNode ?? importedFunction?.node
 
-  if (!functionNode) {
+  if (!targetProgram || !targetFunctionNode) {
     throw new Error(`Function "${call.name}" does not exist.`)
   }
 
   return {
     ...state,
-    currentNodeId: functionNode.id,
+    program: targetProgram,
+    currentNodeId: targetFunctionNode.id,
     environment: {},
     forLoops: {},
     inputQueue: [...call.args],
@@ -583,6 +620,7 @@ function startFunctionCall(
     callStack: [
       ...state.callStack,
       {
+        program: state.program,
         currentNodeId: state.currentNodeId,
         environment: state.environment,
         forLoops: state.forLoops,
@@ -806,6 +844,56 @@ function requireListIndex(value: RuntimeValue): number {
   }
 
   return value
+}
+
+function buildImportedFunctionDefinitions(
+  program: Program,
+  importedPrograms: Program[],
+): ImportedFunctionDefinition[] {
+  const currentFunctionNames = new Set(
+    program.nodes
+      .filter((node) => node.type === 'function')
+      .map((node) => node.text.trim()),
+  )
+  const importedFunctionNames = new Set<string>()
+  const definitions: ImportedFunctionDefinition[] = []
+
+  for (const importedProgram of importedPrograms) {
+    for (const node of importedProgram.nodes) {
+      const name = node.text.trim()
+
+      if (
+        node.type !== 'function' ||
+        name === 'main' ||
+        currentFunctionNames.has(name) ||
+        importedFunctionNames.has(name)
+      ) {
+        continue
+      }
+
+      importedFunctionNames.add(name)
+      definitions.push({ name, program: importedProgram, node })
+    }
+  }
+
+  return definitions
+}
+
+function findFunctionNode(
+  program: Program,
+  name: string,
+): ProgramNode | undefined {
+  return program.nodes.find(
+    (candidate) =>
+      candidate.type === 'function' && candidate.text.trim() === name,
+  )
+}
+
+function findImportedFunction(
+  state: ExecutionState,
+  name: string,
+): ImportedFunctionDefinition | undefined {
+  return state.importedFunctions.find((definition) => definition.name === name)
 }
 
 function parseInputValue(rawValue: string): RuntimeValue {

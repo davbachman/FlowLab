@@ -55,6 +55,51 @@ const sumProgram: Program = {
   ],
 }
 
+const importedHelperProgram: Program = {
+  version: 1,
+  nodes: [
+    {
+      id: 'import-main',
+      type: 'function',
+      text: 'main',
+      position: { x: 0, y: 0 },
+    },
+    {
+      id: 'import-main-return',
+      type: 'return',
+      text: '0',
+      position: { x: 0, y: 100 },
+    },
+    {
+      id: 'import-helper',
+      type: 'function',
+      text: 'helper',
+      position: { x: 320, y: 0 },
+    },
+    {
+      id: 'import-helper-input',
+      type: 'input',
+      text: 'x',
+      position: { x: 320, y: 100 },
+    },
+    {
+      id: 'import-helper-return',
+      type: 'return',
+      text: 'x + 1',
+      position: { x: 320, y: 200 },
+    },
+  ],
+  edges: [
+    { id: 'import-e1', source: 'import-main', target: 'import-main-return' },
+    { id: 'import-e2', source: 'import-helper', target: 'import-helper-input' },
+    {
+      id: 'import-e3',
+      source: 'import-helper-input',
+      target: 'import-helper-return',
+    },
+  ],
+}
+
 describe('interpreter', () => {
   it('starts execution at the main Function even when another function appears first', () => {
     const program: Program = {
@@ -533,6 +578,86 @@ describe('interpreter', () => {
     expect(finalState.output).toEqual(['15'])
     expect(finalState.returnValue).toBe(15)
     expect(finalState.currentNodeId).toBe('main-end')
+  })
+
+  it('calls helper functions from imported FlowLab programs', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'set-total',
+          type: 'assignment',
+          text: 'total <- helper(5)',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'show-total',
+          type: 'output',
+          text: 'total',
+          position: { x: 0, y: 200 },
+        },
+        { id: 'end', type: 'return', text: 'total', position: { x: 0, y: 300 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'set-total' },
+        { id: 'e2', source: 'set-total', target: 'show-total' },
+        { id: 'e3', source: 'show-total', target: 'end' },
+      ],
+    }
+
+    const finalState = runExecution(
+      createExecution(program, [], {
+        importedPrograms: [importedHelperProgram],
+      }),
+    )
+
+    expect(finalState.status).toBe('halted')
+    expect(finalState.environment.total).toBe(6)
+    expect(finalState.output).toEqual(['6'])
+    expect(finalState.currentNodeId).toBe('end')
+  })
+
+  it('uses current canvas functions before imported functions with the same name', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'set-total',
+          type: 'assignment',
+          text: 'total <- helper(5)',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'end', type: 'return', text: 'total', position: { x: 0, y: 200 } },
+        {
+          id: 'local-helper',
+          type: 'function',
+          text: 'helper',
+          position: { x: 320, y: 0 },
+        },
+        {
+          id: 'local-helper-return',
+          type: 'return',
+          text: '100',
+          position: { x: 320, y: 100 },
+        },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'set-total' },
+        { id: 'e2', source: 'set-total', target: 'end' },
+        { id: 'e3', source: 'local-helper', target: 'local-helper-return' },
+      ],
+    }
+
+    const finalState = runExecution(
+      createExecution(program, [], {
+        importedPrograms: [importedHelperProgram],
+      }),
+    )
+
+    expect(finalState.status).toBe('halted')
+    expect(finalState.environment.total).toBe(100)
   })
 
   it('steps through custom function flowcharts before completing the caller node', () => {

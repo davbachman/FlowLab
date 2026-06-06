@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useState, type MouseEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+} from 'react'
 import {
   addEdge,
   applyEdgeChanges,
@@ -11,11 +18,13 @@ import {
   type Connection,
   type EdgeChange,
   type EdgeTypes,
+  type KeyCode,
   type ReactFlowInstance,
   type Node,
   type NodeChange,
   type NodeProps,
   type NodeTypes,
+  SelectionMode,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
@@ -24,6 +33,13 @@ import {
   stepExecution,
   type ExecutionState,
 } from './lib/interpreter'
+import {
+  callableImportedFunctionNames,
+  importWarnings,
+  registerFlowLabProgram,
+  resolveFlowLabImports,
+  type ImportResolution,
+} from './lib/imports'
 import { stringifyValue } from './lib/expression'
 import { LoopbackEdge } from './components/LoopbackEdge'
 import {
@@ -56,6 +72,11 @@ interface FlowNodeData extends Record<string, unknown> {
 }
 
 type EditorNode = Node<FlowNodeData, 'flowNode'>
+
+interface CanvasSnapshot {
+  nodes: EditorNode[]
+  edges: EditorEdge[]
+}
 
 interface SaveFilePickerWritable {
   write: (value: Blob) => Promise<void> | void
@@ -123,10 +144,21 @@ const EXPORT_FILE_OPTIONS: SaveFilePickerOptions = {
   ],
 }
 
+const CANVAS_DRAG_BUTTONS = [2] satisfies number[]
+const COPY_PASTE_OFFSET = { x: 36, y: 36 }
+const HISTORY_LIMIT = 80
+const NO_SELECTION_KEY = null satisfies KeyCode | null
+const EMPTY_IMPORT_RESOLUTION: ImportResolution = { files: [], errors: [] }
+
 function App() {
   const [nodes, setNodes] = useState<EditorNode[]>([])
   const [edges, setEdges] = useState<EditorEdge[]>([])
   const [inputQueueText, setInputQueueText] = useState('')
+  const [importNamesText, setImportNamesText] = useState('')
+  const [importResolution, setImportResolution] = useState<ImportResolution>(
+    EMPTY_IMPORT_RESOLUTION,
+  )
+  const [importsLoading, setImportsLoading] = useState(false)
   const [execution, setExecution] = useState<ExecutionState | null>(null)
   const [message, setMessage] = useState('')
   const [pendingNodeType, setPendingNodeType] = useState<FlowNodeType | null>(
@@ -134,9 +166,105 @@ function App() {
   )
   const [flowInstance, setFlowInstance] =
     useState<ReactFlowInstance<EditorNode, EditorEdge> | null>(null)
+  const nodesRef = useRef(nodes)
+  const edgesRef = useRef(edges)
+  const clipboardRef = useRef<CanvasSnapshot | null>(null)
+  const historyRef = useRef<CanvasSnapshot[]>([])
+
+  useEffect(() => {
+    nodesRef.current = nodes
+  }, [nodes])
+
+  useEffect(() => {
+    edgesRef.current = edges
+  }, [edges])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!importNamesText.trim()) {
+      return
+    }
+
+    void resolveFlowLabImports(importNamesText)
+      .then((resolution) => {
+        if (cancelled) {
+          return
+        }
+
+        setImportResolution(resolution)
+        setImportsLoading(false)
+        setExecution(null)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return
+        }
+
+        setImportResolution({
+          files: [],
+          errors: [
+            `Imports failed: ${error instanceof Error ? error.message : String(error)}`,
+          ],
+        })
+        setImportsLoading(false)
+        setExecution(null)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [importNamesText])
+
+  const pushHistorySnapshot = useCallback(() => {
+    const snapshot = cloneCanvasSnapshot({
+      nodes: nodesRef.current,
+      edges: edgesRef.current,
+    })
+
+    historyRef.current = [
+      ...historyRef.current.slice(-(HISTORY_LIMIT - 1)),
+      snapshot,
+    ]
+  }, [])
+
+  const restoreCanvasSnapshot = useCallback((snapshot: CanvasSnapshot) => {
+    const nextSnapshot = cloneCanvasSnapshot(snapshot)
+    nodesRef.current = nextSnapshot.nodes
+    edgesRef.current = nextSnapshot.edges
+    setNodes(nextSnapshot.nodes)
+    setEdges(nextSnapshot.edges)
+    setExecution(null)
+    setPendingNodeType(null)
+  }, [])
 
   const program = useMemo(() => toProgram(nodes, edges), [nodes, edges])
-  const validation = useMemo(() => validateProgram(program), [program])
+  const importedFunctionNames = useMemo(
+    () => callableImportedFunctionNames(importResolution.files, program),
+    [importResolution.files, program],
+  )
+  const importedPrograms = useMemo(
+    () => importResolution.files.map((file) => file.program),
+    [importResolution.files],
+  )
+  const importWarningMessages = useMemo(
+    () => importWarnings(importResolution.files, program),
+    [importResolution.files, program],
+  )
+  const validation = useMemo(() => {
+    const importErrors = [
+      ...(importsLoading ? ['Imports are loading.'] : []),
+      ...importResolution.errors,
+    ]
+    const result = validateProgram(program, {
+      externalFunctionNames: new Set(importedFunctionNames),
+    })
+
+    return {
+      valid: result.valid && importErrors.length === 0,
+      errors: [...result.errors, ...importErrors],
+    }
+  }, [importResolution.errors, importedFunctionNames, importsLoading, program])
   const currentNodeId = execution?.currentNodeId ?? null
   const showExecutionInputQueue =
     execution !== null && execution.status !== 'halted' && execution.status !== 'error'
@@ -154,6 +282,7 @@ function App() {
 
   const updateNodeText = useCallback(
     (nodeId: string, text: string) => {
+      pushHistorySnapshot()
       setNodes((currentNodes) =>
         currentNodes.map((node) =>
           node.id === nodeId
@@ -163,7 +292,7 @@ function App() {
       )
       setExecution(null)
     },
-    [setNodes],
+    [pushHistorySnapshot, setNodes],
   )
 
   const renderNodes = useMemo(
@@ -182,7 +311,7 @@ function App() {
   const onNodesChange = useCallback(
     (changes: NodeChange<EditorNode>[]) => {
       setNodes((currentNodes) => applyNodeChanges(changes, currentNodes))
-      if (changes.some((change) => change.type === 'remove')) {
+      if (changes.some((change) => change.type !== 'select')) {
         setExecution(null)
       }
     },
@@ -192,7 +321,7 @@ function App() {
   const onEdgesChange = useCallback(
     (changes: EdgeChange<EditorEdge>[]) => {
       setEdges((currentEdges) => applyEdgeChanges(changes, currentEdges))
-      if (changes.some((change) => change.type === 'remove')) {
+      if (changes.some((change) => change.type !== 'select')) {
         setExecution(null)
       }
     },
@@ -205,6 +334,7 @@ function App() {
         return
       }
 
+      pushHistorySnapshot()
       setEdges((currentEdges) => {
         const sourceNode = nodes.find((node) => node.id === connection.source)
         const branchLabel =
@@ -228,7 +358,7 @@ function App() {
       })
       setExecution(null)
     },
-    [nodes, setEdges],
+    [nodes, pushHistorySnapshot, setEdges],
   )
 
   function selectNodeType(nodeType: FlowNodeType): void {
@@ -239,6 +369,7 @@ function App() {
     nodeType: FlowNodeType,
     position: { x: number; y: number },
   ): void {
+    pushHistorySnapshot()
     const newNode: EditorNode = {
       id: nextNodeId(nodeType, nodes),
       type: 'flowNode',
@@ -269,6 +400,7 @@ function App() {
   }
 
   function resetSample(): void {
+    pushHistorySnapshot()
     setNodes(programToNodes(sampleProgram))
     setEdges(programToEdges(sampleProgram))
     setInputQueueText('3')
@@ -278,6 +410,7 @@ function App() {
   }
 
   function clearCanvas(): void {
+    pushHistorySnapshot()
     setNodes([])
     setEdges([])
     setExecution(null)
@@ -287,14 +420,21 @@ function App() {
 
   function resetExecution(): void {
     setMessage('')
-    setExecution(createExecution(program, parseInputQueue(inputQueueText)))
+    setExecution(
+      createExecution(program, parseInputQueue(inputQueueText), {
+        importedPrograms,
+      }),
+    )
   }
 
   function stepProgram(): void {
     setMessage('')
     setExecution((currentExecution) => {
       const activeExecution =
-        currentExecution ?? createExecution(program, parseInputQueue(inputQueueText))
+        currentExecution ??
+        createExecution(program, parseInputQueue(inputQueueText), {
+          importedPrograms,
+        })
       return stepExecution(activeExecution)
     })
   }
@@ -304,13 +444,200 @@ function App() {
     const initialExecution = createExecution(
       program,
       parseInputQueue(inputQueueText),
+      { importedPrograms },
     )
     setExecution(runExecution(initialExecution))
   }
 
+  function updateImportNames(text: string): void {
+    setImportNamesText(text)
+    setExecution(null)
+
+    if (text.trim()) {
+      setImportsLoading(true)
+      return
+    }
+
+    setImportResolution(EMPTY_IMPORT_RESOLUTION)
+    setImportsLoading(false)
+  }
+
+  const recordDragStart = useCallback(() => {
+    pushHistorySnapshot()
+  }, [pushHistorySnapshot])
+
+  const onBeforeDelete = useCallback(
+    async ({ nodes: deletedNodes, edges: deletedEdges }: CanvasSnapshot) => {
+      if (deletedNodes.length || deletedEdges.length) {
+        pushHistorySnapshot()
+      }
+
+      return true
+    },
+    [pushHistorySnapshot],
+  )
+
+  const selectClickedNode = useCallback((event: MouseEvent, node: EditorNode) => {
+    const shouldExtendSelection = event.metaKey || event.ctrlKey || event.shiftKey
+
+    setNodes((currentNodes) => {
+      const nextNodes = currentNodes.map((currentNode) => ({
+        ...currentNode,
+        selected: shouldExtendSelection
+          ? currentNode.id === node.id || Boolean(currentNode.selected)
+          : currentNode.id === node.id,
+      }))
+
+      nodesRef.current = nextNodes
+      return nextNodes
+    })
+    setEdges((currentEdges) => {
+      const nextEdges = currentEdges.map((edge) =>
+        edge.selected ? { ...edge, selected: false } : edge,
+      )
+
+      edgesRef.current = nextEdges
+      return nextEdges
+    })
+  }, [])
+
+  const copySelection = useCallback(() => {
+    const selectedNodes = nodesRef.current.filter((node) => node.selected)
+
+    if (!selectedNodes.length) {
+      setMessage('Select blocks to copy.')
+      return
+    }
+
+    const selectedNodeIds = new Set(selectedNodes.map((node) => node.id))
+    const selectedEdges = edgesRef.current.filter(
+      (edge) =>
+        selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target),
+    )
+
+    clipboardRef.current = cloneCanvasSnapshot({
+      nodes: selectedNodes,
+      edges: selectedEdges,
+    })
+    setMessage(`${selectedNodes.length} block${selectedNodes.length === 1 ? '' : 's'} copied.`)
+  }, [])
+
+  const pasteSelection = useCallback(() => {
+    const clipboard = clipboardRef.current
+
+    if (!clipboard?.nodes.length) {
+      setMessage('Nothing to paste.')
+      return
+    }
+
+    pushHistorySnapshot()
+
+    const usedNodeIds = new Set(nodesRef.current.map((node) => node.id))
+    const usedEdgeIds = new Set(edgesRef.current.map((edge) => edge.id))
+    const nodeIdMap = new Map<string, string>()
+    const pastedNodes = clipboard.nodes.map((node) => {
+      const id = nextCopiedId(node.id, usedNodeIds)
+      nodeIdMap.set(node.id, id)
+
+      return {
+        ...node,
+        id,
+        selected: true,
+        position: offsetPosition(node.position, COPY_PASTE_OFFSET),
+        data: { ...node.data },
+      }
+    })
+    const pastedEdges = clipboard.edges.flatMap((edge) => {
+      const source = nodeIdMap.get(edge.source)
+      const target = nodeIdMap.get(edge.target)
+
+      if (!source || !target) {
+        return []
+      }
+
+      return [
+        {
+          ...edge,
+          id: nextCopiedId(edge.id, usedEdgeIds),
+          source,
+          target,
+          selected: true,
+          data: edge.data ? { ...edge.data } : undefined,
+        },
+      ]
+    })
+    const nextNodes = [
+      ...nodesRef.current.map((node) =>
+        node.selected ? { ...node, selected: false } : node,
+      ),
+      ...pastedNodes,
+    ]
+    const nextEdges = [
+      ...edgesRef.current.map((edge) =>
+        edge.selected ? { ...edge, selected: false } : edge,
+      ),
+      ...pastedEdges,
+    ]
+
+    nodesRef.current = nextNodes
+    edgesRef.current = nextEdges
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    clipboardRef.current = cloneCanvasSnapshot({
+      nodes: pastedNodes,
+      edges: pastedEdges,
+    })
+    setExecution(null)
+    setPendingNodeType(null)
+    setMessage(`${pastedNodes.length} block${pastedNodes.length === 1 ? '' : 's'} pasted.`)
+  }, [pushHistorySnapshot])
+
+  const undoCanvasChange = useCallback(() => {
+    const previousSnapshot = historyRef.current.at(-1)
+
+    if (!previousSnapshot) {
+      setMessage('Nothing to undo.')
+      return
+    }
+
+    historyRef.current = historyRef.current.slice(0, -1)
+    restoreCanvasSnapshot(previousSnapshot)
+    setMessage('Undo.')
+  }, [restoreCanvasSnapshot])
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      const key = event.key.toLowerCase()
+
+      if (
+        isEditableShortcutTarget(event.target) ||
+        event.altKey ||
+        !(event.metaKey || event.ctrlKey)
+      ) {
+        return
+      }
+
+      if (key === 'c') {
+        event.preventDefault()
+        copySelection()
+      } else if (key === 'v') {
+        event.preventDefault()
+        pasteSelection()
+      } else if (key === 'z' && !event.shiftKey) {
+        event.preventDefault()
+        undoCanvasChange()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [copySelection, pasteSelection, undoCanvasChange])
+
   async function exportJson(): Promise<void> {
     const blob = programJsonBlob(program)
     const saveFilePicker = (window as WindowWithSaveFilePicker).showSaveFilePicker
+    registerFlowLabProgram(EXPORT_FILE_NAME, program)
 
     if (!saveFilePicker) {
       downloadProgramJson(blob)
@@ -339,13 +666,17 @@ function App() {
 
     try {
       const parsed = normalizeImportedProgram(JSON.parse(await file.text()))
-      const result = validateProgram(parsed)
+      const result = validateProgram(parsed, {
+        externalFunctionNames: new Set(importedFunctionNames),
+      })
 
       if (!result.valid) {
         setMessage(`Import failed: ${result.errors.join(' ')}`)
         return
       }
 
+      registerFlowLabProgram(file.name, parsed)
+      pushHistorySnapshot()
       setNodes(programToNodes(parsed))
       setEdges(programToEdges(parsed))
       setExecution(null)
@@ -425,6 +756,43 @@ function App() {
               </ul>
             )}
           </section>
+
+          <section className="imports-panel" aria-label="Imports">
+            <h2>Imports</h2>
+            <label className="input-label" htmlFor="imports-list">
+              FlowLab files
+            </label>
+            <textarea
+              id="imports-list"
+              value={importNamesText}
+              onChange={(event) => updateImportNames(event.target.value)}
+              rows={5}
+              spellCheck={false}
+            />
+            {importsLoading ? (
+              <p className="import-status">Loading imports...</p>
+            ) : importedFunctionNames.length ? (
+              <p className="import-status">
+                Callable: {importedFunctionNames.join(', ')}
+              </p>
+            ) : (
+              <p className="import-status">No imported functions</p>
+            )}
+            {importWarningMessages.length ? (
+              <ul className="warning-list">
+                {importWarningMessages.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
+            {importResolution.errors.length ? (
+              <ul className="error-list">
+                {importResolution.errors.map((error) => (
+                  <li key={error}>{error}</li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
         </aside>
 
         <section className="canvas-shell" aria-label="Visual editor">
@@ -438,7 +806,16 @@ function App() {
             onConnect={onConnect}
             onInit={setFlowInstance}
             onPaneClick={placePendingNode}
+            onNodeClick={selectClickedNode}
+            onNodeDragStart={recordDragStart}
+            onSelectionDragStart={recordDragStart}
+            onBeforeDelete={onBeforeDelete}
             deleteKeyCode={DELETE_KEY_CODES}
+            selectionKeyCode={NO_SELECTION_KEY}
+            selectionOnDrag
+            selectionMode={SelectionMode.Partial}
+            panOnDrag={CANVAS_DRAG_BUTTONS}
+            panOnScroll
             fitView
             defaultEdgeOptions={{ type: 'smoothstep' }}
           >
@@ -605,6 +982,51 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
         />
       ) : null}
     </div>
+  )
+}
+
+function cloneCanvasSnapshot(snapshot: CanvasSnapshot): CanvasSnapshot {
+  return {
+    nodes: snapshot.nodes.map((node) => ({
+      ...node,
+      position: { ...node.position },
+      data: { ...node.data },
+    })),
+    edges: snapshot.edges.map((edge) => ({
+      ...edge,
+      data: edge.data ? { ...edge.data } : undefined,
+    })),
+  }
+}
+
+function offsetPosition(
+  position: { x: number; y: number },
+  offset: { x: number; y: number },
+): { x: number; y: number } {
+  return {
+    x: position.x + offset.x,
+    y: position.y + offset.y,
+  }
+}
+
+function nextCopiedId(originalId: string, usedIds: Set<string>): string {
+  const baseId = `${originalId}-copy`
+  let suffix = 1
+  let id = baseId
+
+  while (usedIds.has(id)) {
+    suffix += 1
+    id = `${baseId}-${suffix}`
+  }
+
+  usedIds.add(id)
+  return id
+}
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    target.closest('input, textarea, select, [contenteditable="true"]') !== null
   )
 }
 

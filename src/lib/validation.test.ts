@@ -305,6 +305,23 @@ describe('validateProgram', () => {
     )
   })
 
+  it('accepts expression calls to external imported functions', () => {
+    const program: Program = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'set-total'
+          ? { ...node, text: 'total <- importedHelper(5)' }
+          : node,
+      ),
+    }
+
+    expect(
+      validateProgram(program, {
+        externalFunctionNames: new Set(['importedHelper']),
+      }).errors,
+    ).toEqual([])
+  })
+
   it('rejects function bodies that share nodes', () => {
     const program: Program = {
       version: 1,

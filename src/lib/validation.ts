@@ -15,6 +15,10 @@ import {
   type ValidationResult,
 } from './types'
 
+export interface ValidationOptions {
+  externalFunctionNames?: Set<string>
+}
+
 export function normalizeImportedProgram(value: unknown): Program {
   if (!value || typeof value !== 'object') {
     return value as Program
@@ -65,7 +69,10 @@ export function normalizeImportedProgram(value: unknown): Program {
   }
 }
 
-export function validateProgram(program: Program): ValidationResult {
+export function validateProgram(
+  program: Program,
+  options: ValidationOptions = {},
+): ValidationResult {
   const errors: string[] = []
 
   if (!isProgramShape(program)) {
@@ -176,7 +183,12 @@ export function validateProgram(program: Program): ValidationResult {
     rejectBranchLabelsFrom(outgoing, errors)
   }
 
-  validateExpressionCallTargets(program.nodes, functionsByName, errors)
+  validateExpressionCallTargets(
+    program.nodes,
+    functionsByName,
+    options.externalFunctionNames ?? new Set<string>(),
+    errors,
+  )
 
   validateFunctionOwnership(program, functions, errors)
 
@@ -340,6 +352,7 @@ function validateBranchEdges(
 function validateExpressionCallTargets(
   nodes: ProgramNode[],
   functionsByName: Map<string, ProgramNode>,
+  externalFunctionNames: Set<string>,
   errors: string[],
 ): void {
   for (const node of nodes) {
@@ -351,7 +364,8 @@ function validateExpressionCallTargets(
         for (const functionName of findExpressionCallNames(expression)) {
           if (
             !isBuiltInFunctionName(functionName) &&
-            !functionsByName.has(functionName)
+            !functionsByName.has(functionName) &&
+            !externalFunctionNames.has(functionName)
           ) {
             missingFunctionNames.add(functionName)
           }

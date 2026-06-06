@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { LoopbackEdge } from './components/LoopbackEdge'
 import { DELETE_KEY_CODES, programToEdges } from './lib/editorEdges'
+import { registerFlowLabProgram } from './lib/imports'
 import {
   DECISION_LOOPBACK_TARGET_HANDLE,
   edgeTypeForProgramEdge,
@@ -45,6 +46,23 @@ function nodeCenterX(
   renderedWidth: number,
 ): number {
   return node.position.x + renderedWidth / 2
+}
+
+function placePendingNodeOnPane(pane: Element, x = 440, y = 300): void {
+  fireEvent.pointerDown(pane, {
+    button: 0,
+    clientX: x,
+    clientY: y,
+    isPrimary: true,
+    pointerId: 1,
+  })
+  fireEvent.pointerUp(pane, {
+    button: 0,
+    clientX: x,
+    clientY: y,
+    isPrimary: true,
+    pointerId: 1,
+  })
 }
 
 const helperCallProgram: Program = {
@@ -98,9 +116,55 @@ const helperCallProgram: Program = {
   ],
 }
 
+const importedHelperProgram: Program = {
+  version: 1,
+  nodes: [
+    {
+      id: 'import-main',
+      type: 'function',
+      text: 'main',
+      position: { x: 0, y: 0 },
+    },
+    {
+      id: 'import-main-return',
+      type: 'return',
+      text: '0',
+      position: { x: 0, y: 100 },
+    },
+    {
+      id: 'import-helper',
+      type: 'function',
+      text: 'helper',
+      position: { x: 320, y: 0 },
+    },
+    {
+      id: 'import-helper-input',
+      type: 'input',
+      text: 'x',
+      position: { x: 320, y: 100 },
+    },
+    {
+      id: 'import-helper-return',
+      type: 'return',
+      text: 'x + 1',
+      position: { x: 320, y: 200 },
+    },
+  ],
+  edges: [
+    { id: 'import-e1', source: 'import-main', target: 'import-main-return' },
+    { id: 'import-e2', source: 'import-helper', target: 'import-helper-input' },
+    {
+      id: 'import-e3',
+      source: 'import-helper-input',
+      target: 'import-helper-return',
+    },
+  ],
+}
+
 describe('App', () => {
   afterEach(() => {
     delete (window as TestWindowWithSavePicker).showSaveFilePicker
+    localStorage.clear()
     vi.restoreAllMocks()
   })
 
@@ -130,6 +194,40 @@ describe('App', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Clear/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /Imports/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/FlowLab files/i)).toBeInTheDocument()
+  })
+
+  it('loads callable helper functions from named FlowLab files', async () => {
+    const user = userEvent.setup()
+    registerFlowLabProgram('helpers.json', importedHelperProgram)
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/FlowLab files/i), 'helpers')
+
+    expect(await screen.findByText(/Callable: helper/i)).toBeInTheDocument()
+  })
+
+  it('runs block expressions that call imported helper functions', async () => {
+    const user = userEvent.setup()
+    registerFlowLabProgram('helpers.json', importedHelperProgram)
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/FlowLab files/i), 'helpers')
+    await screen.findByText(/Callable: helper/i)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+
+    const initialTotal = screen.getByDisplayValue('total <- 0')
+    await user.clear(initialTotal)
+    await user.type(initialTotal, 'total <- helper(5)')
+    await user.clear(screen.getByLabelText(/Input queue/i))
+    await user.type(screen.getByLabelText(/Input queue/i), '0')
+    await user.click(screen.getByRole('button', { name: /Run/i }))
+
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      '6',
+    )
+    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
   })
 
   it('starts with a blank canvas and loads the default sample on request', async () => {
@@ -449,6 +547,48 @@ describe('App', () => {
     expect(DELETE_KEY_CODES).toEqual(['Backspace', 'Delete'])
   })
 
+  it('uses left-drag marquee selection instead of left-drag canvas panning', () => {
+    const { container } = render(<App />)
+    const pane = container.querySelector('.react-flow__pane')
+
+    expect(pane).toHaveClass('selection')
+    expect(pane).not.toHaveClass('draggable')
+  })
+
+  it('selects a block on left click', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+
+    const mainNode = screen.getByTestId('flow-node-main')
+    fireEvent.click(mainNode)
+
+    expect(mainNode.closest('.react-flow__node')).toHaveClass('selected')
+  })
+
+  it('copies, pastes, and undoes selected blocks with keyboard shortcuts', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+
+    fireEvent.click(screen.getByTestId('flow-node-main'))
+    fireEvent.keyDown(window, { key: 'c', metaKey: true })
+
+    await screen.findByText('1 block copied.')
+
+    fireEvent.keyDown(window, { key: 'v', metaKey: true })
+
+    expect(await screen.findByTestId('flow-node-main-copy')).toBeInTheDocument()
+    expect(screen.getAllByDisplayValue('main')).toHaveLength(2)
+
+    fireEvent.keyDown(window, { key: 'z', metaKey: true })
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('flow-node-main-copy')).not.toBeInTheDocument(),
+    )
+    expect(screen.getAllByDisplayValue('main')).toHaveLength(1)
+  })
+
   it('selects a palette block and places it on the next canvas click', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
@@ -461,7 +601,7 @@ describe('App', () => {
 
     const pane = container.querySelector('.react-flow__pane')
     expect(pane).toBeInTheDocument()
-    fireEvent.click(pane as Element, { clientX: 440, clientY: 300 })
+    placePendingNodeOnPane(pane as Element)
 
     expect(addIfButton).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByTestId('flow-node-if-1')).toHaveAttribute(
@@ -481,7 +621,7 @@ describe('App', () => {
 
     const pane = container.querySelector('.react-flow__pane')
     expect(pane).toBeInTheDocument()
-    fireEvent.click(pane as Element, { clientX: 440, clientY: 300 })
+    placePendingNodeOnPane(pane as Element)
 
     expect(screen.getByTestId('flow-node-function-1')).toHaveAttribute(
       'data-shape',
@@ -499,7 +639,7 @@ describe('App', () => {
 
     const pane = container.querySelector('.react-flow__pane')
     expect(pane).toBeInTheDocument()
-    fireEvent.click(pane as Element, { clientX: 440, clientY: 300 })
+    placePendingNodeOnPane(pane as Element)
 
     expect(screen.getByTestId('flow-node-return-1')).toHaveAttribute(
       'data-shape',
@@ -517,7 +657,7 @@ describe('App', () => {
 
     const pane = container.querySelector('.react-flow__pane')
     expect(pane).toBeInTheDocument()
-    fireEvent.click(pane as Element, { clientX: 440, clientY: 300 })
+    placePendingNodeOnPane(pane as Element)
 
     expect(screen.getByTestId('flow-node-for-1')).toHaveAttribute(
       'data-shape',

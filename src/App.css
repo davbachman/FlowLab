@@ -99,6 +99,8 @@ button:disabled {
 }
 
 .palette {
+  display: flex;
+  flex-direction: column;
   border-right: 1px solid #d8dde6;
 }
 
@@ -108,7 +110,8 @@ button:disabled {
 
 .palette h2,
 .console-panel h2,
-.validation-panel h2 {
+.validation-panel h2,
+.imports-panel h2 {
   margin: 0 0 10px;
   font-size: 15px;
   font-weight: 700;
@@ -136,6 +139,12 @@ button:disabled {
   border-top: 1px solid #e4e7ec;
 }
 
+.imports-panel {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid #e4e7ec;
+}
+
 .valid-message {
   margin: 0;
   color: #147a45;
@@ -146,6 +155,19 @@ button:disabled {
   margin: 0;
   padding-left: 18px;
   color: #b42318;
+  font-size: 13px;
+}
+
+.warning-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #9a6700;
+  font-size: 13px;
+}
+
+.import-status {
+  margin: 8px 0 0;
+  color: #475467;
   font-size: 13px;
 }
 
@@ -166,6 +188,20 @@ button:disabled {
 }
 
 .flow-node[data-current='true'] {
+  border-color: #f59e0b;
+  box-shadow:
+    0 0 0 4px rgba(245, 158, 11, 0.22),
+    0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.react-flow__node.selected .flow-node {
+  border-color: #2f6fd6;
+  box-shadow:
+    0 0 0 4px rgba(47, 111, 214, 0.2),
+    0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.react-flow__node.selected .flow-node[data-current='true'] {
   border-color: #f59e0b;
   box-shadow:
     0 0 0 4px rgba(245, 158, 11, 0.22),
@@ -220,6 +256,24 @@ button:disabled {
 .flow-node-if[data-current='true']::before,
 .flow-node-while[data-current='true']::before,
 .flow-node-for[data-current='true']::before {
+  border-color: #f59e0b;
+  box-shadow:
+    0 0 0 4px rgba(245, 158, 11, 0.22),
+    0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.react-flow__node.selected .flow-node-if::before,
+.react-flow__node.selected .flow-node-while::before,
+.react-flow__node.selected .flow-node-for::before {
+  border-color: #2f6fd6;
+  box-shadow:
+    0 0 0 4px rgba(47, 111, 214, 0.2),
+    0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.react-flow__node.selected .flow-node-if[data-current='true']::before,
+.react-flow__node.selected .flow-node-while[data-current='true']::before,
+.react-flow__node.selected .flow-node-for[data-current='true']::before {
   border-color: #f59e0b;
   box-shadow:
     0 0 0 4px rgba(245, 158, 11, 0.22),
