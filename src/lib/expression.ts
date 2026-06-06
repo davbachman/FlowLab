@@ -399,6 +399,14 @@ class Parser {
     }
 
     if (token.type === 'identifier') {
+      if (token.value === 'True') {
+        return { kind: 'literal', value: true }
+      }
+
+      if (token.value === 'False') {
+        return { kind: 'literal', value: false }
+      }
+
       if (this.peek().type === 'leftParen') {
         return this.call(token.value)
       }

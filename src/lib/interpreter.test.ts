@@ -97,6 +97,55 @@ describe('interpreter', () => {
     expect(finalState.output).toEqual(['6'])
   })
 
+  it('uses boolean constants in assignments and logical conditions', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'set-flag',
+          type: 'assignment',
+          text: 'flag <- True',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'check',
+          type: 'if',
+          text: 'flag and not False',
+          position: { x: 0, y: 200 },
+        },
+        {
+          id: 'yes',
+          type: 'output',
+          text: '"yes"',
+          position: { x: -100, y: 300 },
+        },
+        {
+          id: 'no',
+          type: 'output',
+          text: '"no"',
+          position: { x: 100, y: 300 },
+        },
+        { id: 'end', type: 'return', text: 'flag', position: { x: 0, y: 400 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'set-flag' },
+        { id: 'e2', source: 'set-flag', target: 'check' },
+        { id: 'e3', source: 'check', target: 'yes', label: 'true' },
+        { id: 'e4', source: 'check', target: 'no', label: 'false' },
+        { id: 'e5', source: 'yes', target: 'end' },
+        { id: 'e6', source: 'no', target: 'end' },
+      ],
+    }
+
+    const finalState = runExecution(createExecution(program, []))
+
+    expect(finalState.status).toBe('halted')
+    expect(finalState.environment.flag).toBe(true)
+    expect(finalState.output).toEqual(['yes'])
+    expect(finalState.returnValue).toBe(true)
+  })
+
   it('waits at an Input node when the queue is empty', () => {
     let state = createExecution(sumProgram, [])
     state = stepExecution(state)

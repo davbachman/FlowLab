@@ -77,6 +77,12 @@ describe('evaluateExpression', () => {
     expect(evaluateExpression('not x < 10', { x: 12 })).toBe(true)
   })
 
+  it('supports True and False boolean constants', () => {
+    expect(evaluateExpression('True', {})).toBe(true)
+    expect(evaluateExpression('False', {})).toBe(false)
+    expect(evaluateExpression('True and not False', {})).toBe(true)
+  })
+
   it('gives and higher precedence than or', () => {
     expect(evaluateExpression('0 or 1 and 0', {})).toBe(false)
     expect(evaluateExpression('(0 or 1) and 0', {})).toBe(false)
