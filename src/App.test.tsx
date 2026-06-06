@@ -18,14 +18,30 @@ import { sampleProgram } from './lib/sampleProgram'
 import type { Program } from './lib/types'
 
 type TestSaveFilePicker = (options: unknown) => Promise<{
+  name?: string
   createWritable: () => Promise<{
     write: (value: Blob) => Promise<void>
     close: () => Promise<void>
   }>
 }>
 
-interface TestWindowWithSavePicker extends Window {
+type TestDirectoryPicker = (options: unknown) => Promise<{
+  name?: string
+  getFileHandle: (
+    name: string,
+    options?: unknown,
+  ) => Promise<{
+    getFile: () => Promise<File>
+    createWritable?: () => Promise<{
+      write: (value: Blob) => Promise<void>
+      close: () => Promise<void>
+    }>
+  }>
+}>
+
+interface TestWindowWithFilePickers extends Window {
   showSaveFilePicker?: TestSaveFilePicker
+  showDirectoryPicker?: TestDirectoryPicker
 }
 
 const BLOCK_NODE_RENDERED_WIDTH = 194
@@ -161,9 +177,19 @@ const importedHelperProgram: Program = {
   ],
 }
 
+const folderHelperProgram: Program = {
+  ...importedHelperProgram,
+  nodes: importedHelperProgram.nodes.map((node) =>
+    node.id === 'import-helper'
+      ? { ...node, text: 'folderHelper' }
+      : node,
+  ),
+}
+
 describe('App', () => {
   afterEach(() => {
-    delete (window as TestWindowWithSavePicker).showSaveFilePicker
+    delete (window as TestWindowWithFilePickers).showSaveFilePicker
+    delete (window as TestWindowWithFilePickers).showDirectoryPicker
     localStorage.clear()
     vi.restoreAllMocks()
   })
@@ -190,8 +216,14 @@ describe('App', () => {
       screen.getByRole('button', { name: /Add For/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /Export JSON/i }),
+      screen.getByLabelText(/Current document/i),
+    ).toHaveTextContent('untitled')
+    expect(
+      screen.getByRole('button', { name: /^Export$/i }),
     ).toBeInTheDocument()
+    expect(screen.queryByText(/Export JSON/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/^Import$/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Import JSON/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Clear/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /Imports/i })).toBeInTheDocument()
@@ -203,8 +235,9 @@ describe('App', () => {
     registerFlowLabProgram('helpers.json', importedHelperProgram)
     render(<App />)
 
-    await user.type(screen.getByLabelText(/FlowLab files/i), 'helpers')
+    await user.type(screen.getByLabelText(/FlowLab files/i), 'helpers.json')
 
+    expect(await screen.findByText(/Imported files: helpers/i)).toBeInTheDocument()
     expect(await screen.findByText(/Callable: helper/i)).toBeInTheDocument()
   })
 
@@ -285,24 +318,25 @@ describe('App', () => {
     expect(screen.getByDisplayValue('helper')).toBeInTheDocument()
   })
 
-  it('opens a save-file dialog when exporting JSON', async () => {
+  it('falls back to a save-file dialog when folder export is unavailable', async () => {
     const user = userEvent.setup()
     const write = vi.fn<(value: Blob) => Promise<void>>(() => Promise.resolve())
     const close = vi.fn<() => Promise<void>>(() => Promise.resolve())
     const createWritable = vi.fn(() => Promise.resolve({ write, close }))
     const showSaveFilePicker = vi.fn<TestSaveFilePicker>(() =>
-      Promise.resolve({ createWritable }),
+      Promise.resolve({ name: 'lesson-one.json', createWritable }),
     )
 
-    ;(window as TestWindowWithSavePicker).showSaveFilePicker = showSaveFilePicker
+    ;(window as TestWindowWithFilePickers).showSaveFilePicker = showSaveFilePicker
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: /Export JSON/i }))
+    await user.click(screen.getByRole('button', { name: /^Export$/i }))
 
     await waitFor(() => expect(showSaveFilePicker).toHaveBeenCalledTimes(1))
     expect(showSaveFilePicker).toHaveBeenCalledWith({
-      suggestedName: 'flowlab-program.json',
+      id: 'flowlab-programs',
+      suggestedName: 'untitled.json',
       types: [
         {
           description: 'FlowLab program JSON',
@@ -311,6 +345,9 @@ describe('App', () => {
       ],
     })
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
+    expect(screen.getByLabelText(/Current document/i)).toHaveTextContent(
+      'lesson-one',
+    )
 
     const exportedBlob = write.mock.calls[0]?.[0]
     expect(exportedBlob).toBeInstanceOf(Blob)
@@ -319,6 +356,122 @@ describe('App', () => {
       nodes: expect.any(Array),
       edges: expect.any(Array),
     })
+  })
+
+  it('loads imports from the export folder before cached files', async () => {
+    const user = userEvent.setup()
+    const write = vi.fn<(value: Blob) => Promise<void>>(() => Promise.resolve())
+    const close = vi.fn<() => Promise<void>>(() => Promise.resolve())
+    const createWritable = vi.fn(() => Promise.resolve({ write, close }))
+    const getFileHandle = vi.fn((name: string, options?: unknown) => {
+      if (
+        name === 'lesson-one.json' &&
+        JSON.stringify(options) === JSON.stringify({ create: true })
+      ) {
+        return Promise.resolve({
+          getFile: () =>
+            Promise.resolve(new File([], name, { type: 'application/json' })),
+          createWritable,
+        })
+      }
+
+      if (name !== 'helpers.json') {
+        return Promise.reject(new DOMException('Missing file', 'NotFoundError'))
+      }
+
+      return Promise.resolve({
+        getFile: () =>
+          Promise.resolve(
+            new File([JSON.stringify(folderHelperProgram)], name, {
+              type: 'application/json',
+            }),
+          ),
+      })
+    })
+    const showSaveFilePicker = vi.fn<TestSaveFilePicker>(() =>
+      Promise.resolve({ name: 'lesson-one.json', createWritable }),
+    )
+    const showDirectoryPicker = vi.fn<TestDirectoryPicker>(() =>
+      Promise.resolve({ name: 'Programs', getFileHandle }),
+    )
+
+    registerFlowLabProgram('helpers.json', importedHelperProgram)
+    ;(window as TestWindowWithFilePickers).showSaveFilePicker = showSaveFilePicker
+    ;(window as TestWindowWithFilePickers).showDirectoryPicker =
+      showDirectoryPicker
+
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+
+    await waitFor(() => expect(showDirectoryPicker).toHaveBeenCalledTimes(1))
+    expect(showDirectoryPicker).toHaveBeenCalledWith({
+      id: 'flowlab-programs',
+      mode: 'readwrite',
+    })
+    expect(showSaveFilePicker).not.toHaveBeenCalled()
+
+    const filenameInput = await screen.findByRole('textbox', {
+      name: /^Filename$/i,
+    })
+    expect(filenameInput).toHaveValue('untitled.json')
+    await user.clear(filenameInput)
+    await user.type(filenameInput, 'lesson-one')
+    await user.click(screen.getByRole('button', { name: /^Save$/i }))
+
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
+    expect(getFileHandle).toHaveBeenCalledWith('lesson-one.json', {
+      create: true,
+    })
+    expect(screen.getByLabelText(/Current document/i)).toHaveTextContent(
+      'lesson-one',
+    )
+
+    await user.type(screen.getByLabelText(/FlowLab files/i), 'helpers')
+
+    expect(await screen.findByText('Imported files: helpers')).toBeInTheDocument()
+    expect(screen.getByText('Callable: folderHelper')).toBeInTheDocument()
+    expect(screen.queryByText('Callable: helper')).not.toBeInTheDocument()
+  })
+
+  it('reuses the export folder on later exports and only asks for a filename', async () => {
+    const user = userEvent.setup()
+    const write = vi.fn<(value: Blob) => Promise<void>>(() => Promise.resolve())
+    const close = vi.fn<() => Promise<void>>(() => Promise.resolve())
+    const createWritable = vi.fn(() => Promise.resolve({ write, close }))
+    const getFileHandle = vi.fn((name: string) =>
+      Promise.resolve({
+        getFile: () =>
+          Promise.resolve(new File([], name, { type: 'application/json' })),
+        createWritable,
+      }),
+    )
+    const showDirectoryPicker = vi.fn<TestDirectoryPicker>(() =>
+      Promise.resolve({ name: 'Programs', getFileHandle }),
+    )
+
+    ;(window as TestWindowWithFilePickers).showDirectoryPicker =
+      showDirectoryPicker
+
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+    await user.clear(
+      await screen.findByRole('textbox', { name: /^Filename$/i }),
+    )
+    await user.type(
+      screen.getByRole('textbox', { name: /^Filename$/i }),
+      'first',
+    )
+    await user.click(screen.getByRole('button', { name: /^Save$/i }))
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
+
+    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+
+    expect(showDirectoryPicker).toHaveBeenCalledTimes(1)
+    expect(
+      await screen.findByRole('textbox', { name: /^Filename$/i }),
+    ).toHaveValue('first.json')
   })
 
   it('falls back to download-link export when save-file dialogs are unavailable', async () => {
@@ -344,7 +497,7 @@ describe('App', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: /Export JSON/i }))
+    await user.click(screen.getByRole('button', { name: /^Export$/i }))
 
     expect(click).toHaveBeenCalledTimes(1)
   })
@@ -403,11 +556,14 @@ describe('App', () => {
       'helper-call.json',
       { type: 'application/json' },
     )
-    fireEvent.change(screen.getByLabelText(/Import JSON/i), {
+    fireEvent.change(screen.getByLabelText(/^Import$/i), {
       target: { files: [programFile] },
     })
 
     await screen.findByDisplayValue(`total <- helper([1, 2, 3], 'hello', 7)`)
+    expect(screen.getByLabelText(/Current document/i)).toHaveTextContent(
+      'helper-call',
+    )
     await user.click(screen.getByRole('button', { name: /Reset/i }))
     await user.click(screen.getByRole('button', { name: /Step/i }))
     await user.click(screen.getByRole('button', { name: /Step/i }))

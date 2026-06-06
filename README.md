@@ -10,15 +10,12 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 
 ## Features
 
-- Blank canvas startup with an optional default sample program.
 - Flowchart blocks for Function, Return, Assignment, Input, Output, If, While, and For.
 - Editable Function names. Execution starts at the `main` Function.
 - Multiple disjoint function flowcharts on the same canvas.
 - Function calls inside block expressions, such as `x <- helper(5)`.
 - Function calls pass their arguments as the called function's local input queue.
-- Return blocks send back one value to the caller.
 - Step-through execution enters called function flowcharts and shows the active function input queue.
-- Shared output and caller-visible results across function calls.
 - Imports panel for listing FlowLab JSON files and calling non-`main` functions from those files.
 - Import conflict handling: functions in the current canvas override imported functions with the same name.
 - Validation for graph shape, function names, call targets, branch labels, function body ownership, and malformed block text.

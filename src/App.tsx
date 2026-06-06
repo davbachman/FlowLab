@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type FormEvent,
   type MouseEvent,
 } from 'react'
 import {
@@ -35,9 +36,11 @@ import {
 } from './lib/interpreter'
 import {
   callableImportedFunctionNames,
+  displayFlowLabFileName,
   importWarnings,
   registerFlowLabProgram,
   resolveFlowLabImports,
+  type FlowLabDirectoryHandle,
   type ImportResolution,
 } from './lib/imports'
 import { stringifyValue } from './lib/expression'
@@ -78,16 +81,22 @@ interface CanvasSnapshot {
   edges: EditorEdge[]
 }
 
+interface FilenameRequest {
+  resolve: (fileName: string | null) => void
+}
+
 interface SaveFilePickerWritable {
   write: (value: Blob) => Promise<void> | void
   close: () => Promise<void> | void
 }
 
 interface SaveFilePickerHandle {
+  name?: string
   createWritable: () => Promise<SaveFilePickerWritable>
 }
 
 interface SaveFilePickerOptions {
+  id?: string
   suggestedName: string
   types: Array<{
     description: string
@@ -95,10 +104,18 @@ interface SaveFilePickerOptions {
   }>
 }
 
-interface WindowWithSaveFilePicker extends Window {
+interface DirectoryPickerOptions {
+  id?: string
+  mode: 'read' | 'readwrite'
+}
+
+interface WindowWithFilePickers extends Window {
   showSaveFilePicker?: (
     options: SaveFilePickerOptions,
   ) => Promise<SaveFilePickerHandle>
+  showDirectoryPicker?: (
+    options: DirectoryPickerOptions,
+  ) => Promise<FlowLabDirectoryHandle>
 }
 
 const nodeTypes = {
@@ -133,16 +150,15 @@ const NODE_PALETTE: FlowNodeType[] = [
 
 const DECISION_SIDE_HANDLE_OFFSET = '15px'
 
-const EXPORT_FILE_NAME = 'flowlab-program.json'
-const EXPORT_FILE_OPTIONS: SaveFilePickerOptions = {
-  suggestedName: EXPORT_FILE_NAME,
-  types: [
-    {
-      description: 'FlowLab program JSON',
-      accept: { 'application/json': ['.json'] },
-    },
-  ],
-}
+const DEFAULT_DOCUMENT_NAME = 'untitled'
+const FILE_PICKER_ID = 'flowlab-programs'
+const JSON_EXTENSION = '.json'
+const EXPORT_FILE_TYPES: SaveFilePickerOptions['types'] = [
+  {
+    description: 'FlowLab program JSON',
+    accept: { 'application/json': [JSON_EXTENSION] },
+  },
+]
 
 const CANVAS_DRAG_BUTTONS = [2] satisfies number[]
 const COPY_PASTE_OFFSET = { x: 36, y: 36 }
@@ -154,7 +170,15 @@ function App() {
   const [nodes, setNodes] = useState<EditorNode[]>([])
   const [edges, setEdges] = useState<EditorEdge[]>([])
   const [inputQueueText, setInputQueueText] = useState('')
+  const [documentName, setDocumentName] = useState(DEFAULT_DOCUMENT_NAME)
+  const [filenameInput, setFilenameInput] = useState('')
+  const [filenameRequest, setFilenameRequest] = useState<FilenameRequest | null>(
+    null,
+  )
   const [importNamesText, setImportNamesText] = useState('')
+  const [importDirectoryHandle, setImportDirectoryHandle] =
+    useState<FlowLabDirectoryHandle | null>(null)
+  const [importDirectoryName, setImportDirectoryName] = useState('')
   const [importResolution, setImportResolution] = useState<ImportResolution>(
     EMPTY_IMPORT_RESOLUTION,
   )
@@ -186,7 +210,9 @@ function App() {
       return
     }
 
-    void resolveFlowLabImports(importNamesText)
+    void resolveFlowLabImports(importNamesText, {
+      directoryHandle: importDirectoryHandle,
+    })
       .then((resolution) => {
         if (cancelled) {
           return
@@ -214,7 +240,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [importNamesText])
+  }, [importDirectoryHandle, importNamesText])
 
   const pushHistorySnapshot = useCallback(() => {
     const snapshot = cloneCanvasSnapshot({
@@ -272,6 +298,18 @@ function App() {
     ? formatInputQueue(execution.inputQueue)
     : inputQueueText
   const renderEdges = useMemo(() => programToEdges(program, edges), [program, edges])
+  const exportFileName = useMemo(
+    () => fileNameForDocument(documentName),
+    [documentName],
+  )
+  const exportFileOptions = useMemo<SaveFilePickerOptions>(
+    () => ({
+      id: FILE_PICKER_ID,
+      suggestedName: exportFileName,
+      types: EXPORT_FILE_TYPES,
+    }),
+    [exportFileName],
+  )
   const variableEntries = useMemo(
     () =>
       Object.entries(execution?.environment ?? {}).sort(([left], [right]) =>
@@ -404,6 +442,7 @@ function App() {
     setNodes(programToNodes(sampleProgram))
     setEdges(programToEdges(sampleProgram))
     setInputQueueText('3')
+    setDocumentName(DEFAULT_DOCUMENT_NAME)
     setExecution(null)
     setPendingNodeType(null)
     setMessage('Sample program loaded.')
@@ -413,6 +452,7 @@ function App() {
     pushHistorySnapshot()
     setNodes([])
     setEdges([])
+    setDocumentName(DEFAULT_DOCUMENT_NAME)
     setExecution(null)
     setPendingNodeType(null)
     setMessage('Canvas cleared.')
@@ -636,20 +676,69 @@ function App() {
 
   async function exportJson(): Promise<void> {
     const blob = programJsonBlob(program)
-    const saveFilePicker = (window as WindowWithSaveFilePicker).showSaveFilePicker
-    registerFlowLabProgram(EXPORT_FILE_NAME, program)
+    const saveFilePicker = (window as WindowWithFilePickers).showSaveFilePicker
+    const directoryPicker = (window as WindowWithFilePickers).showDirectoryPicker
+
+    if (importDirectoryHandle || directoryPicker) {
+      let directoryHandle: FlowLabDirectoryHandle | null = importDirectoryHandle
+
+      try {
+        if (!directoryHandle) {
+          setMessage('Choose a location.')
+          directoryHandle = await chooseExportDirectory()
+        }
+
+        if (!directoryHandle) {
+          setMessage('Export canceled.')
+          return
+        }
+
+        const savedFileName = await requestExportFileName(exportFileName)
+
+        if (!savedFileName) {
+          setMessage('Export canceled.')
+          return
+        }
+
+        await writeProgramToDirectory(directoryHandle, savedFileName, blob)
+        registerFlowLabProgram(savedFileName, program)
+        setDocumentName(documentNameFromFileName(savedFileName))
+        const directoryName = directoryHandle.name ?? importDirectoryName
+        setMessage(
+          directoryName
+            ? `Program exported. Imports folder: ${directoryName}.`
+            : 'Program exported.',
+        )
+      } catch (error) {
+        if (isAbortError(error)) {
+          setMessage('Export canceled.')
+        } else {
+          setMessage(
+            `Export failed: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        }
+      }
+
+      return
+    }
 
     if (!saveFilePicker) {
-      downloadProgramJson(blob)
+      registerFlowLabProgram(exportFileName, program)
+      downloadProgramJson(blob, exportFileName)
+      setDocumentName(documentNameFromFileName(exportFileName))
+      setMessage('Program exported.')
       return
     }
 
     try {
-      const handle = await saveFilePicker(EXPORT_FILE_OPTIONS)
+      const handle = await saveFilePicker(exportFileOptions)
       const writable = await handle.createWritable()
       await writable.write(blob)
       await writable.close()
-      setMessage('Program JSON exported.')
+      const savedFileName = handle.name ?? exportFileName
+      registerFlowLabProgram(savedFileName, program)
+      setDocumentName(documentNameFromFileName(savedFileName))
+      setMessage('Program exported.')
     } catch (error) {
       if (!isAbortError(error)) {
         setMessage(
@@ -657,6 +746,62 @@ function App() {
         )
       }
     }
+  }
+
+  async function chooseExportDirectory(): Promise<FlowLabDirectoryHandle | null> {
+    const directoryPicker = (window as WindowWithFilePickers).showDirectoryPicker
+
+    if (!directoryPicker) {
+      return null
+    }
+
+    const directoryHandle = await directoryPicker({
+      id: FILE_PICKER_ID,
+      mode: 'readwrite',
+    })
+    const directoryName = directoryHandle.name ?? ''
+
+    setImportDirectoryHandle(directoryHandle)
+    setImportDirectoryName(directoryName)
+
+    return directoryHandle
+  }
+
+  function requestExportFileName(defaultFileName: string): Promise<string | null> {
+    setFilenameInput(defaultFileName)
+
+    return new Promise((resolve) => {
+      setFilenameRequest({ resolve })
+    })
+  }
+
+  async function writeProgramToDirectory(
+    directoryHandle: FlowLabDirectoryHandle,
+    fileName: string,
+    blob: Blob,
+  ): Promise<void> {
+    const fileHandle = await directoryHandle.getFileHandle(fileName, {
+      create: true,
+    })
+    const writable = await fileHandle.createWritable?.()
+
+    if (!writable) {
+      throw new Error('The selected folder cannot be written to.')
+    }
+
+    await writable.write(blob)
+    await writable.close()
+  }
+
+  function submitFilenameRequest(event: FormEvent): void {
+    event.preventDefault()
+    filenameRequest?.resolve(fileNameForDocument(filenameInput))
+    setFilenameRequest(null)
+  }
+
+  function cancelFilenameRequest(): void {
+    filenameRequest?.resolve(null)
+    setFilenameRequest(null)
   }
 
   async function importJson(file: File | undefined): Promise<void> {
@@ -679,9 +824,10 @@ function App() {
       pushHistorySnapshot()
       setNodes(programToNodes(parsed))
       setEdges(programToEdges(parsed))
+      setDocumentName(documentNameFromFileName(file.name))
       setExecution(null)
       setPendingNodeType(null)
-      setMessage('Program JSON loaded.')
+      setMessage('Program loaded.')
     } catch (error) {
       setMessage(
         `Import failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -697,6 +843,9 @@ function App() {
           <p>Build flowchart programs, validate them, and step through execution.</p>
         </div>
         <div className="toolbar" aria-label="Program actions">
+          <span className="document-name" aria-label="Current document">
+            {documentName}
+          </span>
           <button type="button" onClick={resetSample}>
             Load Sample
           </button>
@@ -709,10 +858,10 @@ function App() {
               void exportJson()
             }}
           >
-            Export JSON
+            Export
           </button>
           <label className="file-button">
-            Import JSON
+            Import
             <input
               type="file"
               accept="application/json,.json"
@@ -771,12 +920,27 @@ function App() {
             />
             {importsLoading ? (
               <p className="import-status">Loading imports...</p>
-            ) : importedFunctionNames.length ? (
-              <p className="import-status">
-                Callable: {importedFunctionNames.join(', ')}
-              </p>
             ) : (
-              <p className="import-status">No imported functions</p>
+              <>
+                {importDirectoryName ? (
+                  <p className="import-status">
+                    Folder: {importDirectoryName}
+                  </p>
+                ) : null}
+                {importResolution.files.length ? (
+                  <p className="import-status">
+                    Imported files:{' '}
+                    {importResolution.files.map((file) => file.name).join(', ')}
+                  </p>
+                ) : null}
+                {importedFunctionNames.length ? (
+                  <p className="import-status">
+                    Callable: {importedFunctionNames.join(', ')}
+                  </p>
+                ) : (
+                  <p className="import-status">No imported functions</p>
+                )}
+              </>
             )}
             {importWarningMessages.length ? (
               <ul className="warning-list">
@@ -910,6 +1074,35 @@ function App() {
           </section>
         </aside>
       </section>
+      {filenameRequest ? (
+        <div className="modal-backdrop">
+          <form
+            className="filename-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="filename-modal-title"
+            onSubmit={submitFilenameRequest}
+          >
+            <h2 id="filename-modal-title">Choose a filename</h2>
+            <label className="input-label" htmlFor="export-filename">
+              Filename
+            </label>
+            <input
+              id="export-filename"
+              value={filenameInput}
+              onChange={(event) => setFilenameInput(event.target.value)}
+              autoFocus
+              spellCheck={false}
+            />
+            <div className="modal-buttons">
+              <button type="submit">Save</button>
+              <button type="button" onClick={cancelFilenameRequest}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </main>
   )
 }
@@ -1066,11 +1259,19 @@ function programJsonBlob(program: Program): Blob {
   })
 }
 
-function downloadProgramJson(blob: Blob): void {
+function documentNameFromFileName(fileName: string): string {
+  return displayFlowLabFileName(fileName) || DEFAULT_DOCUMENT_NAME
+}
+
+function fileNameForDocument(name: string): string {
+  return `${documentNameFromFileName(name)}${JSON_EXTENSION}`
+}
+
+function downloadProgramJson(blob: Blob, fileName: string): void {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = EXPORT_FILE_NAME
+  anchor.download = fileName
   anchor.click()
   URL.revokeObjectURL(url)
 }

@@ -11,7 +11,28 @@ export interface ImportResolution {
   errors: string[]
 }
 
+export interface FlowLabFileHandle {
+  getFile: () => Promise<File>
+  createWritable?: () => Promise<{
+    write: (value: Blob) => Promise<void> | void
+    close: () => Promise<void> | void
+  }>
+}
+
+export interface FlowLabDirectoryHandle {
+  name?: string
+  getFileHandle: (
+    name: string,
+    options?: { create?: boolean },
+  ) => Promise<FlowLabFileHandle>
+}
+
+interface ImportResolutionOptions {
+  directoryHandle?: FlowLabDirectoryHandle | null
+}
+
 const FLOWLAB_FILE_STORAGE_PREFIX = 'flowlab:file:'
+const JSON_EXTENSION = '.json'
 
 export function parseImportNames(text: string): string[] {
   return text
@@ -39,25 +60,38 @@ export function registerFlowLabProgram(name: string, program: Program): void {
   }
 }
 
+export function displayFlowLabFileName(name: string): string {
+  const trimmed = name.trim()
+
+  if (trimmed.toLowerCase().endsWith(JSON_EXTENSION)) {
+    return trimmed.slice(0, -JSON_EXTENSION.length)
+  }
+
+  return trimmed
+}
+
 export async function resolveFlowLabImports(
   text: string,
+  options: ImportResolutionOptions = {},
 ): Promise<ImportResolution> {
   const files: ImportedProgramFile[] = []
   const errors: string[] = []
   const seenNames = new Set<string>()
 
   for (const name of parseImportNames(text)) {
-    if (seenNames.has(name)) {
+    const displayName = displayFlowLabFileName(name)
+
+    if (seenNames.has(displayName)) {
       continue
     }
 
-    seenNames.add(name)
-    const result = await loadFlowLabProgram(name)
+    seenNames.add(displayName)
+    const result = await loadFlowLabProgram(name, options.directoryHandle)
 
     if (result.program) {
-      files.push({ name, program: result.program })
+      files.push({ name: displayName, program: result.program })
     } else {
-      errors.push(`Import "${name}": ${result.error}`)
+      errors.push(`Import "${displayName}": ${result.error}`)
     }
   }
 
@@ -133,7 +167,16 @@ export function importWarnings(
 
 async function loadFlowLabProgram(
   name: string,
+  directoryHandle?: FlowLabDirectoryHandle | null,
 ): Promise<{ program?: Program; error: string }> {
+  if (directoryHandle) {
+    const directoryProgram = await loadDirectoryProgram(name, directoryHandle)
+
+    if (directoryProgram.program || directoryProgram.error !== 'not-found') {
+      return directoryProgram
+    }
+  }
+
   const storedProgram = loadStoredProgram(name)
 
   if (storedProgram.program || storedProgram.error !== 'not-found') {
@@ -141,6 +184,34 @@ async function loadFlowLabProgram(
   }
 
   return loadFetchedProgram(name)
+}
+
+async function loadDirectoryProgram(
+  name: string,
+  directoryHandle: FlowLabDirectoryHandle,
+): Promise<{ program?: Program; error: string }> {
+  for (const candidate of lookupNamesFor(name)) {
+    try {
+      const fileHandle = await directoryHandle.getFileHandle(candidate)
+      const parsed = parseProgramSource(await (await fileHandle.getFile()).text())
+
+      if (parsed.program) {
+        registerFlowLabProgram(name, parsed.program)
+      }
+
+      return parsed
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        continue
+      }
+
+      return {
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+  }
+
+  return { error: 'not-found' }
 }
 
 function loadStoredProgram(name: string): { program?: Program; error: string } {
@@ -215,15 +286,18 @@ function parseProgramSource(source: string): { program?: Program; error: string 
 
 function lookupNamesFor(name: string): string[] {
   const trimmed = name.trim()
-  const names = [trimmed]
+  const displayName = displayFlowLabFileName(trimmed)
+  const names = [trimmed, displayName]
 
-  if (trimmed.endsWith('.json')) {
-    names.push(trimmed.slice(0, -'.json'.length))
-  } else {
-    names.push(`${trimmed}.json`)
+  if (displayName) {
+    names.push(`${displayName}${JSON_EXTENSION}`)
   }
 
-  return [...new Set(names)]
+  return [...new Set(names.filter(Boolean))]
+}
+
+function isFileNotFoundError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'NotFoundError'
 }
 
 function currentProgramFunctionNames(program: Program): Set<string> {
