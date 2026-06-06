@@ -227,15 +227,15 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: /Clear/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /Imports/i })).toBeInTheDocument()
-    expect(screen.getByLabelText(/FlowLab files/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/Imports list/i)).toBeInTheDocument()
   })
 
-  it('loads callable helper functions from named FlowLab files', async () => {
+  it('loads callable helper functions from named imported programs', async () => {
     const user = userEvent.setup()
     registerFlowLabProgram('helpers.json', importedHelperProgram)
     render(<App />)
 
-    await user.type(screen.getByLabelText(/FlowLab files/i), 'helpers.json')
+    await user.type(screen.getByLabelText(/Imports list/i), 'helpers.json')
 
     expect(await screen.findByText(/Imported files: helpers/i)).toBeInTheDocument()
     expect(await screen.findByText(/Callable: helper/i)).toBeInTheDocument()
@@ -246,7 +246,7 @@ describe('App', () => {
     registerFlowLabProgram('helpers.json', importedHelperProgram)
     render(<App />)
 
-    await user.type(screen.getByLabelText(/FlowLab files/i), 'helpers')
+    await user.type(screen.getByLabelText(/Imports list/i), 'helpers')
     await screen.findByText(/Callable: helper/i)
     await user.click(screen.getByRole('button', { name: /Load Sample/i }))
 
@@ -427,7 +427,7 @@ describe('App', () => {
       'lesson-one',
     )
 
-    await user.type(screen.getByLabelText(/FlowLab files/i), 'helpers')
+    await user.type(screen.getByLabelText(/Imports list/i), 'helpers')
 
     expect(await screen.findByText('Imported files: helpers')).toBeInTheDocument()
     expect(screen.getByText('Callable: folderHelper')).toBeInTheDocument()

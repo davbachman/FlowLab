@@ -908,11 +908,9 @@ function App() {
 
           <section className="imports-panel" aria-label="Imports">
             <h2>Imports</h2>
-            <label className="input-label" htmlFor="imports-list">
-              FlowLab files
-            </label>
             <textarea
               id="imports-list"
+              aria-label="Imports list"
               value={importNamesText}
               onChange={(event) => updateImportNames(event.target.value)}
               rows={5}
