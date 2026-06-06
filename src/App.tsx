@@ -124,13 +124,9 @@ const EXPORT_FILE_OPTIONS: SaveFilePickerOptions = {
 }
 
 function App() {
-  const [nodes, setNodes] = useState<EditorNode[]>(() =>
-    programToNodes(sampleProgram),
-  )
-  const [edges, setEdges] = useState<EditorEdge[]>(() =>
-    programToEdges(sampleProgram),
-  )
-  const [inputQueueText, setInputQueueText] = useState('3')
+  const [nodes, setNodes] = useState<EditorNode[]>([])
+  const [edges, setEdges] = useState<EditorEdge[]>([])
+  const [inputQueueText, setInputQueueText] = useState('')
   const [execution, setExecution] = useState<ExecutionState | null>(null)
   const [message, setMessage] = useState('')
   const [pendingNodeType, setPendingNodeType] = useState<FlowNodeType | null>(
@@ -281,6 +277,14 @@ function App() {
     setMessage('Sample program loaded.')
   }
 
+  function clearCanvas(): void {
+    setNodes([])
+    setEdges([])
+    setExecution(null)
+    setPendingNodeType(null)
+    setMessage('Canvas cleared.')
+  }
+
   function resetExecution(): void {
     setMessage('')
     setExecution(createExecution(program, parseInputQueue(inputQueueText)))
@@ -364,6 +368,9 @@ function App() {
         <div className="toolbar" aria-label="Program actions">
           <button type="button" onClick={resetSample}>
             Load Sample
+          </button>
+          <button type="button" onClick={clearCanvas}>
+            Clear
           </button>
           <button
             type="button"

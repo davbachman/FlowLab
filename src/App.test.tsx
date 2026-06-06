@@ -128,12 +128,45 @@ describe('App', () => {
     expect(
       screen.getByRole('button', { name: /Export JSON/i }),
     ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Clear/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toBeInTheDocument()
+  })
+
+  it('starts with a blank canvas and loads the default sample on request', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(screen.queryByTestId('flow-node-main')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('total <- 0')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Input queue/i)).toHaveValue('')
+
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+
+    expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Input queue/i)).toHaveValue('3')
+  })
+
+  it('clears all flowchart nodes from the top toolbar', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+
+    expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Clear/i }))
+
+    expect(screen.queryByTestId('flow-node-main')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('total <- 0')).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/Input queue/i)).toHaveValue('3')
+    expect(screen.getByText(/exactly one main Function/i)).toBeInTheDocument()
   })
 
   it('lets students edit flowchart node text', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
 
     const assignment = screen.getByDisplayValue('total <- 0')
     await user.clear(assignment)
@@ -145,6 +178,7 @@ describe('App', () => {
   it('lets students edit function names', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
 
     const mainFunction = screen.getByDisplayValue('main')
     await user.clear(mainFunction)
@@ -220,6 +254,7 @@ describe('App', () => {
   it('runs the sample program with queued input and shows output', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
 
     await user.clear(screen.getByLabelText(/Input queue/i))
     await user.type(screen.getByLabelText(/Input queue/i), '3')
@@ -234,6 +269,7 @@ describe('App', () => {
   it('shows current variable values in the right sidebar', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
 
     await user.clear(screen.getByLabelText(/Input queue/i))
     await user.type(screen.getByLabelText(/Input queue/i), '3')
@@ -250,6 +286,7 @@ describe('App', () => {
   it('highlights the current node during step-through execution', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
 
     await user.click(screen.getByRole('button', { name: /Reset/i }))
 
@@ -286,8 +323,10 @@ describe('App', () => {
     )
   })
 
-  it('renders While blocks as diamonds with the true branch from the side', () => {
+  it('renders While blocks as diamonds with the true branch from the side', async () => {
+    const user = userEvent.setup()
     const { container } = render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
 
     expect(screen.getByTestId('flow-node-while-n')).toHaveAttribute(
       'data-shape',
@@ -353,8 +392,10 @@ describe('App', () => {
     expect(nodeCenterX(showTotal, BLOCK_NODE_RENDERED_WIDTH)).toBe(spineCenter)
   })
 
-  it('uses the normal top node point for loop-back targets', () => {
+  it('uses the normal top node point for loop-back targets', async () => {
+    const user = userEvent.setup()
     const { container } = render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
 
     expect(
       container.querySelector(`[data-handleid="${DECISION_LOOPBACK_TARGET_HANDLE}"]`),
@@ -446,7 +487,7 @@ describe('App', () => {
       'data-shape',
       'block',
     )
-    expect(screen.getAllByDisplayValue('main')).toHaveLength(2)
+    expect(screen.getAllByDisplayValue('main')).toHaveLength(1)
   })
 
   it('places Return blocks with editable return text', async () => {
