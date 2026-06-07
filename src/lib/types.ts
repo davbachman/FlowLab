@@ -21,6 +21,7 @@ export interface ProgramNode {
   id: string
   type: FlowNodeType
   text: string
+  comment?: string
   position: ProgramPosition
 }
 

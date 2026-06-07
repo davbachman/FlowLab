@@ -72,6 +72,7 @@ import './App.css'
 interface FlowNodeData extends Record<string, unknown> {
   nodeType: FlowNodeType
   text: string
+  comment?: string
   isCurrent?: boolean
   onTextChange?: (nodeId: string, text: string) => void
 }
@@ -85,6 +86,10 @@ interface CanvasSnapshot {
 
 interface FilenameRequest {
   resolve: (fileName: string | null) => void
+}
+
+interface CommentRequest {
+  nodeId: string
 }
 
 interface SaveFilePickerWritable {
@@ -176,6 +181,10 @@ function App() {
   const [documentName, setDocumentName] = useState(DEFAULT_DOCUMENT_NAME)
   const [filenameInput, setFilenameInput] = useState('')
   const [filenameRequest, setFilenameRequest] = useState<FilenameRequest | null>(
+    null,
+  )
+  const [commentInputText, setCommentInputText] = useState('')
+  const [commentRequest, setCommentRequest] = useState<CommentRequest | null>(
     null,
   )
   const [askInputText, setAskInputText] = useState('')
@@ -549,6 +558,15 @@ function App() {
     })
   }, [])
 
+  const openNodeCommentDialog = useCallback(
+    (event: MouseEvent, node: EditorNode) => {
+      event.preventDefault()
+      setCommentInputText(node.data.comment ?? '')
+      setCommentRequest({ nodeId: node.id })
+    },
+    [],
+  )
+
   const copySelection = useCallback(() => {
     const selectedNodes = nodesRef.current.filter((node) => node.selected)
 
@@ -812,6 +830,33 @@ function App() {
     setFilenameRequest(null)
   }
 
+  function submitCommentRequest(event: FormEvent): void {
+    event.preventDefault()
+
+    if (!commentRequest) {
+      return
+    }
+
+    pushHistorySnapshot()
+    const comment = commentInputText.trim() ? commentInputText : undefined
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) =>
+        node.id === commentRequest.nodeId
+          ? { ...node, data: { ...node.data, comment } }
+          : node,
+      ),
+    )
+    setCommentRequest(null)
+    setCommentInputText('')
+    setExecution(null)
+  }
+
+  function cancelCommentRequest(): void {
+    setCommentRequest(null)
+    setCommentInputText('')
+  }
+
   function submitAskInput(event: FormEvent): void {
     event.preventDefault()
 
@@ -996,6 +1041,7 @@ function App() {
             onInit={setFlowInstance}
             onPaneClick={placePendingNode}
             onNodeClick={selectClickedNode}
+            onNodeContextMenu={openNodeCommentDialog}
             onNodeDragStart={recordDragStart}
             onSelectionDragStart={recordDragStart}
             onBeforeDelete={onBeforeDelete}
@@ -1128,6 +1174,36 @@ function App() {
           </form>
         </div>
       ) : null}
+      {commentRequest ? (
+        <div className="modal-backdrop">
+          <form
+            className="filename-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="comment-modal-title"
+            onSubmit={submitCommentRequest}
+          >
+            <h2 id="comment-modal-title">Block comment</h2>
+            <label className="input-label" htmlFor="block-comment">
+              Comment
+            </label>
+            <textarea
+              id="block-comment"
+              value={commentInputText}
+              onChange={(event) => setCommentInputText(event.target.value)}
+              autoFocus
+              rows={4}
+              spellCheck={false}
+            />
+            <div className="modal-buttons">
+              <button type="submit">Save</button>
+              <button type="button" onClick={cancelCommentRequest}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       {execution?.status === 'asking' ? (
         <div className="modal-backdrop">
           <form
@@ -1182,6 +1258,7 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
       ) : null}
       <div className="node-content">
         <div className="node-label">{label}</div>
+        {data.comment ? <div className="node-comment">{data.comment}</div> : null}
         {editable ? (
           <>
             <label className="sr-only" htmlFor={`${id}-text`}>
@@ -1293,6 +1370,7 @@ function programToNodes(program: Program): EditorNode[] {
     data: {
       nodeType: node.type,
       text: node.text,
+      comment: node.comment,
     },
   }))
 }
@@ -1300,12 +1378,17 @@ function programToNodes(program: Program): EditorNode[] {
 function toProgram(nodes: EditorNode[], edges: EditorEdge[]): Program {
   return {
     version: 1,
-    nodes: nodes.map((node) => ({
-      id: node.id,
-      type: node.data.nodeType,
-      text: node.data.text,
-      position: node.position,
-    })),
+    nodes: nodes.map((node) => {
+      const comment = node.data.comment?.trim()
+
+      return {
+        id: node.id,
+        type: node.data.nodeType,
+        text: node.data.text,
+        ...(comment ? { comment: node.data.comment } : {}),
+        position: node.position,
+      }
+    }),
     edges: edges.map((edge) => ({
       id: edge.id,
       source: edge.source,

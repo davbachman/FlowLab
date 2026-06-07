@@ -361,6 +361,16 @@ button:disabled {
   color: #475467;
 }
 
+.node-comment {
+  margin: 0 0 6px;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .fixed-node-text {
   font-weight: 700;
 }

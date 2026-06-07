@@ -221,6 +221,7 @@ function isNodeShape(node: unknown): node is ProgramNode {
     typeof candidate.id === 'string' &&
     isFlowNodeType(candidate.type) &&
     typeof candidate.text === 'string' &&
+    (candidate.comment === undefined || typeof candidate.comment === 'string') &&
     typeof candidate.position?.x === 'number' &&
     typeof candidate.position?.y === 'number'
   )

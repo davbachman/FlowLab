@@ -903,6 +903,32 @@ describe('App', () => {
     expect(screen.getAllByDisplayValue('main')).toHaveLength(1)
   })
 
+  it('opens a right-click comment dialog and shows comments inside blocks', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+
+    fireEvent.contextMenu(screen.getByTestId('flow-node-main'))
+
+    const dialog = await screen.findByRole('dialog', {
+      name: /Block comment/i,
+    })
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Comment$/i }),
+      'Count input values',
+    )
+    await user.click(within(dialog).getByRole('button', { name: /Save/i }))
+
+    const mainNode = screen.getByTestId('flow-node-main')
+    const comment = within(mainNode).getByText('Count input values')
+
+    expect(screen.queryByRole('dialog', { name: /Block comment/i })).toBeNull()
+    expect(comment).toHaveClass('node-comment')
+    expect(comment.compareDocumentPosition(screen.getByDisplayValue('main'))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
   it('places Return blocks with editable return text', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
