@@ -536,6 +536,8 @@ describe('App', () => {
   it('falls back to download-link export when save-file dialogs are unavailable', async () => {
     const user = userEvent.setup()
     const click = vi.fn()
+    const clickedAnchors: HTMLAnchorElement[] = []
+    const anchors: HTMLAnchorElement[] = []
     const createElement = vi.spyOn(document, 'createElement')
     createElement.mockImplementation((tagName, options) => {
       const element = Document.prototype.createElement.call(
@@ -545,9 +547,13 @@ describe('App', () => {
       )
 
       if (tagName.toLowerCase() === 'a') {
+        anchors.push(element as HTMLAnchorElement)
         Object.defineProperty(element, 'click', {
           configurable: true,
-          value: click,
+          value() {
+            clickedAnchors.push(element as HTMLAnchorElement)
+            click()
+          },
         })
       }
 
@@ -558,7 +564,22 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: /^Export$/i }))
 
+    const filenameInput = await screen.findByRole('textbox', {
+      name: /^Filename$/i,
+    })
+    expect(filenameInput).toHaveValue('untitled.json')
+    expect(click).not.toHaveBeenCalled()
+
+    await user.clear(filenameInput)
+    await user.type(filenameInput, 'safari-save')
+    await user.click(screen.getByRole('button', { name: /^Save$/i }))
+
     expect(click).toHaveBeenCalledTimes(1)
+    expect(anchors).toContain(clickedAnchors[0])
+    expect(clickedAnchors[0]?.download).toBe('safari-save.json')
+    expect(screen.getByLabelText(/Current document/i)).toHaveTextContent(
+      'safari-save',
+    )
   })
 
   it('runs the sample program with queued input and shows output', async () => {
