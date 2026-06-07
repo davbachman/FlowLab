@@ -868,7 +868,6 @@ function App() {
       <header className="topbar">
         <div>
           <h1>FlowLab</h1>
-          <p>Build flowchart programs, validate them, and step through execution.</p>
         </div>
         <div className="toolbar" aria-label="Program actions">
           <span className="document-name" aria-label="Current document">
@@ -916,7 +915,7 @@ function App() {
                 aria-pressed={pendingNodeType === nodeType}
                 onClick={() => selectNodeType(nodeType)}
               >
-                Add {NODE_TYPE_LABELS[nodeType]}
+                {NODE_TYPE_LABELS[nodeType]}
               </button>
             ))}
           </div>

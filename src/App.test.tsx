@@ -249,19 +249,24 @@ describe('App', () => {
       screen.getByRole('heading', { name: /FlowLab/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /Add Assignment/i }),
+      screen.queryByText(
+        /Build flowchart programs, validate them, and step through execution/i,
+      ),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^Assignment$/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /Add Function/i }),
+      screen.getByRole('button', { name: /^Function$/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /Add Return/i }),
+      screen.getByRole('button', { name: /^Return$/i }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /Add Call/i }),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /Add For/i }),
+      screen.getByRole('button', { name: /^For$/i }),
     ).toBeInTheDocument()
     expect(
       screen.getByLabelText(/Current document/i),
@@ -860,7 +865,7 @@ describe('App', () => {
   it('selects a palette block and places it on the next canvas click', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
-    const addIfButton = screen.getByRole('button', { name: /Add If/i })
+    const addIfButton = screen.getByRole('button', { name: /^If$/i })
 
     await user.click(addIfButton)
 
@@ -882,7 +887,7 @@ describe('App', () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
     const addFunctionButton = screen.getByRole('button', {
-      name: /Add Function/i,
+      name: /^Function$/i,
     })
 
     await user.click(addFunctionButton)
@@ -901,7 +906,7 @@ describe('App', () => {
   it('places Return blocks with editable return text', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
-    const addReturnButton = screen.getByRole('button', { name: /Add Return/i })
+    const addReturnButton = screen.getByRole('button', { name: /^Return$/i })
 
     await user.click(addReturnButton)
 
@@ -919,7 +924,7 @@ describe('App', () => {
   it('places For blocks as decision diamonds', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
-    const addForButton = screen.getByRole('button', { name: /Add For/i })
+    const addForButton = screen.getByRole('button', { name: /^For$/i })
 
     await user.click(addForButton)
 
