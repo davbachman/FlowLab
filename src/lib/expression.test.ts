@@ -7,14 +7,18 @@ describe('evaluateExpression', () => {
     expect(evaluateExpression('(2 + 3) * 4', {})).toBe(20)
   })
 
-  it('supports variables, mod, and subtraction', () => {
-    expect(evaluateExpression('x mod 4 + y - 1', { x: 14, y: 2 })).toBe(3)
+  it('supports variables and subtraction', () => {
+    expect(evaluateExpression('x + y - 1', { x: 14, y: 2 })).toBe(15)
   })
 
-  it('supports exponentiation and numeric functions', () => {
-    expect(evaluateExpression('2 + 3**2 * 2', {})).toBe(20)
-    expect(evaluateExpression('2**3**2', {})).toBe(512)
-    expect(evaluateExpression('sqrt(9) + abs(-4)', {})).toBe(7)
+  it('supports sqrt and rand numeric functions', () => {
+    expect(evaluateExpression('sqrt(9)', {})).toBe(3)
+
+    const value = evaluateExpression('rand()', {})
+
+    expect(typeof value).toBe('number')
+    expect(value as number).toBeGreaterThanOrEqual(0)
+    expect(value as number).toBeLessThan(1)
   })
 
   it('supports string literals and concatenation', () => {
@@ -39,9 +43,22 @@ describe('evaluateExpression', () => {
     ])
   })
 
-  it('supports len for strings and lists', () => {
-    expect(evaluateExpression('len(S)', { S: 'cat' })).toBe(3)
-    expect(evaluateExpression('len(L + [4])', { L: [1, 2, 3] })).toBe(4)
+  it('rejects removed mod and exponentiation operators', () => {
+    expect(() => evaluateExpression('10 mod 3', {})).toThrow(
+      /Unexpected token "mod"/,
+    )
+    expect(() => evaluateExpression('2**3', {})).toThrow(
+      /Unexpected token "\*"/,
+    )
+  })
+
+  it('treats removed built-in names as ordinary unknown calls', () => {
+    expect(() => evaluateExpression('abs(-4)', {})).toThrow(
+      /Unknown function "abs"/,
+    )
+    expect(() => evaluateExpression('len(S)', { S: 'cat' })).toThrow(
+      /Unknown function "len"/,
+    )
   })
 
   it('passes multiple evaluated arguments to custom function calls', () => {
@@ -103,8 +120,8 @@ describe('evaluateExpression', () => {
     expect(() => evaluateExpression('sqrt(-1)', {})).toThrow(
       /sqrt requires a nonnegative number/,
     )
-    expect(() => evaluateExpression('len(5)', {})).toThrow(
-      /len requires a string or list/,
+    expect(() => evaluateExpression('rand(1)', {})).toThrow(
+      /rand requires no arguments/,
     )
   })
 })

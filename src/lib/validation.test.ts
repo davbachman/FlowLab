@@ -139,6 +139,26 @@ describe('validateProgram', () => {
     expect(validateProgram(program).errors).toEqual([])
   })
 
+  it('accepts rand as a built-in and rejects removed built-in calls', () => {
+    const randProgram = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'set-total' ? { ...node, text: 'total <- rand()' } : node,
+      ),
+    }
+    const lenProgram = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'set-total' ? { ...node, text: 'total <- len([1])' } : node,
+      ),
+    }
+
+    expect(validateProgram(randProgram).errors).toEqual([])
+    expect(validateProgram(lenProgram).errors.join('\n')).toMatch(
+      /missing Function "len"/,
+    )
+  })
+
   it('requires true and false labels on branch nodes', () => {
     const program = {
       ...validBranchProgram,
@@ -222,7 +242,7 @@ describe('validateProgram', () => {
         {
           id: 'set-result',
           type: 'assignment',
-          text: 'result <- len(L) + len(word) + n',
+          text: 'result <- L[0] + L[2] + n',
           position: { x: 320, y: 480 },
         },
         {

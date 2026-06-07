@@ -524,6 +524,10 @@ textarea {
   font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.console-line {
+  white-space: pre-wrap;
+}
+
 .console-line + .console-line {
   margin-top: 6px;
 }

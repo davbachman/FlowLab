@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -29,6 +30,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import {
+  answerAskExecution,
   createExecution,
   runExecution,
   stepExecution,
@@ -161,6 +163,7 @@ const EXPORT_FILE_TYPES: SaveFilePickerOptions['types'] = [
 ]
 
 const CANVAS_DRAG_BUTTONS = [2] satisfies number[]
+const INITIAL_CANVAS_VIEWPORT = { x: 0, y: 0, zoom: 0.85 }
 const COPY_PASTE_OFFSET = { x: 36, y: 36 }
 const HISTORY_LIMIT = 80
 const NO_SELECTION_KEY = null satisfies KeyCode | null
@@ -175,6 +178,7 @@ function App() {
   const [filenameRequest, setFilenameRequest] = useState<FilenameRequest | null>(
     null,
   )
+  const [askInputText, setAskInputText] = useState('')
   const [importNamesText, setImportNamesText] = useState('')
   const [importDirectoryHandle, setImportDirectoryHandle] =
     useState<FlowLabDirectoryHandle | null>(null)
@@ -194,6 +198,7 @@ function App() {
   const edgesRef = useRef(edges)
   const clipboardRef = useRef<CanvasSnapshot | null>(null)
   const historyRef = useRef<CanvasSnapshot[]>([])
+  const askResumeModeRef = useRef<'step' | 'run'>('step')
 
   useEffect(() => {
     nodesRef.current = nodes
@@ -460,6 +465,7 @@ function App() {
 
   function resetExecution(): void {
     setMessage('')
+    askResumeModeRef.current = 'step'
     setExecution(
       createExecution(program, parseInputQueue(inputQueueText), {
         importedPrograms,
@@ -469,6 +475,7 @@ function App() {
 
   function stepProgram(): void {
     setMessage('')
+    askResumeModeRef.current = 'step'
     setExecution((currentExecution) => {
       const activeExecution =
         currentExecution ??
@@ -481,6 +488,7 @@ function App() {
 
   function runProgram(): void {
     setMessage('')
+    askResumeModeRef.current = 'run'
     const initialExecution = createExecution(
       program,
       parseInputQueue(inputQueueText),
@@ -804,6 +812,26 @@ function App() {
     setFilenameRequest(null)
   }
 
+  function submitAskInput(event: FormEvent): void {
+    event.preventDefault()
+
+    setExecution((currentExecution) => {
+      if (!currentExecution) {
+        return currentExecution
+      }
+
+      const resumedExecution = answerAskExecution(
+        currentExecution,
+        askInputText,
+      )
+
+      return askResumeModeRef.current === 'run'
+        ? runExecution(resumedExecution)
+        : resumedExecution
+    })
+    setAskInputText('')
+  }
+
   async function importJson(file: File | undefined): Promise<void> {
     if (!file) {
       return
@@ -978,7 +1006,7 @@ function App() {
             selectionMode={SelectionMode.Partial}
             panOnDrag={CANVAS_DRAG_BUTTONS}
             panOnScroll
-            fitView
+            defaultViewport={INITIAL_CANVAS_VIEWPORT}
             defaultEdgeOptions={{ type: 'smoothstep' }}
           >
             <Background color="#d4d9e2" gap={18} />
@@ -992,21 +1020,21 @@ function App() {
             <button
               type="button"
               onClick={resetExecution}
-              disabled={!validation.valid}
+              disabled={!validation.valid || execution?.status === 'asking'}
             >
               Reset
             </button>
             <button
               type="button"
               onClick={stepProgram}
-              disabled={!validation.valid}
+              disabled={!validation.valid || execution?.status === 'asking'}
             >
               Step
             </button>
             <button
               type="button"
               onClick={runProgram}
-              disabled={!validation.valid}
+              disabled={!validation.valid || execution?.status === 'asking'}
             >
               Run
             </button>
@@ -1063,7 +1091,7 @@ function App() {
             {execution?.output.length ? (
               execution.output.map((line, index) => (
                 <div className="console-line" key={`${line}-${index}`}>
-                  {line}
+                  {renderConsoleLine(line)}
                 </div>
               ))
             ) : (
@@ -1097,6 +1125,32 @@ function App() {
               <button type="button" onClick={cancelFilenameRequest}>
                 Cancel
               </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+      {execution?.status === 'asking' ? (
+        <div className="modal-backdrop">
+          <form
+            className="filename-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ask-modal-title"
+            onSubmit={submitAskInput}
+          >
+            <h2 id="ask-modal-title">Input requested</h2>
+            <label className="input-label" htmlFor="ask-input">
+              Input
+            </label>
+            <input
+              id="ask-input"
+              value={askInputText}
+              onChange={(event) => setAskInputText(event.target.value)}
+              autoFocus
+              spellCheck={false}
+            />
+            <div className="modal-buttons">
+              <button type="submit">Submit</button>
             </div>
           </form>
         </div>
@@ -1174,6 +1228,17 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
       ) : null}
     </div>
   )
+}
+
+function renderConsoleLine(line: string) {
+  const parts = line.split('\n')
+
+  return parts.map((part, index) => (
+    <Fragment key={`${part}-${index}`}>
+      {part}
+      {index < parts.length - 1 ? <br /> : null}
+    </Fragment>
+  ))
 }
 
 function cloneCanvasSnapshot(snapshot: CanvasSnapshot): CanvasSnapshot {

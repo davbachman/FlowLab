@@ -549,7 +549,7 @@ describe('interpreter', () => {
         {
           id: 'add',
           type: 'assignment',
-          text: 'result <- len(L) + len(word) + n',
+          text: 'result <- L[0] + L[2] + n',
           position: { x: 320, y: 400 },
         },
         {
@@ -574,9 +574,9 @@ describe('interpreter', () => {
     const finalState = runExecution(createExecution(program, []))
 
     expect(finalState.status).toBe('halted')
-    expect(finalState.environment.total).toBe(15)
-    expect(finalState.output).toEqual(['15'])
-    expect(finalState.returnValue).toBe(15)
+    expect(finalState.environment.total).toBe(11)
+    expect(finalState.output).toEqual(['11'])
+    expect(finalState.returnValue).toBe(11)
     expect(finalState.currentNodeId).toBe('main-end')
   })
 
@@ -695,7 +695,7 @@ describe('interpreter', () => {
         {
           id: 'add',
           type: 'assignment',
-          text: 'result <- len(L) + len(word) + n',
+          text: 'result <- L[0] + L[2] + n',
           position: { x: 320, y: 400 },
         },
         {
@@ -740,11 +740,11 @@ describe('interpreter', () => {
     state = stepExecution(state)
     state = stepExecution(state)
     expect(state.currentNodeId).toBe('helper-end')
-    expect(state.environment.result).toBe(15)
+    expect(state.environment.result).toBe(11)
 
     state = stepExecution(state)
     expect(state.currentNodeId).toBe('output')
-    expect(state.environment.total).toBe(15)
+    expect(state.environment.total).toBe(11)
     expect(state.inputQueue).toEqual([])
     expect(state.callStack).toHaveLength(0)
   })

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Position } from '@xyflow/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -46,6 +46,16 @@ interface TestWindowWithFilePickers extends Window {
 
 const BLOCK_NODE_RENDERED_WIDTH = 194
 const DECISION_NODE_RENDERED_WIDTH = 188
+
+function viewportElement(container: HTMLElement): HTMLElement {
+  const viewport = container.querySelector('.react-flow__viewport')
+
+  if (!(viewport instanceof HTMLElement)) {
+    throw new Error('Missing React Flow viewport.')
+  }
+
+  return viewport
+}
 
 function sampleNode(id: string) {
   const node = sampleProgram.nodes.find((candidate) => candidate.id === id)
@@ -110,7 +120,7 @@ const helperCallProgram: Program = {
     {
       id: 'add',
       type: 'assignment',
-      text: 'result <- len(L) + len(word) + n',
+      text: 'result <- L[0] + L[2] + n',
       position: { x: 320, y: 400 },
     },
     {
@@ -186,6 +196,44 @@ const folderHelperProgram: Program = {
   ),
 }
 
+const newlineOutputProgram: Program = {
+  version: 1,
+  nodes: [
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'output',
+      type: 'output',
+      text: '"hello\\ngoodbye"',
+      position: { x: 0, y: 100 },
+    },
+    { id: 'return', type: 'return', text: '0', position: { x: 0, y: 200 } },
+  ],
+  edges: [
+    { id: 'e1', source: 'main', target: 'output' },
+    { id: 'e2', source: 'output', target: 'return' },
+  ],
+}
+
+const askProgram: Program = {
+  version: 1,
+  nodes: [
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'ask',
+      type: 'assignment',
+      text: 'x <- ask() + 1',
+      position: { x: 0, y: 100 },
+    },
+    { id: 'output', type: 'output', text: 'x', position: { x: 0, y: 200 } },
+    { id: 'return', type: 'return', text: 'x', position: { x: 0, y: 300 } },
+  ],
+  edges: [
+    { id: 'e1', source: 'main', target: 'ask' },
+    { id: 'e2', source: 'ask', target: 'output' },
+    { id: 'e3', source: 'output', target: 'return' },
+  ],
+}
+
 describe('App', () => {
   afterEach(() => {
     delete (window as TestWindowWithFilePickers).showSaveFilePicker
@@ -228,6 +276,12 @@ describe('App', () => {
     expect(screen.getByLabelText(/Input queue/i)).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /Imports/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Imports list/i)).toBeInTheDocument()
+  })
+
+  it('starts the blank canvas at a modest default zoom', () => {
+    const { container } = render(<App />)
+
+    expect(viewportElement(container).style.transform).toContain('scale(0.85)')
   })
 
   it('loads callable helper functions from named imported programs', async () => {
@@ -513,6 +567,64 @@ describe('App', () => {
 
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
+    )
+    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+  })
+
+  it('shows escape effects when output strings contain newlines', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText(/^Import$/i), {
+      target: {
+        files: [
+          new File([JSON.stringify(newlineOutputProgram)], 'newline.json', {
+            type: 'application/json',
+          }),
+        ],
+      },
+    })
+
+    await screen.findByDisplayValue('"hello\\ngoodbye"')
+    await user.click(screen.getByRole('button', { name: /Run/i }))
+
+    const output = screen.getByRole('region', { name: /Output/i })
+    const outputLine = output.querySelector('.console-line')
+
+    expect(outputLine?.querySelector('br')).toBeInTheDocument()
+    expect(outputLine?.childNodes[0]?.textContent).toBe('hello')
+    expect(outputLine?.childNodes[2]?.textContent).toBe('goodbye')
+  })
+
+  it('asks for input from ask calls and resumes execution with the answer', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText(/^Import$/i), {
+      target: {
+        files: [
+          new File([JSON.stringify(askProgram)], 'ask.json', {
+            type: 'application/json',
+          }),
+        ],
+      },
+    })
+
+    await screen.findByDisplayValue('x <- ask() + 1')
+    await user.click(screen.getByRole('button', { name: /Run/i }))
+
+    const dialog = await screen.findByRole('dialog', {
+      name: /Input requested/i,
+    })
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /^Input$/i }),
+      '6',
+    )
+    await user.click(within(dialog).getByRole('button', { name: /Submit/i }))
+
+    expect(screen.queryByRole('dialog', { name: /Input requested/i })).toBeNull()
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      '7',
     )
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
   })

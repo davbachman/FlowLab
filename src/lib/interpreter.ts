@@ -22,6 +22,7 @@ import { validateProgram } from './validation'
 export type ExecutionStatus =
   | 'running'
   | 'waiting'
+  | 'asking'
   | 'halted'
   | 'error'
 
@@ -53,7 +54,15 @@ interface SuspendedExpressionResult {
   call: FunctionCallRequest
 }
 
-type ProgramExpressionResult = CompletedExpressionResult | SuspendedExpressionResult
+interface AskingExpressionResult {
+  status: 'asking'
+  ask: AskCallRequest
+}
+
+type ProgramExpressionResult =
+  | CompletedExpressionResult
+  | SuspendedExpressionResult
+  | AskingExpressionResult
 
 type AssignListElementResult =
   | {
@@ -65,6 +74,11 @@ type AssignListElementResult =
       status: 'suspended'
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
       call: FunctionCallRequest
+    }
+  | {
+      status: 'asking'
+      pendingNode: Extract<PendingNode, { kind: 'assignment' }>
+      ask: AskCallRequest
     }
 
 interface ExpressionProgress {
@@ -111,6 +125,16 @@ interface FunctionCallRequest {
   callIndex: number
 }
 
+interface AskCallRequest {
+  callIndex: number
+}
+
+interface PendingAsk {
+  pendingNode: PendingNode
+  pendingExpressionKey: PendingExpressionKey
+  pendingCallIndex: number
+}
+
 interface SuspendedFrame {
   program: Program
   currentNodeId: string | null
@@ -137,6 +161,7 @@ export interface ExecutionState {
   steps: number
   maxSteps: number
   functionName: string
+  askRequest?: PendingAsk
   returnValue?: RuntimeValue
   error?: string
 }
@@ -150,6 +175,15 @@ class FunctionCallSuspension extends Error {
   constructor(call: FunctionCallRequest) {
     super(`Function call "${call.name}" suspended.`)
     this.call = call
+  }
+}
+
+class AskSuspension extends Error {
+  readonly ask: AskCallRequest
+
+  constructor(ask: AskCallRequest) {
+    super('ask() suspended.')
+    this.ask = ask
   }
 }
 
@@ -222,6 +256,10 @@ export function stepExecution(state: ExecutionState): ExecutionState {
     return state
   }
 
+  if (state.status === 'asking') {
+    return state
+  }
+
   if (state.status === 'waiting' && state.inputQueue.length === 0) {
     return state
   }
@@ -251,6 +289,31 @@ export function stepExecution(state: ExecutionState): ExecutionState {
   } catch (error) {
     return fail(state, error instanceof Error ? error.message : String(error))
   }
+}
+
+export function answerAskExecution(
+  state: ExecutionState,
+  rawValue: string,
+): ExecutionState {
+  if (state.status !== 'asking' || !state.askRequest) {
+    return state
+  }
+
+  const pendingNode = addCompletedCallResult(
+    state.askRequest.pendingNode,
+    state.askRequest.pendingExpressionKey,
+    state.askRequest.pendingCallIndex,
+    parseInputValue(rawValue),
+  )
+
+  return executePendingNode(
+    {
+      ...state,
+      askRequest: undefined,
+      status: 'running',
+    },
+    pendingNode,
+  )
 }
 
 function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
@@ -397,6 +460,10 @@ function executeAssignmentNode(
       return startFunctionCall(nextState, pending, 'valueExpression', result.call)
     }
 
+    if (result.status === 'asking') {
+      return startAsk(nextState, pending, 'valueExpression', result.ask)
+    }
+
     nextState = { ...nextState, output: result.output }
     value = result.value
     pending = { ...pending, value }
@@ -422,6 +489,15 @@ function executeAssignmentNode(
         assignmentResult.pendingNode,
         'indexExpression',
         assignmentResult.call,
+      )
+    }
+
+    if (assignmentResult.status === 'asking') {
+      return startAsk(
+        nextState,
+        assignmentResult.pendingNode,
+        'indexExpression',
+        assignmentResult.ask,
       )
     }
 
@@ -457,6 +533,10 @@ function executeOutputNode(
     return startFunctionCall(state, pendingNode, 'expression', result.call)
   }
 
+  if (result.status === 'asking') {
+    return startAsk(state, pendingNode, 'expression', result.ask)
+  }
+
   return advance(
     { ...state, output: [...result.output, stringifyValue(result.value)] },
     pendingNode.node,
@@ -471,6 +551,10 @@ function executeBranchNode(
 
   if (result.status === 'suspended') {
     return startFunctionCall(state, pendingNode, 'expression', result.call)
+  }
+
+  if (result.status === 'asking') {
+    return startAsk(state, pendingNode, 'expression', result.ask)
   }
 
   return advance(
@@ -488,6 +572,10 @@ function executeReturnNode(
 
   if (result.status === 'suspended') {
     return startFunctionCall(state, pendingNode, 'expression', result.call)
+  }
+
+  if (result.status === 'asking') {
+    return startAsk(state, pendingNode, 'expression', result.ask)
   }
 
   return completeReturn(state, pendingNode.node, result.value, result.output)
@@ -557,6 +645,14 @@ function evaluateProgramExpression(
           return progress.completedCalls[currentCallIndex]
         }
 
+        if (name === 'ask') {
+          if (args.length !== 0) {
+            throw new Error('ask requires no arguments')
+          }
+
+          throw new AskSuspension({ callIndex: currentCallIndex })
+        }
+
         throw new FunctionCallSuspension({
           name,
           args,
@@ -571,7 +667,29 @@ function evaluateProgramExpression(
       return { status: 'suspended', call: error.call }
     }
 
+    if (error instanceof AskSuspension) {
+      return { status: 'asking', ask: error.ask }
+    }
+
     throw error
+  }
+}
+
+function startAsk(
+  state: ExecutionState,
+  pendingNode: PendingNode,
+  pendingExpressionKey: PendingExpressionKey,
+  ask: AskCallRequest,
+): ExecutionState {
+  return {
+    ...state,
+    currentNodeId: pendingNode.node.id,
+    askRequest: {
+      pendingNode,
+      pendingExpressionKey,
+      pendingCallIndex: ask.callIndex,
+    },
+    status: 'asking',
   }
 }
 
@@ -715,6 +833,10 @@ function executeForPendingNode(
     return startFunctionCall(state, pendingNode, 'expression', result.call)
   }
 
+  if (result.status === 'asking') {
+    return startAsk(state, pendingNode, 'expression', result.ask)
+  }
+
   return advanceForLoop(
     state,
     pendingNode.node,
@@ -818,6 +940,14 @@ function assignListElement(
     }
   }
 
+  if (indexResult.status === 'asking') {
+    return {
+      status: 'asking',
+      pendingNode,
+      ask: indexResult.ask,
+    }
+  }
+
   const { value: indexValue, output } = indexResult
   const index = requireListIndex(indexValue)
 
@@ -905,6 +1035,14 @@ function parseInputValue(rawValue: string): RuntimeValue {
 
   if (/^-?(?:\d+\.?\d*|\.\d+)$/.test(trimmed)) {
     return Number(trimmed)
+  }
+
+  if (trimmed === 'True') {
+    return true
+  }
+
+  if (trimmed === 'False') {
+    return false
   }
 
   if (trimmed.startsWith('[') && trimmed.endsWith(']')) {

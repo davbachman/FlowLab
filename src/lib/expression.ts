@@ -27,8 +27,8 @@ type Expression =
   | { kind: 'binary'; operator: string; left: Expression; right: Expression }
 
 const COMPARISON_OPERATORS = new Set(['<', '<=', '>', '>=', '=', '==', '!='])
-const WORD_OPERATORS = new Set(['and', 'or', 'not', 'mod'])
-const BUILT_IN_FUNCTIONS = new Set(['sqrt', 'abs', 'len'])
+const WORD_OPERATORS = new Set(['and', 'or', 'not'])
+const BUILT_IN_FUNCTIONS = new Set(['sqrt', 'rand', 'ask'])
 
 export interface ExpressionEvaluationContext {
   callFunction?: (name: string, args: RuntimeValue[]) => RuntimeValue
@@ -152,7 +152,7 @@ function tokenize(source: string): Token[] {
     }
 
     const twoChar = source.slice(index, index + 2)
-    if (['<=', '>=', '==', '!=', '**'].includes(twoChar)) {
+    if (['<=', '>=', '==', '!='].includes(twoChar)) {
       tokens.push({ type: 'operator', value: twoChar })
       index += 2
       continue
@@ -339,27 +339,15 @@ class Parser {
   }
 
   private multiplicative(): Expression {
-    let expression = this.exponent()
+    let expression = this.unary()
 
     while (
       this.peek().type === 'operator' &&
-      ['*', '/', 'mod'].includes(this.peek().value)
+      ['*', '/'].includes(this.peek().value)
     ) {
       const operator = this.advance().value
-      const right = this.exponent()
+      const right = this.unary()
       expression = { kind: 'binary', operator, left: expression, right }
-    }
-
-    return expression
-  }
-
-  private exponent(): Expression {
-    const expression = this.unary()
-
-    if (this.peek().type === 'operator' && this.peek().value === '**') {
-      const operator = this.advance().value
-      const right = this.exponent()
-      return { kind: 'binary', operator, left: expression, right }
     }
 
     return expression
@@ -569,18 +557,12 @@ function evaluateCall(
     return Math.sqrt(number)
   }
 
-  if (expression.name === 'abs') {
-    const argument = requireSingleArgument(expression.name, args)
-    return Math.abs(requireNumber(argument, 'abs'))
-  }
-
-  if (expression.name === 'len') {
-    const argument = requireSingleArgument(expression.name, args)
-    if (typeof argument === 'string' || Array.isArray(argument)) {
-      return argument.length
+  if (expression.name === 'rand') {
+    if (args.length !== 0) {
+      throw new Error('rand requires no arguments')
     }
 
-    throw new Error('len requires a string or list')
+    return Math.random()
   }
 
   if (context.callFunction) {
@@ -675,18 +657,6 @@ function evaluateBinary(
       throw new Error('Division by zero')
     }
     return requireNumber(left, '/') / divisor
-  }
-
-  if (operator === 'mod') {
-    const divisor = requireNumber(right, 'mod')
-    if (divisor === 0) {
-      throw new Error('Division by zero')
-    }
-    return requireNumber(left, 'mod') % divisor
-  }
-
-  if (operator === '**') {
-    return requireNumber(left, '**') ** requireNumber(right, '**')
   }
 
   return compareValues(left, right, operator)

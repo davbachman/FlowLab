@@ -15,6 +15,8 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 - Multiple disjoint function flowcharts on the same canvas.
 - Function calls inside block expressions, such as `x <- helper(5)`.
 - Function calls pass their arguments as the called function's local input queue.
+- Interactive input with `ask()`, such as `x <- ask()`.
+- Random numbers with `rand()`, which returns a number from 0 up to but not including 1.
 - Step-through execution enters called function flowcharts and shows the active function input queue.
 - Imports panel for listing FlowLab JSON files and calling non-`main` functions from those files.
 - Import conflict handling: functions in the current canvas override imported functions with the same name.
@@ -29,10 +31,10 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 
 | Data type | Literals and values | Allowed operations |
 | --- | --- | --- |
-| Number | Integers and decimals, such as `3`, `-2`, `4.5` | Arithmetic `+`, `-`, `*`, `/`, `mod`, `**`; unary `-`; comparisons `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`; built-ins `sqrt(number)` and `abs(number)` |
-| String | Single- or double-quoted text, such as `"cat"` or `'hello'`; supports escapes like `\n`, `\t`, `\"`, `\'`, and `\\` | Concatenation with `+`; indexing like `S[0]`; length with `len(S)`; equality and inequality with `=`, `==`, `!=`; truth tests where non-empty strings are true; For iteration over characters |
+| Number | Integers and decimals, such as `3`, `-2`, `4.5` | Arithmetic `+`, `-`, `*`, `/`; unary `-`; comparisons `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`; built-ins `sqrt(number)` and `rand()` |
+| String | Single- or double-quoted text, such as `"cat"` or `'hello'`; supports escapes like `\n`, `\t`, `\"`, `\'`, and `\\` | Concatenation with `+`; indexing like `S[0]`; equality and inequality with `=`, `==`, `!=`; truth tests where non-empty strings are true; For iteration over characters |
 | Boolean | `True` and `False` | Logical `and`, `or`, `not`; equality and inequality; assignment, output, Return values, If conditions, and While conditions |
-| List | Bracket literals, such as `[1, 2, 3]`, `["a", True]`, and nested lists | Concatenation with `+` when both operands are lists; indexing like `L[0]`; indexed assignment like `L[i] <- value`; length with `len(L)`; deep equality and inequality; truth tests where non-empty lists are true; For iteration over elements |
+| List | Bracket literals, such as `[1, 2, 3]`, `["a", True]`, and nested lists | Concatenation with `+` when both operands are lists; indexing like `L[0]`; indexed assignment like `L[i] <- value`; deep equality and inequality; truth tests where non-empty lists are true; For iteration over elements |
 | Function result | Any single value returned by a Return block | Use returned values in expressions, assignments, output, branch conditions, loops, list elements, and other function call arguments |
 
 ## Expression and statement syntax
@@ -42,7 +44,8 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 - Output, If, While, and Return blocks contain expressions.
 - For blocks use `item in iterable`, where the iterable is a string or list.
 - Variable and function names must start with a letter or underscore and may contain letters, digits, and underscores.
-- Built-in function calls are `sqrt(x)`, `abs(x)`, and `len(x)`.
+- Built-in function calls are `sqrt(x)`, `rand()`, and `ask()`.
+- Interactive input uses `ask()` inside expressions. It prompts for one value and parses the response like input queue values.
 - Custom function calls use normal function notation, such as `helper(1, "text", [2, 3])`.
 
 ## Instructions for use
