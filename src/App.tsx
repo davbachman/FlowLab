@@ -874,14 +874,9 @@ function App() {
     }
 
     if (!saveFilePicker) {
-      const savedFileName = await requestExportFileName(exportFileName)
-      if (!savedFileName) {
-        setMessage('Export canceled.')
-        return
-      }
-      registerFlowLabProgram(savedFileName, exportedProgram)
-      downloadProgramJson(blob, savedFileName)
-      setDocumentName(documentNameFromFileName(savedFileName))
+      registerFlowLabProgram(exportFileName, exportedProgram)
+      downloadProgramJson(blob, exportFileName)
+      setDocumentName(documentNameFromFileName(exportFileName))
       setMessage('Program exported.')
       return
     }

@@ -674,7 +674,7 @@ describe('App', () => {
     ).toHaveValue('first.json')
   })
 
-  it('falls back to download-link export when save-file dialogs are unavailable', async () => {
+  it('falls back to browser download export when save-file dialogs are unavailable', async () => {
     const user = userEvent.setup()
     const click = vi.fn()
     const clickedAnchors: HTMLAnchorElement[] = []
@@ -705,21 +705,14 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: /^Export$/i }))
 
-    const filenameInput = await screen.findByRole('textbox', {
-      name: /^Filename$/i,
-    })
-    expect(filenameInput).toHaveValue('untitled.json')
-    expect(click).not.toHaveBeenCalled()
-
-    await user.clear(filenameInput)
-    await user.type(filenameInput, 'safari-save')
-    await user.click(screen.getByRole('button', { name: /^Save$/i }))
-
-    expect(click).toHaveBeenCalledTimes(1)
+    expect(
+      screen.queryByRole('textbox', { name: /^Filename$/i }),
+    ).not.toBeInTheDocument()
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
     expect(anchors).toContain(clickedAnchors[0])
-    expect(clickedAnchors[0]?.download).toBe('safari-save.json')
+    expect(clickedAnchors[0]?.download).toBe('untitled.json')
     expect(screen.getByLabelText(/Current document/i)).toHaveTextContent(
-      'safari-save',
+      'untitled',
     )
   })
 
