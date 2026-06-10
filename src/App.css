@@ -1,7 +1,9 @@
 .app-shell {
+  height: 100vh;
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr;
+  overflow: hidden;
   background: #f6f7f9;
   color: #17202f;
 }
@@ -138,7 +140,8 @@ button:disabled {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: 220px minmax(420px, 1fr) 300px;
+  grid-template-columns: 220px minmax(420px, 1fr) var(--runtime-sidebar-width, 340px);
+  overflow: hidden;
 }
 
 .palette,
@@ -156,7 +159,48 @@ button:disabled {
 }
 
 .console-panel {
+  position: relative;
   border-left: 1px solid #d8dde6;
+}
+
+.execution-bar {
+  position: sticky;
+  top: -14px;
+  z-index: 2;
+  margin: -14px -14px 14px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid #e4e7ec;
+  background: #ffffff;
+}
+
+.execution-bar h2 {
+  margin: 0 0 10px;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  z-index: 3;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+}
+
+.sidebar-resize-handle:hover::before,
+.sidebar-resize-handle:focus-visible::before {
+  background: #2f6fd6;
 }
 
 .palette h2,
@@ -343,6 +387,11 @@ button:disabled {
   border-color: #667085;
 }
 
+.flow-node-call {
+  border-color: #7c3aed;
+  background: #fbf8ff;
+}
+
 .flow-node-input {
   border-color: #0f766e;
   background: #f3fffb;
@@ -479,14 +528,54 @@ textarea {
 }
 
 .variables-panel,
+.turtle-panel,
 .output-log {
   margin-top: 16px;
 }
 
 .variables-panel h3,
+.turtle-panel h3,
 .output-log h3 {
   margin: 0 0 8px;
   font-size: 14px;
+}
+
+.turtle-canvas {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: block;
+  border: 1px solid #e4e7ec;
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: grab;
+  touch-action: none;
+}
+
+.turtle-canvas[data-panning='true'] {
+  cursor: grabbing;
+}
+
+.turtle-canvas-background {
+  fill: #ffffff;
+}
+
+.turtle-axis {
+  stroke: #e4e7ec;
+  stroke-width: 0.75;
+}
+
+.turtle-segment,
+.turtle-canvas [data-testid='turtle-segment'] {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.turtle-marker {
+  fill: #2f6fd6;
+  stroke: #ffffff;
+  stroke-width: 1.5;
 }
 
 .variable-list {
@@ -573,6 +662,11 @@ textarea {
   .console-panel {
     border: 0;
     border-bottom: 1px solid #d8dde6;
+    width: auto !important;
+  }
+
+  .sidebar-resize-handle {
+    display: none;
   }
 
   .palette-buttons {

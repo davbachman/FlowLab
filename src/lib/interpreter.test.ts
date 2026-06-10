@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  answerAskExecution,
   createExecution,
   runExecution,
   stepExecution,
 } from './interpreter'
-import type { Program } from './types'
+import type { Program, RuntimeDictionary } from './types'
+
+function dictionary(entries: RuntimeDictionary['entries']): RuntimeDictionary {
+  return { kind: 'dictionary', entries }
+}
 
 const sumProgram: Program = {
   version: 1,
@@ -262,6 +267,41 @@ describe('interpreter', () => {
     expect(finalState.output).toEqual(['3'])
   })
 
+  it('parses queued dictionary input and supports indexed output', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'input', type: 'input', text: 'D', position: { x: 0, y: 100 } },
+        {
+          id: 'show',
+          type: 'output',
+          text: 'D["x"] + D[True]',
+          position: { x: 0, y: 200 },
+        },
+        { id: 'end', type: 'return', text: 'D', position: { x: 0, y: 300 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'input' },
+        { id: 'e2', source: 'input', target: 'show' },
+        { id: 'e3', source: 'show', target: 'end' },
+      ],
+    }
+
+    const finalState = runExecution(
+      createExecution(program, ['{"x": 5, True: 7}']),
+    )
+
+    expect(finalState.status).toBe('halted')
+    expect(finalState.environment.D).toEqual(
+      dictionary([
+        { key: 'x', value: 5 },
+        { key: true, value: 7 },
+      ]),
+    )
+    expect(finalState.output).toEqual(['12'])
+  })
+
   it('uses list indexing in While conditions', () => {
     const program: Program = {
       version: 1,
@@ -416,6 +456,59 @@ describe('interpreter', () => {
     expect(finalState.output).toEqual(['6'])
   })
 
+  it('creates and overwrites dictionary keys through indexed assignment targets', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'set-dictionary',
+          type: 'assignment',
+          text: 'D <- {"count": 1}',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'overwrite',
+          type: 'assignment',
+          text: 'D["count"] <- D["count"] + 1',
+          position: { x: 0, y: 200 },
+        },
+        {
+          id: 'create',
+          type: 'assignment',
+          text: 'D[True] <- "yes"',
+          position: { x: 0, y: 300 },
+        },
+        {
+          id: 'output',
+          type: 'output',
+          text: 'D["count"] + ":" + D[True]',
+          position: { x: 0, y: 400 },
+        },
+        { id: 'end', type: 'return', text: 'D', position: { x: 0, y: 500 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'set-dictionary' },
+        { id: 'e2', source: 'set-dictionary', target: 'overwrite' },
+        { id: 'e3', source: 'overwrite', target: 'create' },
+        { id: 'e4', source: 'create', target: 'output' },
+        { id: 'e5', source: 'output', target: 'end' },
+      ],
+    }
+
+    const finalState = runExecution(createExecution(program, []))
+
+    expect(finalState.status).toBe('halted')
+    expect(finalState.environment.D).toEqual(
+      dictionary([
+        { key: 'count', value: 2 },
+        { key: true, value: 'yes' },
+      ]),
+    )
+    expect(finalState.output).toEqual(['2:yes'])
+    expect(finalState.returnValue).toEqual(finalState.environment.D)
+  })
+
   it('iterates over list elements with For nodes', () => {
     const program: Program = {
       version: 1,
@@ -463,6 +556,62 @@ describe('interpreter', () => {
     expect(finalState.environment.item).toBe(3)
     expect(finalState.environment.total).toBe(6)
     expect(finalState.output).toEqual(['6'])
+  })
+
+  it('iterates over dictionary keys with For nodes in insertion order', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'set-dictionary',
+          type: 'assignment',
+          text: 'D <- {"b": 2, "a": 3, 1: 4}',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'init-result',
+          type: 'assignment',
+          text: 'result <- ""',
+          position: { x: 0, y: 200 },
+        },
+        {
+          id: 'for',
+          type: 'for',
+          text: 'key in D',
+          position: { x: 0, y: 300 },
+        },
+        {
+          id: 'append',
+          type: 'assignment',
+          text: 'result <- result + key + ":" + D[key] + ";"',
+          position: { x: -120, y: 400 },
+        },
+        {
+          id: 'output',
+          type: 'output',
+          text: 'result',
+          position: { x: 0, y: 500 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 600 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'set-dictionary' },
+        { id: 'e2', source: 'set-dictionary', target: 'init-result' },
+        { id: 'e3', source: 'init-result', target: 'for' },
+        { id: 'e4', source: 'for', target: 'append', label: 'true' },
+        { id: 'e5', source: 'append', target: 'for' },
+        { id: 'e6', source: 'for', target: 'output', label: 'false' },
+        { id: 'e7', source: 'output', target: 'end' },
+      ],
+    }
+
+    const finalState = runExecution(createExecution(program, []))
+
+    expect(finalState.status).toBe('halted')
+    expect(finalState.environment.key).toBe(1)
+    expect(finalState.environment.result).toBe('b:2;a:3;1:4;')
+    expect(finalState.output).toEqual(['b:2;a:3;1:4;'])
   })
 
   it('iterates over string characters with For nodes', () => {
@@ -747,6 +896,140 @@ describe('interpreter', () => {
     expect(state.environment.total).toBe(11)
     expect(state.inputQueue).toEqual([])
     expect(state.callStack).toHaveLength(0)
+  })
+
+  it('runs turtle Call blocks and records the final drawing instantly', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'forward',
+          type: 'call',
+          text: 'forward(100)',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'left',
+          type: 'call',
+          text: 'left(90)',
+          position: { x: 0, y: 200 },
+        },
+        {
+          id: 'up',
+          type: 'call',
+          text: 'forward(50)',
+          position: { x: 0, y: 300 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 400 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'forward' },
+        { id: 'e2', source: 'forward', target: 'left' },
+        { id: 'e3', source: 'left', target: 'up' },
+        { id: 'e4', source: 'up', target: 'end' },
+      ],
+    }
+
+    const finalState = runExecution(
+      createExecution(program, [], { nativeLibraries: ['turtle'] }),
+    )
+
+    expect(finalState.status).toBe('halted')
+    expect(finalState.turtle?.segments).toEqual([
+      { x1: 0, y1: 0, x2: 100, y2: 0, color: '#101828' },
+      { x1: 100, y1: 0, x2: 100, y2: 50, color: '#101828' },
+    ])
+    expect(finalState.turtle?.x).toBeCloseTo(100)
+    expect(finalState.turtle?.y).toBeCloseTo(50)
+  })
+
+  it('steps turtle Call blocks one drawing update at a time', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'forward',
+          type: 'call',
+          text: 'forward(25)',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'right',
+          type: 'call',
+          text: 'right(90)',
+          position: { x: 0, y: 200 },
+        },
+        {
+          id: 'down',
+          type: 'call',
+          text: 'forward(10)',
+          position: { x: 0, y: 300 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 400 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'forward' },
+        { id: 'e2', source: 'forward', target: 'right' },
+        { id: 'e3', source: 'right', target: 'down' },
+        { id: 'e4', source: 'down', target: 'end' },
+      ],
+    }
+
+    let state = createExecution(program, [], { nativeLibraries: ['turtle'] })
+    state = stepExecution(state)
+    expect(state.turtle?.segments).toEqual([])
+
+    state = stepExecution(state)
+    expect(state.currentNodeId).toBe('right')
+    expect(state.turtle?.segments).toEqual([
+      { x1: 0, y1: 0, x2: 25, y2: 0, color: '#101828' },
+    ])
+
+    state = stepExecution(state)
+    state = stepExecution(state)
+    expect(state.turtle?.segments).toEqual([
+      { x1: 0, y1: 0, x2: 25, y2: 0, color: '#101828' },
+      { x1: 25, y1: 0, x2: 25, y2: -10, color: '#101828' },
+    ])
+  })
+
+  it('does not duplicate turtle expression side effects after ask suspension', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'set',
+          type: 'assignment',
+          text: 'x <- forward(10) + ask()',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'end', type: 'return', text: 'x', position: { x: 0, y: 200 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'set' },
+        { id: 'e2', source: 'set', target: 'end' },
+      ],
+    }
+
+    let state = runExecution(
+      createExecution(program, [], { nativeLibraries: ['turtle'] }),
+    )
+
+    expect(state.status).toBe('asking')
+    expect(state.turtle?.segments).toEqual([
+      { x1: 0, y1: 0, x2: 10, y2: 0, color: '#101828' },
+    ])
+
+    state = runExecution(answerAskExecution(state, '5'))
+
+    expect(state.status).toBe('halted')
+    expect(state.environment.x).toBe(5)
+    expect(state.turtle?.segments).toEqual([
+      { x1: 0, y1: 0, x2: 10, y2: 0, color: '#101828' },
+    ])
   })
 
   it('stops runaway programs with a max-step guard', () => {

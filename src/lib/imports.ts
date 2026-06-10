@@ -1,4 +1,5 @@
 import type { Program } from './types'
+import { TURTLE_COMMAND_NAMES, TURTLE_LIBRARY_NAME } from './turtle'
 import { normalizeImportedProgram, validateProgram } from './validation'
 
 export interface ImportedProgramFile {
@@ -6,8 +7,14 @@ export interface ImportedProgramFile {
   program: Program
 }
 
+export interface NativeLibraryImport {
+  name: string
+  functionNames: string[]
+}
+
 export interface ImportResolution {
   files: ImportedProgramFile[]
+  nativeLibraries: NativeLibraryImport[]
   errors: string[]
 }
 
@@ -75,6 +82,7 @@ export async function resolveFlowLabImports(
   options: ImportResolutionOptions = {},
 ): Promise<ImportResolution> {
   const files: ImportedProgramFile[] = []
+  const nativeLibraries: NativeLibraryImport[] = []
   const errors: string[] = []
   const seenNames = new Set<string>()
 
@@ -86,6 +94,12 @@ export async function resolveFlowLabImports(
     }
 
     seenNames.add(displayName)
+
+    if (isNativeLibraryImport(displayName)) {
+      nativeLibraries.push(nativeLibraryFor(displayName))
+      continue
+    }
+
     const result = await loadFlowLabProgram(name, options.directoryHandle)
 
     if (result.program) {
@@ -95,15 +109,29 @@ export async function resolveFlowLabImports(
     }
   }
 
-  return { files, errors }
+  return { files, nativeLibraries, errors }
 }
 
 export function callableImportedFunctionNames(
   files: ImportedProgramFile[],
   currentProgram: Program,
+  nativeLibraries: NativeLibraryImport[] = [],
 ): string[] {
   const currentFunctionNames = currentProgramFunctionNames(currentProgram)
   const importedFunctionNames = new Set<string>()
+
+  for (const library of nativeLibraries) {
+    for (const functionName of library.functionNames) {
+      if (
+        currentFunctionNames.has(functionName) ||
+        importedFunctionNames.has(functionName)
+      ) {
+        continue
+      }
+
+      importedFunctionNames.add(functionName)
+    }
+  }
 
   for (const file of files) {
     for (const node of file.program.nodes) {
@@ -125,6 +153,21 @@ export function callableImportedFunctionNames(
   return [...importedFunctionNames].sort((left, right) =>
     left.localeCompare(right),
   )
+}
+
+function isNativeLibraryImport(name: string): boolean {
+  return name.trim().toLowerCase() === TURTLE_LIBRARY_NAME
+}
+
+function nativeLibraryFor(name: string): NativeLibraryImport {
+  if (isNativeLibraryImport(name)) {
+    return {
+      name: TURTLE_LIBRARY_NAME,
+      functionNames: [...TURTLE_COMMAND_NAMES],
+    }
+  }
+
+  throw new Error(`Unknown native library "${name}"`)
 }
 
 export function importWarnings(

@@ -91,6 +91,27 @@ function placePendingNodeOnPane(pane: Element, x = 440, y = 300): void {
   })
 }
 
+function svgViewBoxNumbers(element: Element): number[] {
+  return (element.getAttribute('viewBox') ?? '')
+    .split(/\s+/)
+    .map((value) => Number(value))
+}
+
+function stubBoundingClientRect(element: Element, rect: Partial<DOMRect>): void {
+  vi.spyOn(element, 'getBoundingClientRect').mockReturnValue({
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 200,
+    top: 0,
+    right: 200,
+    bottom: 200,
+    left: 0,
+    toJSON: () => ({}),
+    ...rect,
+  } as DOMRect)
+}
+
 const helperCallProgram: Program = {
   version: 1,
   nodes: [
@@ -234,6 +255,38 @@ const askProgram: Program = {
   ],
 }
 
+const turtleDrawingProgram: Program = {
+  version: 1,
+  nodes: [
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'forward',
+      type: 'call',
+      text: 'forward(100)',
+      position: { x: 0, y: 100 },
+    },
+    {
+      id: 'left',
+      type: 'call',
+      text: 'left(90)',
+      position: { x: 0, y: 200 },
+    },
+    {
+      id: 'up',
+      type: 'call',
+      text: 'forward(50)',
+      position: { x: 0, y: 300 },
+    },
+    { id: 'return', type: 'return', text: '0', position: { x: 0, y: 400 } },
+  ],
+  edges: [
+    { id: 'e1', source: 'main', target: 'forward' },
+    { id: 'e2', source: 'forward', target: 'left' },
+    { id: 'e3', source: 'left', target: 'up' },
+    { id: 'e4', source: 'up', target: 'return' },
+  ],
+}
+
 describe('App', () => {
   afterEach(() => {
     delete (window as TestWindowWithFilePickers).showSaveFilePicker
@@ -261,6 +314,9 @@ describe('App', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /^Return$/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^Call$/i }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /Add Call/i }),
@@ -298,6 +354,28 @@ describe('App', () => {
 
     expect(await screen.findByText(/Imported files: helpers/i)).toBeInTheDocument()
     expect(await screen.findByText(/Callable: helper/i)).toBeInTheDocument()
+  })
+
+  it('loads turtle as a native library from the imports panel', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+
+    expect(
+      await screen.findByText(/Native libraries: turtle/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.textContent?.startsWith('Callable:') === true &&
+          element.textContent.includes('forward') &&
+          element.textContent.includes('right') &&
+          !element.textContent.includes('fd') &&
+          !element.textContent.includes('rt'),
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /Turtle/i })).toBeInTheDocument()
   })
 
   it('runs block expressions that call imported helper functions', async () => {
@@ -415,6 +493,69 @@ describe('App', () => {
       nodes: expect.any(Array),
       edges: expect.any(Array),
     })
+  })
+
+  it('exports the imports list and input queue with the program', async () => {
+    const user = userEvent.setup()
+    const write = vi.fn<(value: Blob) => Promise<void>>(() => Promise.resolve())
+    const close = vi.fn<() => Promise<void>>(() => Promise.resolve())
+    const createWritable = vi.fn(() => Promise.resolve({ write, close }))
+    const showSaveFilePicker = vi.fn<TestSaveFilePicker>(() =>
+      Promise.resolve({ name: 'with-runtime-state.json', createWritable }),
+    )
+
+    ;(window as TestWindowWithFilePickers).showSaveFilePicker = showSaveFilePicker
+
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText(/Imports list/i), {
+      target: { value: 'turtle' },
+    })
+    fireEvent.change(screen.getByLabelText(/Input queue/i), {
+      target: { value: '5\n6' },
+    })
+    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
+    const exportedBlob = write.mock.calls[0]?.[0]
+
+    expect(exportedBlob).toBeInstanceOf(Blob)
+    expect(JSON.parse(await exportedBlob.text())).toMatchObject({
+      imports: 'turtle',
+      inputQueue: '5\n6',
+    })
+  })
+
+  it('imports the saved imports list and input queue before validating the program', async () => {
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText(/^Import$/i), {
+      target: {
+        files: [
+          new File(
+            [
+              JSON.stringify({
+                ...turtleDrawingProgram,
+                imports: 'turtle',
+                inputQueue: '9\n10',
+              }),
+            ],
+            'saved-turtle.json',
+            { type: 'application/json' },
+          ),
+        ],
+      },
+    })
+
+    await screen.findByDisplayValue('forward(100)')
+    expect(screen.getByLabelText(/Imports list/i)).toHaveValue('turtle')
+    expect(screen.getByLabelText(/Input queue/i)).toHaveValue('9\n10')
+    expect(
+      await screen.findByText(/Native libraries: turtle/i),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText(/Current document/i)).toHaveTextContent(
+      'saved-turtle',
+    )
   })
 
   it('loads imports from the export folder before cached files', async () => {
@@ -595,6 +736,173 @@ describe('App', () => {
       '6',
     )
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+  })
+
+  it('runs turtle Call blocks and renders the drawing in the sidebar', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await screen.findByText(/Native libraries: turtle/i)
+    fireEvent.change(screen.getByLabelText(/^Import$/i), {
+      target: {
+        files: [
+          new File([JSON.stringify(turtleDrawingProgram)], 'turtle.json', {
+            type: 'application/json',
+          }),
+        ],
+      },
+    })
+
+    await screen.findByDisplayValue('forward(100)')
+    await user.click(screen.getByRole('button', { name: /Run/i }))
+
+    const turtle = screen.getByRole('region', { name: /Turtle/i })
+    expect(within(turtle).getByTestId('turtle-canvas')).toBeInTheDocument()
+    expect(within(turtle).getAllByTestId('turtle-segment')).toHaveLength(2)
+    expect(within(turtle).getByTestId('turtle-marker').tagName).toBe('polygon')
+    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+  })
+
+  it('pans the turtle canvas with a right-click drag', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await screen.findByRole('region', { name: /Turtle/i })
+    const canvas = screen.getByTestId('turtle-canvas')
+    stubBoundingClientRect(canvas, { width: 200, height: 200 })
+    Object.defineProperty(canvas, 'setPointerCapture', {
+      configurable: true,
+      value: vi.fn(),
+    })
+    Object.defineProperty(canvas, 'releasePointerCapture', {
+      configurable: true,
+      value: vi.fn(),
+    })
+
+    const before = svgViewBoxNumbers(canvas)
+    fireEvent.pointerDown(canvas, {
+      button: 2,
+      buttons: 2,
+      clientX: 100,
+      clientY: 100,
+      pointerId: 1,
+    })
+    fireEvent.pointerMove(canvas, {
+      button: 2,
+      buttons: 2,
+      clientX: 140,
+      clientY: 120,
+      pointerId: 1,
+    })
+    fireEvent.pointerUp(canvas, {
+      button: 2,
+      buttons: 0,
+      clientX: 140,
+      clientY: 120,
+      pointerId: 1,
+    })
+
+    const after = svgViewBoxNumbers(canvas)
+    expect(after[0]).toBeLessThan(before[0])
+    expect(after[1]).toBeLessThan(before[1])
+  })
+
+  it('zooms in on the turtle canvas when a trackpad unpinch matches the main canvas wheel direction', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await screen.findByRole('region', { name: /Turtle/i })
+    const canvas = screen.getByTestId('turtle-canvas')
+    stubBoundingClientRect(canvas, { width: 200, height: 200 })
+
+    const before = svgViewBoxNumbers(canvas)
+    fireEvent.wheel(canvas, {
+      clientX: 100,
+      clientY: 100,
+      ctrlKey: true,
+      deltaY: -120,
+    })
+    const after = svgViewBoxNumbers(canvas)
+
+    expect(after[2]).toBeLessThan(before[2])
+    expect(after[3]).toBeLessThan(before[3])
+  })
+
+  it('zooms out on the turtle canvas when a trackpad pinch matches the main canvas wheel direction', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await screen.findByRole('region', { name: /Turtle/i })
+    const canvas = screen.getByTestId('turtle-canvas')
+    stubBoundingClientRect(canvas, { width: 200, height: 200 })
+
+    const before = svgViewBoxNumbers(canvas)
+    fireEvent.wheel(canvas, {
+      clientX: 100,
+      clientY: 100,
+      ctrlKey: true,
+      deltaY: 120,
+    })
+    const after = svgViewBoxNumbers(canvas)
+
+    expect(after[2]).toBeGreaterThan(before[2])
+    expect(after[3]).toBeGreaterThan(before[3])
+  })
+
+  it('registers turtle trackpad pinch handling with a non-passive wheel listener', async () => {
+    const user = userEvent.setup()
+    const addEventListener = vi.spyOn(SVGElement.prototype, 'addEventListener')
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await screen.findByRole('region', { name: /Turtle/i })
+
+    await waitFor(() =>
+      expect(addEventListener).toHaveBeenCalledWith(
+        'wheel',
+        expect.any(Function),
+        { passive: false },
+      ),
+    )
+  })
+
+  it('lets students resize the right sidebar', () => {
+    render(<App />)
+
+    const sidebar = screen.getByLabelText(/Runtime sidebar/i)
+    const handle = screen.getByRole('separator', {
+      name: /Resize right sidebar/i,
+    })
+
+    expect(sidebar).toHaveStyle({ width: '340px' })
+
+    fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 })
+    fireEvent.pointerMove(window, { clientX: 420, pointerId: 1 })
+    fireEvent.pointerUp(window, { clientX: 420, pointerId: 1 })
+
+    expect(sidebar).toHaveStyle({ width: '420px' })
+  })
+
+  it('keeps execution controls in a sticky sidebar header', () => {
+    render(<App />)
+
+    const sidebar = screen.getByLabelText(/Runtime sidebar/i)
+    const executionBar = sidebar.querySelector('.execution-bar')
+
+    expect(executionBar).toBeInTheDocument()
+    expect(executionBar).toContainElement(
+      screen.getByRole('button', { name: /^Reset$/i }),
+    )
+    expect(executionBar).toContainElement(
+      screen.getByRole('button', { name: /^Step$/i }),
+    )
+    expect(executionBar).toContainElement(
+      screen.getByRole('button', { name: /^Run$/i }),
+    )
   })
 
   it('shows escape effects when output strings contain newlines', async () => {
@@ -984,5 +1292,23 @@ describe('App', () => {
       'diamond',
     )
     expect(screen.getByDisplayValue('item in L')).toBeInTheDocument()
+  })
+
+  it('places Call blocks with editable call text', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    const addCallButton = screen.getByRole('button', { name: /^Call$/i })
+
+    await user.click(addCallButton)
+
+    const pane = container.querySelector('.react-flow__pane')
+    expect(pane).toBeInTheDocument()
+    placePendingNodeOnPane(pane as Element)
+
+    expect(screen.getByTestId('flow-node-call-1')).toHaveAttribute(
+      'data-shape',
+      'block',
+    )
+    expect(screen.getByDisplayValue('forward(50)')).toBeInTheDocument()
   })
 })

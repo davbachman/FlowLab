@@ -1,4 +1,15 @@
-import type { Environment, RuntimeValue } from './types'
+import {
+  getDictionaryValue,
+  isDictionaryKey,
+  isRuntimeDictionary,
+  setDictionaryValue,
+  stringifyValue,
+  toBoolean,
+  valuesEqual,
+} from './runtimeValues'
+import type { DictionaryKey, Environment, RuntimeDictionary, RuntimeValue } from './types'
+
+export { stringifyValue, toBoolean } from './runtimeValues'
 
 type TokenType =
   | 'number'
@@ -9,6 +20,9 @@ type TokenType =
   | 'rightParen'
   | 'leftBracket'
   | 'rightBracket'
+  | 'leftBrace'
+  | 'rightBrace'
+  | 'colon'
   | 'comma'
   | 'eof'
 
@@ -21,6 +35,10 @@ type Expression =
   | { kind: 'literal'; value: RuntimeValue }
   | { kind: 'variable'; name: string }
   | { kind: 'list'; items: Expression[] }
+  | {
+      kind: 'dictionary'
+      entries: Array<{ key: DictionaryKey; value: Expression }>
+    }
   | { kind: 'index'; target: Expression; index: Expression }
   | { kind: 'call'; name: string; arguments: Expression[] }
   | { kind: 'unary'; operator: '-' | 'not'; right: Expression }
@@ -39,6 +57,22 @@ export function parseExpression(source: string): Expression {
   return parser.parse()
 }
 
+export function parseCallExpression(source: string): {
+  name: string
+  arguments: RuntimeValue[]
+} {
+  const expression = parseExpression(source)
+
+  if (expression.kind !== 'call') {
+    throw new Error('Call must contain a function call')
+  }
+
+  return {
+    name: expression.name,
+    arguments: [],
+  }
+}
+
 export function evaluateExpression(
   source: string,
   environment: Environment,
@@ -55,34 +89,6 @@ export function findExpressionCallNames(source: string): string[] {
 
 export function isBuiltInFunctionName(name: string): boolean {
   return BUILT_IN_FUNCTIONS.has(name)
-}
-
-export function toBoolean(value: RuntimeValue): boolean {
-  if (typeof value === 'boolean') {
-    return value
-  }
-
-  if (typeof value === 'number') {
-    return value !== 0
-  }
-
-  return value.length > 0
-}
-
-export function stringifyValue(value: RuntimeValue): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(stringifyListItem).join(', ')}]`
-  }
-
-  return String(value)
-}
-
-function stringifyListItem(value: RuntimeValue): string {
-  if (typeof value === 'string') {
-    return `"${value}"`
-  }
-
-  return stringifyValue(value)
 }
 
 function tokenize(source: string): Token[] {
@@ -117,6 +123,24 @@ function tokenize(source: string): Token[] {
 
     if (char === ']') {
       tokens.push({ type: 'rightBracket', value: char })
+      index += 1
+      continue
+    }
+
+    if (char === '{') {
+      tokens.push({ type: 'leftBrace', value: char })
+      index += 1
+      continue
+    }
+
+    if (char === '}') {
+      tokens.push({ type: 'rightBrace', value: char })
+      index += 1
+      continue
+    }
+
+    if (char === ':') {
+      tokens.push({ type: 'colon', value: char })
       index += 1
       continue
     }
@@ -412,6 +436,10 @@ class Parser {
       return { kind: 'list', items: this.listItems() }
     }
 
+    if (token.type === 'leftBrace') {
+      return { kind: 'dictionary', entries: this.dictionaryEntries() }
+    }
+
     throw new Error(
       token.type === 'eof'
         ? 'Expected expression'
@@ -461,6 +489,60 @@ class Parser {
     return items
   }
 
+  private dictionaryEntries(): Array<{ key: DictionaryKey; value: Expression }> {
+    const entries: Array<{ key: DictionaryKey; value: Expression }> = []
+
+    if (this.peek().type === 'rightBrace') {
+      this.advance()
+      return entries
+    }
+
+    while (true) {
+      const key = this.dictionaryKey()
+      this.consume('colon', 'Expected ":"')
+      const value = this.or()
+      entries.push({ key, value })
+
+      if (this.peek().type !== 'comma') {
+        break
+      }
+
+      this.advance()
+    }
+
+    this.consume('rightBrace', 'Expected "}"')
+    return entries
+  }
+
+  private dictionaryKey(): DictionaryKey {
+    const token = this.advance()
+
+    if (token.type === 'string') {
+      return token.value
+    }
+
+    if (token.type === 'number') {
+      return Number(token.value)
+    }
+
+    if (token.type === 'operator' && token.value === '-') {
+      const number = this.consume('number', 'Expected dictionary key')
+      return -Number(number.value)
+    }
+
+    if (token.type === 'identifier') {
+      if (token.value === 'True') {
+        return true
+      }
+
+      if (token.value === 'False') {
+        return false
+      }
+    }
+
+    throw new Error('Dictionary keys must be strings, numbers, or booleans')
+  }
+
   private consume(type: TokenType, message: string): Token {
     if (this.peek().type === type) {
       return this.advance()
@@ -488,6 +570,11 @@ function collectCallNames(expression: Expression, names: Set<string>): void {
     case 'list':
       for (const item of expression.items) {
         collectCallNames(item, names)
+      }
+      return
+    case 'dictionary':
+      for (const entry of expression.entries) {
+        collectCallNames(entry.value, names)
       }
       return
     case 'index':
@@ -524,6 +611,16 @@ function evaluate(
       return environment[expression.name]
     case 'list':
       return expression.items.map((item) => evaluate(item, environment, context))
+    case 'dictionary':
+      return expression.entries.reduce<RuntimeDictionary>(
+        (dictionary, entry) =>
+          setDictionaryValue(
+            dictionary,
+            entry.key,
+            evaluate(entry.value, environment, context),
+          ),
+        { kind: 'dictionary', entries: [] },
+      )
     case 'index':
       return evaluateIndex(expression, environment, context)
     case 'call':
@@ -586,9 +683,10 @@ function evaluateIndex(
   context: ExpressionEvaluationContext,
 ): RuntimeValue {
   const target = evaluate(expression.target, environment, context)
-  const index = requireIndex(evaluate(expression.index, environment, context))
+  const indexValue = evaluate(expression.index, environment, context)
 
   if (typeof target === 'string') {
+    const index = requireIndex(indexValue)
     if (index >= target.length) {
       throw new Error(`Index ${index} is out of range`)
     }
@@ -597,6 +695,7 @@ function evaluateIndex(
   }
 
   if (Array.isArray(target)) {
+    const index = requireIndex(indexValue)
     if (index >= target.length) {
       throw new Error(`Index ${index} is out of range`)
     }
@@ -604,7 +703,15 @@ function evaluateIndex(
     return target[index]
   }
 
-  throw new Error('Indexing requires a list or string')
+  if (isRuntimeDictionary(target)) {
+    if (!isDictionaryKey(indexValue)) {
+      throw new Error('Dictionary keys must be strings, numbers, or booleans')
+    }
+
+    return getDictionaryValue(target, indexValue)
+  }
+
+  throw new Error('Indexing requires a list, string, or dictionary')
 }
 
 function evaluateBinary(
@@ -706,19 +813,4 @@ function requireIndex(value: RuntimeValue): number {
   }
 
   return value
-}
-
-function valuesEqual(left: RuntimeValue, right: RuntimeValue): boolean {
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right)) {
-      return false
-    }
-
-    return (
-      left.length === right.length &&
-      left.every((leftItem, index) => valuesEqual(leftItem, right[index]))
-    )
-  }
-
-  return left === right
 }

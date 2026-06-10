@@ -1,6 +1,7 @@
 import {
   findExpressionCallNames,
   isBuiltInFunctionName,
+  parseCallExpression,
   parseExpression,
 } from './expression'
 import { isVariableName, parseAssignment, parseForLoop } from './statements'
@@ -28,6 +29,8 @@ export function normalizeImportedProgram(value: unknown): Program {
     version?: unknown
     nodes?: unknown
     edges?: unknown
+    imports?: unknown
+    inputQueue?: unknown
   }
 
   if (!Array.isArray(candidate.nodes)) {
@@ -36,6 +39,12 @@ export function normalizeImportedProgram(value: unknown): Program {
 
   return {
     version: candidate.version as 1,
+    ...(typeof candidate.imports === 'string'
+      ? { imports: candidate.imports }
+      : {}),
+    ...(typeof candidate.inputQueue === 'string'
+      ? { inputQueue: candidate.inputQueue }
+      : {}),
     nodes: candidate.nodes.map((node) => {
       if (!node || typeof node !== 'object') {
         return node
@@ -254,6 +263,14 @@ function validateNodeText(node: ProgramNode, errors: string[]): void {
       return
     }
 
+    if (node.type === 'call') {
+      if (!node.text.trim()) {
+        throw new Error(`${label} text cannot be empty.`)
+      }
+      parseCallExpression(node.text)
+      return
+    }
+
     if (node.type === 'function') {
       if (!isVariableName(node.text)) {
         throw new Error('Function name must be a valid name.')
@@ -391,6 +408,10 @@ function expressionSourcesForNode(node: ProgramNode): string[] {
       return assignment.target.kind === 'index'
         ? [assignment.target.indexExpression, assignment.expression]
         : [assignment.expression]
+    }
+
+    if (node.type === 'call') {
+      return [node.text]
     }
 
     if (node.type === 'for') {

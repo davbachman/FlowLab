@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateExpression } from './expression'
+import { evaluateExpression, stringifyValue } from './expression'
+import type { RuntimeDictionary } from './types'
+
+function dictionary(entries: RuntimeDictionary['entries']): RuntimeDictionary {
+  return { kind: 'dictionary', entries }
+}
 
 describe('evaluateExpression', () => {
   it('uses arithmetic precedence and parentheses', () => {
@@ -41,6 +46,82 @@ describe('evaluateExpression', () => {
       3,
       4,
     ])
+  })
+
+  it('supports dictionary literals with primitive keys and nested values', () => {
+    expect(
+      evaluateExpression('{"name": "Ada", 1: "one", True: [2, {"x": 3}]}', {}),
+    ).toEqual(
+      dictionary([
+        { key: 'name', value: 'Ada' },
+        { key: 1, value: 'one' },
+        {
+          key: true,
+          value: [2, dictionary([{ key: 'x', value: 3 }])],
+        },
+      ]),
+    )
+  })
+
+  it('keeps type-distinct dictionary keys and lets later duplicate keys win', () => {
+    expect(
+      evaluateExpression('{1: "number", "1": "string", 1: "updated"}', {}),
+    ).toEqual(
+      dictionary([
+        { key: 1, value: 'updated' },
+        { key: '1', value: 'string' },
+      ]),
+    )
+  })
+
+  it('stringifies dictionary values in FlowLab syntax', () => {
+    expect(
+      stringifyValue(
+        dictionary([
+          { key: 'name', value: 'Ada' },
+          { key: 1, value: 'one' },
+          { key: true, value: [2, dictionary([{ key: 'x', value: 3 }])] },
+        ]),
+      ),
+    ).toBe('{"name": "Ada", 1: "one", True: [2, {"x": 3}]}')
+  })
+
+  it('uses dictionary emptiness in truth tests', () => {
+    expect(evaluateExpression('not {}', {})).toBe(true)
+    expect(evaluateExpression('{"x": 0} and True', {})).toBe(true)
+  })
+
+  it('compares dictionaries deeply without depending on entry order', () => {
+    expect(
+      evaluateExpression('{"a": 1, 2: [True]} = {2: [True], "a": 1}', {}),
+    ).toBe(true)
+    expect(evaluateExpression('{"a": 1} = {"a": 2}', {})).toBe(false)
+    expect(evaluateExpression('{1: "number"} = {"1": "number"}', {})).toBe(
+      false,
+    )
+  })
+
+  it('looks up dictionary values with type-distinct primitive keys', () => {
+    const value = dictionary([
+      { key: '1', value: 'string' },
+      { key: 1, value: 'number' },
+      { key: true, value: 'boolean' },
+    ])
+
+    expect(evaluateExpression('D["1"]', { D: value })).toBe('string')
+    expect(evaluateExpression('D[1]', { D: value })).toBe('number')
+    expect(evaluateExpression('D[True]', { D: value })).toBe('boolean')
+  })
+
+  it('reports missing and invalid dictionary keys clearly', () => {
+    const value = dictionary([{ key: 'name', value: 'Ada' }])
+
+    expect(() => evaluateExpression('D["missing"]', { D: value })).toThrow(
+      /Dictionary key "missing" does not exist/,
+    )
+    expect(() => evaluateExpression('D[[1]]', { D: value })).toThrow(
+      /Dictionary keys must be strings, numbers, or booleans/,
+    )
   })
 
   it('rejects removed mod and exponentiation operators', () => {

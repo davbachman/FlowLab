@@ -139,6 +139,81 @@ describe('validateProgram', () => {
     expect(validateProgram(program).errors).toEqual([])
   })
 
+  it('accepts dictionary literals in expressions', () => {
+    const program = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'set-total'
+          ? {
+              ...node,
+              text: 'D <- {"name": "Ada", 1: [True, {"nested": 3}]}',
+            }
+          : node,
+      ),
+    }
+
+    expect(validateProgram(program).errors).toEqual([])
+  })
+
+  it('rejects malformed dictionary literals', () => {
+    const program = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'set-total'
+          ? { ...node, text: 'D <- {"name" "Ada"}' }
+          : node,
+      ),
+    }
+
+    expect(validateProgram(program).errors.join('\n')).toMatch(
+      /Assignment node "set-total" has invalid text/i,
+    )
+  })
+
+  it('accepts dictionary indexed assignment targets and For iteration', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'set-dictionary',
+          type: 'assignment',
+          text: 'D <- {"name": "Ada"}',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'update',
+          type: 'assignment',
+          text: 'D["name"] <- "Grace"',
+          position: { x: 0, y: 200 },
+        },
+        {
+          id: 'for',
+          type: 'for',
+          text: 'key in D',
+          position: { x: 0, y: 300 },
+        },
+        {
+          id: 'show',
+          type: 'output',
+          text: 'D[key]',
+          position: { x: -120, y: 400 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 500 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'set-dictionary' },
+        { id: 'e2', source: 'set-dictionary', target: 'update' },
+        { id: 'e3', source: 'update', target: 'for' },
+        { id: 'e4', source: 'for', target: 'show', label: 'true' },
+        { id: 'e5', source: 'show', target: 'for' },
+        { id: 'e6', source: 'for', target: 'end', label: 'false' },
+      ],
+    }
+
+    expect(validateProgram(program).errors).toEqual([])
+  })
+
   it('accepts rand as a built-in and rejects removed built-in calls', () => {
     const randProgram = {
       ...validLinearProgram,
@@ -338,6 +413,94 @@ describe('validateProgram', () => {
     expect(
       validateProgram(program, {
         externalFunctionNames: new Set(['importedHelper']),
+      }).errors,
+    ).toEqual([])
+  })
+
+  it('accepts Call blocks that contain a function call expression', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'draw',
+          type: 'call',
+          text: 'forward(100)',
+          position: { x: 0, y: 120 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 240 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'draw' },
+        { id: 'e2', source: 'draw', target: 'end' },
+      ],
+    }
+
+    expect(
+      validateProgram(program, {
+        externalFunctionNames: new Set(['forward']),
+      }).errors,
+    ).toEqual([])
+  })
+
+  it('rejects malformed Call blocks and non-call expressions', () => {
+    const malformedProgram: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'draw',
+          type: 'call',
+          text: 'forward 100',
+          position: { x: 0, y: 120 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 240 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'draw' },
+        { id: 'e2', source: 'draw', target: 'end' },
+      ],
+    }
+    const expressionProgram: Program = {
+      ...malformedProgram,
+      nodes: malformedProgram.nodes.map((node) =>
+        node.id === 'draw' ? { ...node, text: '1 + 2' } : node,
+      ),
+    }
+
+    expect(validateProgram(malformedProgram).errors.join('\n')).toMatch(
+      /Call node "draw" has invalid text/i,
+    )
+    expect(validateProgram(expressionProgram).errors.join('\n')).toMatch(
+      /Call must contain a function call/i,
+    )
+  })
+
+  it('rejects turtle calls unless the turtle library is imported', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'draw',
+          type: 'call',
+          text: 'forward(100)',
+          position: { x: 0, y: 120 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 240 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'draw' },
+        { id: 'e2', source: 'draw', target: 'end' },
+      ],
+    }
+
+    expect(validateProgram(program).errors.join('\n')).toMatch(
+      /calls missing Function "forward"/i,
+    )
+    expect(
+      validateProgram(program, {
+        externalFunctionNames: new Set(['forward']),
       }).errors,
     ).toEqual([])
   })

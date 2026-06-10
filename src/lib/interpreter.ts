@@ -4,6 +4,11 @@ import {
   toBoolean,
 } from './expression'
 import {
+  isDictionaryKey,
+  isRuntimeDictionary,
+  setDictionaryValue,
+} from './runtimeValues'
+import {
   parseAssignment,
   parseForLoop,
   type AssignmentTarget,
@@ -17,6 +22,14 @@ import {
   type ProgramNode,
   type RuntimeValue,
 } from './types'
+import {
+  initialTurtleState,
+  isTurtleCommandName,
+  runTurtleCommand,
+  TURTLE_COMMAND_NAMES,
+  TURTLE_LIBRARY_NAME,
+  type TurtleState,
+} from './turtle'
 import { validateProgram } from './validation'
 
 export type ExecutionStatus =
@@ -29,6 +42,7 @@ export type ExecutionStatus =
 export interface ExecutionOptions {
   maxSteps?: number
   importedPrograms?: Program[]
+  nativeLibraries?: string[]
 }
 
 interface ImportedFunctionDefinition {
@@ -47,16 +61,19 @@ interface CompletedExpressionResult {
   status: 'complete'
   value: RuntimeValue
   output: string[]
+  turtle?: TurtleState
 }
 
 interface SuspendedExpressionResult {
   status: 'suspended'
   call: FunctionCallRequest
+  turtle?: TurtleState
 }
 
 interface AskingExpressionResult {
   status: 'asking'
   ask: AskCallRequest
+  turtle?: TurtleState
 }
 
 type ProgramExpressionResult =
@@ -64,21 +81,24 @@ type ProgramExpressionResult =
   | SuspendedExpressionResult
   | AskingExpressionResult
 
-type AssignListElementResult =
+type AssignIndexedElementResult =
   | {
       status: 'complete'
       environment: Environment
       output: string[]
+      turtle?: TurtleState
     }
   | {
       status: 'suspended'
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
       call: FunctionCallRequest
+      turtle?: TurtleState
     }
   | {
       status: 'asking'
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
       ask: AskCallRequest
+      turtle?: TurtleState
     }
 
 interface ExpressionProgress {
@@ -96,6 +116,11 @@ type PendingNode =
       valueExpression: ExpressionProgress
       value?: RuntimeValue
       indexExpression?: ExpressionProgress
+    }
+  | {
+      kind: 'call'
+      node: ProgramNode
+      expression: ExpressionProgress
     }
   | {
       kind: 'output'
@@ -151,6 +176,7 @@ export interface ExecutionState {
   rootProgram: Program
   program: Program
   importedFunctions: ImportedFunctionDefinition[]
+  nativeLibraries: string[]
   currentNodeId: string | null
   environment: Environment
   forLoops: Record<string, ForLoopFrame>
@@ -161,6 +187,7 @@ export interface ExecutionState {
   steps: number
   maxSteps: number
   functionName: string
+  turtle?: TurtleState
   askRequest?: PendingAsk
   returnValue?: RuntimeValue
   error?: string
@@ -192,24 +219,32 @@ export function createExecution(
   inputQueue: string[],
   options: ExecutionOptions = {},
 ): ExecutionState {
+  const nativeLibraries = normalizeNativeLibraries(options.nativeLibraries ?? [])
   const importedFunctions = buildImportedFunctionDefinitions(
     program,
     options.importedPrograms ?? [],
   )
   const validation = validateProgram(program, {
     externalFunctionNames: new Set(
-      importedFunctions.map((definition) => definition.name),
+      [
+        ...importedFunctions.map((definition) => definition.name),
+        ...nativeFunctionNamesForLibraries(nativeLibraries),
+      ],
     ),
   })
   const mainFunction = program.nodes.find(
     (node) => node.type === 'function' && node.text.trim() === 'main',
   )
+  const turtle = nativeLibraries.includes(TURTLE_LIBRARY_NAME)
+    ? initialTurtleState()
+    : undefined
 
   if (!validation.valid || !mainFunction) {
     return {
       rootProgram: program,
       program,
       importedFunctions,
+      nativeLibraries,
       currentNodeId: null,
       environment: {},
       forLoops: {},
@@ -220,6 +255,7 @@ export function createExecution(
       steps: 0,
       maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
       functionName: 'main',
+      turtle,
       error: validation.errors.join('\n') || 'Program cannot start.',
     }
   }
@@ -228,6 +264,7 @@ export function createExecution(
     rootProgram: program,
     program,
     importedFunctions,
+    nativeLibraries,
     currentNodeId: mainFunction.id,
     environment: {},
     forLoops: {},
@@ -238,6 +275,7 @@ export function createExecution(
     steps: 0,
     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
     functionName: 'main',
+    turtle,
   }
 }
 
@@ -343,6 +381,14 @@ function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
     })
   }
 
+  if (node.type === 'call') {
+    return executeCallNode(state, {
+      kind: 'call',
+      node,
+      expression: createExpressionProgress(node.text),
+    })
+  }
+
   if (node.type === 'input') {
     if (state.inputQueue.length === 0) {
       return { ...state, currentNodeId: node.id, status: 'waiting' }
@@ -429,6 +475,8 @@ function executePendingNode(
   switch (pendingNode.kind) {
     case 'assignment':
       return executeAssignmentNode(state, pendingNode)
+    case 'call':
+      return executeCallNode(state, pendingNode)
     case 'output':
       return executeOutputNode(state, pendingNode)
     case 'branch':
@@ -457,14 +505,24 @@ function executeAssignmentNode(
     )
 
     if (result.status === 'suspended') {
-      return startFunctionCall(nextState, pending, 'valueExpression', result.call)
+      return startFunctionCall(
+        { ...nextState, turtle: result.turtle },
+        pending,
+        'valueExpression',
+        result.call,
+      )
     }
 
     if (result.status === 'asking') {
-      return startAsk(nextState, pending, 'valueExpression', result.ask)
+      return startAsk(
+        { ...nextState, turtle: result.turtle },
+        pending,
+        'valueExpression',
+        result.ask,
+      )
     }
 
-    nextState = { ...nextState, output: result.output }
+    nextState = { ...nextState, output: result.output, turtle: result.turtle }
     value = result.value
     pending = { ...pending, value }
   }
@@ -474,7 +532,7 @@ function executeAssignmentNode(
       return fail(nextState, 'Indexed assignment is missing an index expression.')
     }
 
-    const assignmentResult = assignListElement(
+    const assignmentResult = assignIndexedElement(
       nextState,
       nextState.environment,
       pending.assignment.target,
@@ -485,7 +543,7 @@ function executeAssignmentNode(
 
     if (assignmentResult.status === 'suspended') {
       return startFunctionCall(
-        nextState,
+        { ...nextState, turtle: assignmentResult.turtle },
         assignmentResult.pendingNode,
         'indexExpression',
         assignmentResult.call,
@@ -494,7 +552,7 @@ function executeAssignmentNode(
 
     if (assignmentResult.status === 'asking') {
       return startAsk(
-        nextState,
+        { ...nextState, turtle: assignmentResult.turtle },
         assignmentResult.pendingNode,
         'indexExpression',
         assignmentResult.ask,
@@ -505,6 +563,7 @@ function executeAssignmentNode(
       {
         ...nextState,
         output: assignmentResult.output,
+        turtle: assignmentResult.turtle,
         environment: assignmentResult.environment,
       },
       pending.node,
@@ -523,6 +582,36 @@ function executeAssignmentNode(
   )
 }
 
+function executeCallNode(
+  state: ExecutionState,
+  pendingNode: Extract<PendingNode, { kind: 'call' }>,
+): ExecutionState {
+  const result = evaluateProgramExpression(state, pendingNode.expression)
+
+  if (result.status === 'suspended') {
+    return startFunctionCall(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.call,
+    )
+  }
+
+  if (result.status === 'asking') {
+    return startAsk(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.ask,
+    )
+  }
+
+  return advance(
+    { ...state, output: result.output, turtle: result.turtle },
+    pendingNode.node,
+  )
+}
+
 function executeOutputNode(
   state: ExecutionState,
   pendingNode: Extract<PendingNode, { kind: 'output' }>,
@@ -530,15 +619,29 @@ function executeOutputNode(
   const result = evaluateProgramExpression(state, pendingNode.expression)
 
   if (result.status === 'suspended') {
-    return startFunctionCall(state, pendingNode, 'expression', result.call)
+    return startFunctionCall(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.call,
+    )
   }
 
   if (result.status === 'asking') {
-    return startAsk(state, pendingNode, 'expression', result.ask)
+    return startAsk(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.ask,
+    )
   }
 
   return advance(
-    { ...state, output: [...result.output, stringifyValue(result.value)] },
+    {
+      ...state,
+      output: [...result.output, stringifyValue(result.value)],
+      turtle: result.turtle,
+    },
     pendingNode.node,
   )
 }
@@ -550,15 +653,25 @@ function executeBranchNode(
   const result = evaluateProgramExpression(state, pendingNode.expression)
 
   if (result.status === 'suspended') {
-    return startFunctionCall(state, pendingNode, 'expression', result.call)
+    return startFunctionCall(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.call,
+    )
   }
 
   if (result.status === 'asking') {
-    return startAsk(state, pendingNode, 'expression', result.ask)
+    return startAsk(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.ask,
+    )
   }
 
   return advance(
-    { ...state, output: result.output },
+    { ...state, output: result.output, turtle: result.turtle },
     pendingNode.node,
     toBoolean(result.value) ? 'true' : 'false',
   )
@@ -571,14 +684,30 @@ function executeReturnNode(
   const result = evaluateProgramExpression(state, pendingNode.expression)
 
   if (result.status === 'suspended') {
-    return startFunctionCall(state, pendingNode, 'expression', result.call)
+    return startFunctionCall(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.call,
+    )
   }
 
   if (result.status === 'asking') {
-    return startAsk(state, pendingNode, 'expression', result.ask)
+    return startAsk(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.ask,
+    )
   }
 
-  return completeReturn(state, pendingNode.node, result.value, result.output)
+  return completeReturn(
+    state,
+    pendingNode.node,
+    result.value,
+    result.output,
+    result.turtle,
+  )
 }
 
 function completeReturn(
@@ -586,12 +715,14 @@ function completeReturn(
   node: ProgramNode,
   value: RuntimeValue,
   output: string[],
+  turtle?: TurtleState,
 ): ExecutionState {
   if (state.callStack.length === 0) {
     return {
       ...state,
       currentNodeId: node.id,
       output,
+      turtle,
       returnValue: value,
       status: 'halted',
     }
@@ -616,6 +747,7 @@ function completeReturn(
       functionName: callerFrame.functionName,
       callStack: state.callStack.slice(0, -1),
       output,
+      turtle,
       returnValue: value,
       status: 'running',
     },
@@ -629,6 +761,7 @@ function evaluateProgramExpression(
   environment: Environment = state.environment,
 ): ProgramExpressionResult {
   let callIndex = 0
+  let turtle = state.turtle
 
   try {
     const value = evaluateExpression(progress.source, environment, {
@@ -643,6 +776,12 @@ function evaluateProgramExpression(
           )
         ) {
           return progress.completedCalls[currentCallIndex]
+        }
+
+        if (isNativeFunctionAvailable(state, name)) {
+          turtle = runNativeFunction(turtle, name, args)
+          progress.completedCalls[currentCallIndex] = 0
+          return 0
         }
 
         if (name === 'ask') {
@@ -661,14 +800,14 @@ function evaluateProgramExpression(
       },
     })
 
-    return { status: 'complete', value, output: state.output }
+    return { status: 'complete', value, output: state.output, turtle }
   } catch (error) {
     if (error instanceof FunctionCallSuspension) {
-      return { status: 'suspended', call: error.call }
+      return { status: 'suspended', call: error.call, turtle }
     }
 
     if (error instanceof AskSuspension) {
-      return { status: 'asking', ask: error.ask }
+      return { status: 'asking', ask: error.ask, turtle }
     }
 
     throw error
@@ -830,15 +969,25 @@ function executeForPendingNode(
   const result = evaluateProgramExpression(state, pendingNode.expression)
 
   if (result.status === 'suspended') {
-    return startFunctionCall(state, pendingNode, 'expression', result.call)
+    return startFunctionCall(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.call,
+    )
   }
 
   if (result.status === 'asking') {
-    return startAsk(state, pendingNode, 'expression', result.ask)
+    return startAsk(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.ask,
+    )
   }
 
   return advanceForLoop(
-    state,
+    { ...state, turtle: result.turtle },
     pendingNode.node,
     createForLoopFrame(pendingNode.forLoop, result.value),
     result.output,
@@ -903,17 +1052,25 @@ function createForLoopFrame(
     }
   }
 
-  throw new Error('For loop iterable must be a string or list')
+  if (isRuntimeDictionary(iterable)) {
+    return {
+      variable: forLoop.variable,
+      values: iterable.entries.map((entry) => entry.key),
+      index: 0,
+    }
+  }
+
+  throw new Error('For loop iterable must be a string, list, or dictionary')
 }
 
-function assignListElement(
+function assignIndexedElement(
   state: ExecutionState,
   environment: Environment,
   target: Extract<AssignmentTarget, { kind: 'index' }>,
   value: RuntimeValue,
   pendingNode: Extract<PendingNode, { kind: 'assignment' }>,
   indexExpression: ExpressionProgress,
-): AssignListElementResult {
+): AssignIndexedElementResult {
   const { variable } = target
 
   if (!Object.prototype.hasOwnProperty.call(environment, variable)) {
@@ -922,8 +1079,10 @@ function assignListElement(
 
   const currentValue = environment[variable]
 
-  if (!Array.isArray(currentValue)) {
-    throw new Error(`Indexed assignment target "${variable}" must be a list`)
+  if (!Array.isArray(currentValue) && !isRuntimeDictionary(currentValue)) {
+    throw new Error(
+      `Indexed assignment target "${variable}" must be a list or dictionary`,
+    )
   }
 
   const indexResult = evaluateProgramExpression(
@@ -937,6 +1096,7 @@ function assignListElement(
       status: 'suspended',
       pendingNode,
       call: indexResult.call,
+      turtle: indexResult.turtle,
     }
   }
 
@@ -945,26 +1105,45 @@ function assignListElement(
       status: 'asking',
       pendingNode,
       ask: indexResult.ask,
+      turtle: indexResult.turtle,
     }
   }
 
   const { value: indexValue, output } = indexResult
-  const index = requireListIndex(indexValue)
 
-  if (index >= currentValue.length) {
-    throw new Error(`Index ${index} is out of range`)
+  if (Array.isArray(currentValue)) {
+    const index = requireListIndex(indexValue)
+
+    if (index >= currentValue.length) {
+      throw new Error(`Index ${index} is out of range`)
+    }
+
+    const nextValue = [...currentValue]
+    nextValue[index] = value
+
+    return {
+      status: 'complete',
+      environment: {
+        ...environment,
+        [variable]: nextValue,
+      },
+      output,
+      turtle: indexResult.turtle,
+    }
   }
 
-  const nextValue = [...currentValue]
-  nextValue[index] = value
+  if (!isDictionaryKey(indexValue)) {
+    throw new Error('Dictionary keys must be strings, numbers, or booleans')
+  }
 
   return {
     status: 'complete',
     environment: {
       ...environment,
-      [variable]: nextValue,
+      [variable]: setDictionaryValue(currentValue, indexValue, value),
     },
     output,
+    turtle: indexResult.turtle,
   }
 }
 
@@ -1026,6 +1205,55 @@ function findImportedFunction(
   return state.importedFunctions.find((definition) => definition.name === name)
 }
 
+function normalizeNativeLibraries(nativeLibraries: string[]): string[] {
+  return [
+    ...new Set(
+      nativeLibraries
+        .map((library) => library.trim().toLowerCase())
+        .filter((library) => library === TURTLE_LIBRARY_NAME),
+    ),
+  ]
+}
+
+function nativeFunctionNamesForLibraries(nativeLibraries: string[]): string[] {
+  return nativeLibraries.includes(TURTLE_LIBRARY_NAME)
+    ? [...TURTLE_COMMAND_NAMES]
+    : []
+}
+
+function isNativeFunctionAvailable(state: ExecutionState, name: string): boolean {
+  return (
+    state.nativeLibraries.includes(TURTLE_LIBRARY_NAME) &&
+    isTurtleCommandName(name) &&
+    !hasFlowLabFunctionTarget(state, name)
+  )
+}
+
+function hasFlowLabFunctionTarget(state: ExecutionState, name: string): boolean {
+  const functionNode = state.program.nodes.find(
+    (candidate) =>
+      candidate.type === 'function' && candidate.text.trim() === name,
+  )
+  const rootFunctionNode =
+    state.program === state.rootProgram
+      ? functionNode
+      : findFunctionNode(state.rootProgram, name)
+
+  return Boolean(rootFunctionNode ?? functionNode ?? findImportedFunction(state, name))
+}
+
+function runNativeFunction(
+  turtle: TurtleState | undefined,
+  name: string,
+  args: RuntimeValue[],
+): TurtleState {
+  if (isTurtleCommandName(name)) {
+    return runTurtleCommand(turtle ?? initialTurtleState(), name, args)
+  }
+
+  throw new Error(`Function "${name}" does not exist.`)
+}
+
 function parseInputValue(rawValue: string): RuntimeValue {
   const trimmed = rawValue.trim()
 
@@ -1045,9 +1273,14 @@ function parseInputValue(rawValue: string): RuntimeValue {
     return false
   }
 
-  if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+  if (
+    (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+    (trimmed.startsWith('{') && trimmed.endsWith('}'))
+  ) {
     const evaluated = evaluateExpression(trimmed, {})
-    return Array.isArray(evaluated) ? evaluated : rawValue
+    return Array.isArray(evaluated) || isRuntimeDictionary(evaluated)
+      ? evaluated
+      : rawValue
   }
 
   if (

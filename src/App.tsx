@@ -5,8 +5,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
   addEdge,
@@ -46,6 +48,11 @@ import {
   type ImportResolution,
 } from './lib/imports'
 import { stringifyValue } from './lib/expression'
+import {
+  initialTurtleState,
+  TURTLE_LIBRARY_NAME,
+  type TurtleState,
+} from './lib/turtle'
 import { LoopbackEdge } from './components/LoopbackEdge'
 import {
   DELETE_KEY_CODES,
@@ -84,12 +91,56 @@ interface CanvasSnapshot {
   edges: EditorEdge[]
 }
 
+interface TurtleViewState {
+  panX: number
+  panY: number
+  zoom: number
+}
+
+interface TurtleViewBoxBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+interface TurtlePanDrag {
+  pointerId: number
+  startX: number
+  startY: number
+  startPanX: number
+  startPanY: number
+  viewBoxWidth: number
+  viewBoxHeight: number
+  rectWidth: number
+  rectHeight: number
+}
+
+interface TurtlePointer {
+  x: number
+  y: number
+}
+
+interface TurtlePinch {
+  pointerIds: [number, number]
+  startDistance: number
+  startView: TurtleViewState
+  centerX: number
+  centerY: number
+  rect: DOMRect
+}
+
 interface FilenameRequest {
   resolve: (fileName: string | null) => void
 }
 
 interface CommentRequest {
   nodeId: string
+}
+
+interface SidebarResizeDrag {
+  startX: number
+  startWidth: number
 }
 
 interface SaveFilePickerWritable {
@@ -137,6 +188,7 @@ const DEFAULT_NODE_TEXT: Record<FlowNodeType, string> = {
   function: 'main',
   return: '0',
   assignment: 'x <- x + 1',
+  call: 'forward(50)',
   input: 'n',
   output: 'total',
   if: 'x < 10',
@@ -148,6 +200,7 @@ const NODE_PALETTE: FlowNodeType[] = [
   'function',
   'return',
   'assignment',
+  'call',
   'input',
   'output',
   'if',
@@ -172,7 +225,18 @@ const INITIAL_CANVAS_VIEWPORT = { x: 0, y: 0, zoom: 0.85 }
 const COPY_PASTE_OFFSET = { x: 36, y: 36 }
 const HISTORY_LIMIT = 80
 const NO_SELECTION_KEY = null satisfies KeyCode | null
-const EMPTY_IMPORT_RESOLUTION: ImportResolution = { files: [], errors: [] }
+const DEFAULT_SIDEBAR_WIDTH = 340
+const MIN_SIDEBAR_WIDTH = 280
+const MAX_SIDEBAR_WIDTH = 720
+const DEFAULT_TURTLE_VIEW: TurtleViewState = { panX: 0, panY: 0, zoom: 1 }
+const MIN_TURTLE_ZOOM = 0.25
+const MAX_TURTLE_ZOOM = 8
+const TURTLE_WHEEL_ZOOM_INTENSITY = 0.004
+const EMPTY_IMPORT_RESOLUTION: ImportResolution = {
+  files: [],
+  nativeLibraries: [],
+  errors: [],
+}
 
 function App() {
   const [nodes, setNodes] = useState<EditorNode[]>([])
@@ -197,6 +261,9 @@ function App() {
   )
   const [importsLoading, setImportsLoading] = useState(false)
   const [execution, setExecution] = useState<ExecutionState | null>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+  const [sidebarResizeDrag, setSidebarResizeDrag] =
+    useState<SidebarResizeDrag | null>(null)
   const [message, setMessage] = useState('')
   const [pendingNodeType, setPendingNodeType] = useState<FlowNodeType | null>(
     null,
@@ -216,6 +283,33 @@ function App() {
   useEffect(() => {
     edgesRef.current = edges
   }, [edges])
+
+  useEffect(() => {
+    if (!sidebarResizeDrag) {
+      return
+    }
+
+    const drag = sidebarResizeDrag
+
+    function onPointerMove(event: PointerEvent): void {
+      const delta = drag.startX - event.clientX
+      setSidebarWidth(
+        clampSidebarWidth(drag.startWidth + delta),
+      )
+    }
+
+    function onPointerUp(): void {
+      setSidebarResizeDrag(null)
+    }
+
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+    }
+  }, [sidebarResizeDrag])
 
   useEffect(() => {
     let cancelled = false
@@ -243,6 +337,7 @@ function App() {
 
         setImportResolution({
           files: [],
+          nativeLibraries: [],
           errors: [
             `Imports failed: ${error instanceof Error ? error.message : String(error)}`,
           ],
@@ -279,9 +374,19 @@ function App() {
   }, [])
 
   const program = useMemo(() => toProgram(nodes, edges), [nodes, edges])
+  const nativeLibraryNames = useMemo(
+    () => importResolution.nativeLibraries.map((library) => library.name),
+    [importResolution.nativeLibraries],
+  )
+  const hasTurtleLibrary = nativeLibraryNames.includes(TURTLE_LIBRARY_NAME)
   const importedFunctionNames = useMemo(
-    () => callableImportedFunctionNames(importResolution.files, program),
-    [importResolution.files, program],
+    () =>
+      callableImportedFunctionNames(
+        importResolution.files,
+        program,
+        importResolution.nativeLibraries,
+      ),
+    [importResolution.files, importResolution.nativeLibraries, program],
   )
   const importedPrograms = useMemo(
     () => importResolution.files.map((file) => file.program),
@@ -308,6 +413,11 @@ function App() {
   const currentNodeId = execution?.currentNodeId ?? null
   const showExecutionInputQueue =
     execution !== null && execution.status !== 'halted' && execution.status !== 'error'
+  const visibleTurtleState = useMemo(
+    () =>
+      execution?.turtle ?? (hasTurtleLibrary ? initialTurtleState() : null),
+    [execution?.turtle, hasTurtleLibrary],
+  )
   const visibleInputQueueText = showExecutionInputQueue
     ? formatInputQueue(execution.inputQueue)
     : inputQueueText
@@ -478,6 +588,7 @@ function App() {
     setExecution(
       createExecution(program, parseInputQueue(inputQueueText), {
         importedPrograms,
+        nativeLibraries: nativeLibraryNames,
       }),
     )
   }
@@ -490,6 +601,7 @@ function App() {
         currentExecution ??
         createExecution(program, parseInputQueue(inputQueueText), {
           importedPrograms,
+          nativeLibraries: nativeLibraryNames,
         })
       return stepExecution(activeExecution)
     })
@@ -501,9 +613,17 @@ function App() {
     const initialExecution = createExecution(
       program,
       parseInputQueue(inputQueueText),
-      { importedPrograms },
+      { importedPrograms, nativeLibraries: nativeLibraryNames },
     )
     setExecution(runExecution(initialExecution))
+  }
+
+  function startSidebarResize(event: ReactPointerEvent<HTMLDivElement>): void {
+    event.preventDefault()
+    setSidebarResizeDrag({
+      startX: event.clientX,
+      startWidth: sidebarWidth,
+    })
   }
 
   function updateImportNames(text: string): void {
@@ -701,7 +821,12 @@ function App() {
   }, [copySelection, pasteSelection, undoCanvasChange])
 
   async function exportJson(): Promise<void> {
-    const blob = programJsonBlob(program)
+    const exportedProgram = programWithSavedRuntimeState(
+      program,
+      importNamesText,
+      inputQueueText,
+    )
+    const blob = programJsonBlob(exportedProgram)
     const saveFilePicker = (window as WindowWithFilePickers).showSaveFilePicker
     const directoryPicker = (window as WindowWithFilePickers).showDirectoryPicker
 
@@ -727,7 +852,7 @@ function App() {
         }
 
         await writeProgramToDirectory(directoryHandle, savedFileName, blob)
-        registerFlowLabProgram(savedFileName, program)
+        registerFlowLabProgram(savedFileName, exportedProgram)
         setDocumentName(documentNameFromFileName(savedFileName))
         const directoryName = directoryHandle.name ?? importDirectoryName
         setMessage(
@@ -754,7 +879,7 @@ function App() {
         setMessage('Export canceled.')
         return
       }
-      registerFlowLabProgram(savedFileName, program)
+      registerFlowLabProgram(savedFileName, exportedProgram)
       downloadProgramJson(blob, savedFileName)
       setDocumentName(documentNameFromFileName(savedFileName))
       setMessage('Program exported.')
@@ -767,7 +892,7 @@ function App() {
       await writable.write(blob)
       await writable.close()
       const savedFileName = handle.name ?? exportFileName
-      registerFlowLabProgram(savedFileName, program)
+      registerFlowLabProgram(savedFileName, exportedProgram)
       setDocumentName(documentNameFromFileName(savedFileName))
       setMessage('Program exported.')
     } catch (error) {
@@ -889,12 +1014,35 @@ function App() {
 
     try {
       const parsed = normalizeImportedProgram(JSON.parse(await file.text()))
-      const result = validateProgram(parsed, {
-        externalFunctionNames: new Set(importedFunctionNames),
-      })
+      const savedImportsText =
+        typeof parsed.imports === 'string' ? parsed.imports : null
+      const savedInputQueueText =
+        typeof parsed.inputQueue === 'string' ? parsed.inputQueue : null
+      let validationFunctionNames = importedFunctionNames
+      let nextImportResolution: ImportResolution | null = null
 
-      if (!result.valid) {
-        setMessage(`Import failed: ${result.errors.join(' ')}`)
+      if (savedImportsText !== null) {
+        nextImportResolution = savedImportsText.trim()
+          ? await resolveFlowLabImports(savedImportsText, {
+              directoryHandle: importDirectoryHandle,
+            })
+          : EMPTY_IMPORT_RESOLUTION
+        validationFunctionNames = callableImportedFunctionNames(
+          nextImportResolution.files,
+          parsed,
+          nextImportResolution.nativeLibraries,
+        )
+      }
+
+      const result = validateProgram(parsed, {
+        externalFunctionNames: new Set(validationFunctionNames),
+      })
+      const importErrors = nextImportResolution?.errors ?? []
+
+      if (!result.valid || importErrors.length) {
+        setMessage(
+          `Import failed: ${[...result.errors, ...importErrors].join(' ')}`,
+        )
         return
       }
 
@@ -902,6 +1050,14 @@ function App() {
       pushHistorySnapshot()
       setNodes(programToNodes(parsed))
       setEdges(programToEdges(parsed))
+      if (savedImportsText !== null) {
+        setImportNamesText(savedImportsText)
+        setImportResolution(nextImportResolution ?? EMPTY_IMPORT_RESOLUTION)
+        setImportsLoading(false)
+      }
+      if (savedInputQueueText !== null) {
+        setInputQueueText(savedInputQueueText)
+      }
       setDocumentName(documentNameFromFileName(file.name))
       setExecution(null)
       setPendingNodeType(null)
@@ -951,7 +1107,15 @@ function App() {
         </div>
       </header>
 
-      <section className="workspace" aria-label="Flowchart workspace">
+      <section
+        className="workspace"
+        aria-label="Flowchart workspace"
+        style={
+          {
+            '--runtime-sidebar-width': `${sidebarWidth}px`,
+          } as CSSProperties
+        }
+      >
         <aside className="palette" aria-label="Node palette">
           <h2>Nodes</h2>
           <div className="palette-buttons">
@@ -1006,6 +1170,14 @@ function App() {
                   <p className="import-status">
                     Imported files:{' '}
                     {importResolution.files.map((file) => file.name).join(', ')}
+                  </p>
+                ) : null}
+                {importResolution.nativeLibraries.length ? (
+                  <p className="import-status">
+                    Native libraries:{' '}
+                    {importResolution.nativeLibraries
+                      .map((library) => library.name)
+                      .join(', ')}
                   </p>
                 ) : null}
                 {importedFunctionNames.length ? (
@@ -1064,30 +1236,47 @@ function App() {
           </ReactFlow>
         </section>
 
-        <aside className="console-panel" aria-label="Console">
-          <h2>Console</h2>
-          <div className="execution-buttons">
-            <button
-              type="button"
-              onClick={resetExecution}
-              disabled={!validation.valid || execution?.status === 'asking'}
-            >
-              Reset
-            </button>
-            <button
-              type="button"
-              onClick={stepProgram}
-              disabled={!validation.valid || execution?.status === 'asking'}
-            >
-              Step
-            </button>
-            <button
-              type="button"
-              onClick={runProgram}
-              disabled={!validation.valid || execution?.status === 'asking'}
-            >
-              Run
-            </button>
+        <aside
+          className="console-panel"
+          aria-label="Runtime sidebar"
+          style={{ width: `${sidebarWidth}px` }}
+        >
+          <div
+            className="sidebar-resize-handle"
+            role="separator"
+            aria-label="Resize right sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={MIN_SIDEBAR_WIDTH}
+            aria-valuemax={MAX_SIDEBAR_WIDTH}
+            aria-valuenow={sidebarWidth}
+            tabIndex={0}
+            onPointerDown={startSidebarResize}
+          />
+          <div className="execution-bar">
+            <h2>Console</h2>
+            <div className="execution-buttons">
+              <button
+                type="button"
+                onClick={resetExecution}
+                disabled={!validation.valid || execution?.status === 'asking'}
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={stepProgram}
+                disabled={!validation.valid || execution?.status === 'asking'}
+              >
+                Step
+              </button>
+              <button
+                type="button"
+                onClick={runProgram}
+                disabled={!validation.valid || execution?.status === 'asking'}
+              >
+                Run
+              </button>
+            </div>
           </div>
 
           <label className="input-label" htmlFor="input-queue">
@@ -1119,6 +1308,10 @@ function App() {
 
           {message ? <p className="notice">{message}</p> : null}
           {execution?.error ? <p className="runtime-error">{execution.error}</p> : null}
+
+          {visibleTurtleState ? (
+            <TurtlePanel turtle={visibleTurtleState} />
+          ) : null}
 
           <section className="variables-panel" aria-label="Variables">
             <h3>Variables</h3>
@@ -1245,6 +1438,7 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
     data.nodeType === 'function' ||
     data.nodeType === 'return' ||
     data.nodeType === 'assignment' ||
+    data.nodeType === 'call' ||
     data.nodeType === 'input' ||
     data.nodeType === 'output' ||
     data.nodeType === 'if' ||
@@ -1311,6 +1505,218 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
   )
 }
 
+function TurtlePanel({ turtle }: { turtle: TurtleState }) {
+  const baseViewBox = useMemo(() => turtleViewBoxBounds(turtle), [turtle])
+  const [view, setView] = useState<TurtleViewState>(DEFAULT_TURTLE_VIEW)
+  const [panDrag, setPanDrag] = useState<TurtlePanDrag | null>(null)
+  const activePointersRef = useRef(new Map<number, TurtlePointer>())
+  const pinchRef = useRef<TurtlePinch | null>(null)
+  const turtleCanvasRef = useRef<SVGSVGElement | null>(null)
+  const visibleViewBox = navigatedTurtleViewBox(baseViewBox, view)
+  const viewBox = formatTurtleViewBox(visibleViewBox)
+
+  useEffect(() => {
+    const canvas = turtleCanvasRef.current
+
+    if (!canvas) {
+      return
+    }
+
+    const canvasElement = canvas
+
+    function onWheel(event: WheelEvent): void {
+      if (!event.ctrlKey) {
+        return
+      }
+
+      event.preventDefault()
+      const wheelFactor = Math.exp(-event.deltaY * TURTLE_WHEEL_ZOOM_INTENSITY)
+      const rect = canvasElement.getBoundingClientRect()
+
+      setView((currentView) =>
+        zoomTurtleViewAtClientPoint(
+          baseViewBox,
+          currentView,
+          clampTurtleZoom(currentView.zoom * wheelFactor),
+          event.clientX,
+          event.clientY,
+          rect,
+        ),
+      )
+    }
+
+    canvasElement.addEventListener('wheel', onWheel, { passive: false })
+
+    return () => {
+      canvasElement.removeEventListener('wheel', onWheel)
+    }
+  }, [baseViewBox])
+
+  function startTurtlePointer(event: ReactPointerEvent<SVGSVGElement>): void {
+    activePointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    })
+
+    if (event.pointerType === 'touch') {
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+      startTurtlePinchIfReady(event.currentTarget)
+    }
+
+    if (event.button !== 2) {
+      return
+    }
+
+    event.preventDefault()
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    setPanDrag({
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPanX: view.panX,
+      startPanY: view.panY,
+      viewBoxWidth: visibleViewBox.width,
+      viewBoxHeight: visibleViewBox.height,
+      rectWidth: safeRectLength(event.currentTarget.getBoundingClientRect().width),
+      rectHeight: safeRectLength(event.currentTarget.getBoundingClientRect().height),
+    })
+  }
+
+  function moveTurtlePointer(event: ReactPointerEvent<SVGSVGElement>): void {
+    if (activePointersRef.current.has(event.pointerId)) {
+      activePointersRef.current.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      })
+    }
+
+    if (panDrag?.pointerId === event.pointerId) {
+      event.preventDefault()
+      const deltaX =
+        ((event.clientX - panDrag.startX) * panDrag.viewBoxWidth) /
+        panDrag.rectWidth
+      const deltaY =
+        ((event.clientY - panDrag.startY) * panDrag.viewBoxHeight) /
+        panDrag.rectHeight
+
+      setView((currentView) => ({
+        ...currentView,
+        panX: panDrag.startPanX - deltaX,
+        panY: panDrag.startPanY - deltaY,
+      }))
+      return
+    }
+
+    const pinch = pinchRef.current
+    if (!pinch) {
+      return
+    }
+
+    const firstPointer = activePointersRef.current.get(pinch.pointerIds[0])
+    const secondPointer = activePointersRef.current.get(pinch.pointerIds[1])
+
+    if (!firstPointer || !secondPointer) {
+      return
+    }
+
+    event.preventDefault()
+    const distance = turtlePointerDistance(firstPointer, secondPointer)
+    const zoom = clampTurtleZoom(
+      pinch.startView.zoom * (distance / pinch.startDistance),
+    )
+
+    setView(
+      zoomTurtleViewAtClientPoint(
+        baseViewBox,
+        pinch.startView,
+        zoom,
+        pinch.centerX,
+        pinch.centerY,
+        pinch.rect,
+      ),
+    )
+  }
+
+  function finishTurtlePointer(event: ReactPointerEvent<SVGSVGElement>): void {
+    activePointersRef.current.delete(event.pointerId)
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+
+    if (panDrag?.pointerId === event.pointerId) {
+      setPanDrag(null)
+    }
+
+    const pinch = pinchRef.current
+    if (pinch?.pointerIds.includes(event.pointerId)) {
+      pinchRef.current = null
+    }
+  }
+
+  function startTurtlePinchIfReady(svg: SVGSVGElement): void {
+    const activePointers = [...activePointersRef.current.entries()]
+
+    if (activePointers.length !== 2) {
+      return
+    }
+
+    const [[firstId, firstPointer], [secondId, secondPointer]] = activePointers
+    const startDistance = turtlePointerDistance(firstPointer, secondPointer)
+
+    if (startDistance <= 0) {
+      return
+    }
+
+    pinchRef.current = {
+      pointerIds: [firstId, secondId],
+      startDistance,
+      startView: view,
+      centerX: (firstPointer.x + secondPointer.x) / 2,
+      centerY: (firstPointer.y + secondPointer.y) / 2,
+      rect: svg.getBoundingClientRect(),
+    }
+  }
+
+  return (
+    <section className="turtle-panel" aria-label="Turtle">
+      <h3>Turtle</h3>
+      <svg
+        ref={turtleCanvasRef}
+        className="turtle-canvas"
+        data-panning={panDrag !== null ? 'true' : undefined}
+        data-testid="turtle-canvas"
+        viewBox={viewBox}
+        role="img"
+        aria-label="Turtle drawing"
+        onContextMenu={(event) => event.preventDefault()}
+        onPointerDown={startTurtlePointer}
+        onPointerMove={moveTurtlePointer}
+        onPointerUp={finishTurtlePointer}
+        onPointerCancel={finishTurtlePointer}
+      >
+        <rect className="turtle-canvas-background" x="-10000" y="-10000" width="20000" height="20000" />
+        <line className="turtle-axis" x1="-10000" y1="0" x2="10000" y2="0" />
+        <line className="turtle-axis" x1="0" y1="-10000" x2="0" y2="10000" />
+        {turtle.segments.map((segment, index) => (
+          <line
+            data-testid="turtle-segment"
+            key={`${segment.x1}-${segment.y1}-${segment.x2}-${segment.y2}-${index}`}
+            x1={formatSvgNumber(segment.x1)}
+            y1={formatSvgNumber(svgY(segment.y1))}
+            x2={formatSvgNumber(segment.x2)}
+            y2={formatSvgNumber(svgY(segment.y2))}
+            stroke={segment.color}
+          />
+        ))}
+        <polygon
+          className="turtle-marker"
+          data-testid="turtle-marker"
+          points="-6,-4 8,0 -6,4"
+          transform={`translate(${formatSvgNumber(turtle.x)} ${formatSvgNumber(svgY(turtle.y))}) rotate(${formatSvgNumber(-turtle.heading)})`}
+        />
+      </svg>
+    </section>
+  )
+}
+
 function renderConsoleLine(line: string) {
   const parts = line.split('\n')
 
@@ -1320,6 +1726,118 @@ function renderConsoleLine(line: string) {
       {index < parts.length - 1 ? <br /> : null}
     </Fragment>
   ))
+}
+
+function turtleViewBoxBounds(turtle: TurtleState): TurtleViewBoxBounds {
+  const points = [
+    { x: 0, y: 0 },
+    { x: turtle.x, y: turtle.y },
+    ...turtle.segments.flatMap((segment) => [
+      { x: segment.x1, y: segment.y1 },
+      { x: segment.x2, y: segment.y2 },
+    ]),
+  ]
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const width = Math.max(maxX - minX, 40)
+  const height = Math.max(maxY - minY, 40)
+  const padding = Math.max(20, Math.max(width, height) * 0.12)
+
+  return {
+    x: minX - padding,
+    y: svgY(maxY + padding),
+    width: width + padding * 2,
+    height: height + padding * 2,
+  }
+}
+
+function navigatedTurtleViewBox(
+  baseViewBox: TurtleViewBoxBounds,
+  view: TurtleViewState,
+): TurtleViewBoxBounds {
+  const zoom = clampTurtleZoom(view.zoom)
+  const width = baseViewBox.width / zoom
+  const height = baseViewBox.height / zoom
+
+  return {
+    x: baseViewBox.x + baseViewBox.width / 2 - width / 2 + view.panX,
+    y: baseViewBox.y + baseViewBox.height / 2 - height / 2 + view.panY,
+    width,
+    height,
+  }
+}
+
+function formatTurtleViewBox(viewBox: TurtleViewBoxBounds): string {
+  return [
+    formatSvgNumber(viewBox.x),
+    formatSvgNumber(viewBox.y),
+    formatSvgNumber(viewBox.width),
+    formatSvgNumber(viewBox.height),
+  ].join(' ')
+}
+
+function zoomTurtleViewAtClientPoint(
+  baseViewBox: TurtleViewBoxBounds,
+  currentView: TurtleViewState,
+  zoom: number,
+  clientX: number,
+  clientY: number,
+  rect: DOMRect,
+): TurtleViewState {
+  const currentViewBox = navigatedTurtleViewBox(baseViewBox, currentView)
+  const nextZoom = clampTurtleZoom(zoom)
+  const nextWidth = baseViewBox.width / nextZoom
+  const nextHeight = baseViewBox.height / nextZoom
+  const ratioX = clampUnitInterval((clientX - rect.left) / safeRectLength(rect.width))
+  const ratioY = clampUnitInterval((clientY - rect.top) / safeRectLength(rect.height))
+  const anchorX = currentViewBox.x + ratioX * currentViewBox.width
+  const anchorY = currentViewBox.y + ratioY * currentViewBox.height
+  const nextX = anchorX - ratioX * nextWidth
+  const nextY = anchorY - ratioY * nextHeight
+
+  return {
+    zoom: nextZoom,
+    panX: nextX - (baseViewBox.x + baseViewBox.width / 2 - nextWidth / 2),
+    panY: nextY - (baseViewBox.y + baseViewBox.height / 2 - nextHeight / 2),
+  }
+}
+
+function svgY(value: number): number {
+  return -value
+}
+
+function clampTurtleZoom(zoom: number): number {
+  return Math.min(MAX_TURTLE_ZOOM, Math.max(MIN_TURTLE_ZOOM, zoom))
+}
+
+function clampUnitInterval(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
+function safeRectLength(value: number): number {
+  return value > 0 ? value : 1
+}
+
+function turtlePointerDistance(
+  firstPointer: TurtlePointer,
+  secondPointer: TurtlePointer,
+): number {
+  return Math.hypot(
+    secondPointer.x - firstPointer.x,
+    secondPointer.y - firstPointer.y,
+  )
+}
+
+function formatSvgNumber(value: number): string {
+  return String(Math.round(value * 1000) / 1000)
+}
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width))
 }
 
 function cloneCanvasSnapshot(snapshot: CanvasSnapshot): CanvasSnapshot {
@@ -1400,6 +1918,18 @@ function toProgram(nodes: EditorNode[], edges: EditorEdge[]): Program {
       target: edge.target,
       label: isBranchLabel(edge.label) ? edge.label : undefined,
     })),
+  }
+}
+
+function programWithSavedRuntimeState(
+  program: Program,
+  imports: string,
+  inputQueue: string,
+): Program {
+  return {
+    ...program,
+    imports,
+    inputQueue,
   }
 }
 
