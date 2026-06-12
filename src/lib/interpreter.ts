@@ -226,7 +226,7 @@ export interface ExecutionState {
   error?: string
 }
 
-const DEFAULT_MAX_STEPS = 10000
+const DEFAULT_MAX_STEPS = 100000
 const MAX_FUNCTION_CALL_DEPTH = 100
 
 class FunctionCallSuspension extends Error {

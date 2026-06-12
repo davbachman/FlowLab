@@ -1073,6 +1073,21 @@ describe('interpreter', () => {
     expect(state.output).toEqual(['Once upon a time'])
   })
 
+  it('uses 100000 as the default max step guard', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 100 } },
+      ],
+      edges: [{ id: 'e1', source: 'main', target: 'end' }],
+    }
+
+    const state = createExecution(program, [])
+
+    expect(state.maxSteps).toBe(100000)
+  })
+
   it('stops runaway programs with a max-step guard', () => {
     const program: Program = {
       version: 1,
