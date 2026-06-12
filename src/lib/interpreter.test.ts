@@ -1101,7 +1101,7 @@ describe('interpreter', () => {
     expect(state.returnValue).toEqual(['alpha', 'beta', 'gamma'])
   })
 
-  it('uses 100000 as the default max step guard', () => {
+  it('uses 1000000 as the default max step guard', () => {
     const program: Program = {
       version: 1,
       nodes: [
@@ -1113,7 +1113,7 @@ describe('interpreter', () => {
 
     const state = createExecution(program, [])
 
-    expect(state.maxSteps).toBe(100000)
+    expect(state.maxSteps).toBe(1000000)
   })
 
   it('stops runaway programs with a max-step guard', () => {
