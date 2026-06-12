@@ -313,6 +313,24 @@ const textFromUrlProgram: Program = {
   ],
 }
 
+const multilineVariableProgram: Program = {
+  version: 1,
+  nodes: [
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'set-text',
+      type: 'assignment',
+      text: 'text <- "line one\\nline two\\nline three\\nline four\\nline five\\nline six"',
+      position: { x: 0, y: 100 },
+    },
+    { id: 'return', type: 'return', text: '0', position: { x: 0, y: 200 } },
+  ],
+  edges: [
+    { id: 'e1', source: 'main', target: 'set-text' },
+    { id: 'e2', source: 'set-text', target: 'return' },
+  ],
+}
+
 describe('App', () => {
   afterEach(() => {
     delete (window as TestWindowWithFilePickers).showSaveFilePicker
@@ -1039,6 +1057,37 @@ describe('App', () => {
     expect(variables).toHaveTextContent('0')
     expect(variables).toHaveTextContent('total')
     expect(variables).toHaveTextContent('6')
+  })
+
+  it('truncates long multiline variable values in the right sidebar', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText(/^Import$/i), {
+      target: {
+        files: [
+          new File(
+            [JSON.stringify(multilineVariableProgram)],
+            'multiline.json',
+            { type: 'application/json' },
+          ),
+        ],
+      },
+    })
+
+    await screen.findByDisplayValue(/line one/)
+    await user.click(screen.getByRole('button', { name: /Run/i }))
+
+    const variables = screen.getByLabelText(/Variables/i)
+    const value = within(variables).getByText((_, element) => {
+      return element?.tagName === 'DD'
+    })
+
+    expect(value.textContent).toBe(
+      '"line one\nline two\nline three\nline four\n...',
+    )
+    expect(value).not.toHaveTextContent('line five')
+    expect(value).not.toHaveTextContent('line six')
   })
 
   it('highlights the current node during step-through execution', async () => {

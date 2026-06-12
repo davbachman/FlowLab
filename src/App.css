@@ -610,6 +610,11 @@ textarea {
 
 .variable-row dd {
   color: #17202f;
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
 }
 
 .console-line,

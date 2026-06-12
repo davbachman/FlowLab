@@ -230,6 +230,7 @@ const NO_SELECTION_KEY = null satisfies KeyCode | null
 const DEFAULT_SIDEBAR_WIDTH = 340
 const MIN_SIDEBAR_WIDTH = 280
 const MAX_SIDEBAR_WIDTH = 720
+const VARIABLE_VALUE_PREVIEW_LINES = 4
 const DEFAULT_TURTLE_VIEW: TurtleViewState = { panX: 0, panY: 0, zoom: 1 }
 const MIN_TURTLE_ZOOM = 0.25
 const MAX_TURTLE_ZOOM = 8
@@ -1371,7 +1372,7 @@ function App() {
                 {variableEntries.map(([name, value]) => (
                   <div className="variable-row" key={name}>
                     <dt>{name}</dt>
-                    <dd>{formatRuntimeValue(value)}</dd>
+                    <dd>{formatVariableValue(value)}</dd>
                   </div>
                 ))}
               </dl>
@@ -2115,6 +2116,17 @@ function formatStatus(execution: ExecutionState | null): string {
 
 function formatRuntimeValue(value: RuntimeValue): string {
   return typeof value === 'string' ? `"${value}"` : stringifyValue(value)
+}
+
+function formatVariableValue(value: RuntimeValue): string {
+  const formatted = formatRuntimeValue(value)
+  const lines = formatted.split(/\r?\n/)
+
+  if (lines.length <= VARIABLE_VALUE_PREVIEW_LINES) {
+    return formatted
+  }
+
+  return [...lines.slice(0, VARIABLE_VALUE_PREVIEW_LINES), '...'].join('\n')
 }
 
 export default App
