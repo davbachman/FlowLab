@@ -33,7 +33,9 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   answerAskExecution,
+  completeTextLoadExecution,
   createExecution,
+  failTextLoadExecution,
   runExecution,
   stepExecution,
   type ExecutionState,
@@ -351,6 +353,58 @@ function App() {
     }
   }, [importDirectoryHandle, importNamesText])
 
+  useEffect(() => {
+    if (execution?.status !== 'loading' || !execution.textRequest) {
+      return
+    }
+
+    let cancelled = false
+    const loadingExecution = execution
+    const { url } = execution.textRequest
+
+    void loadTextFromUrl(url)
+      .then((text) => {
+        if (cancelled) {
+          return
+        }
+
+        setExecution((currentExecution) => {
+          if (currentExecution !== loadingExecution) {
+            return currentExecution
+          }
+
+          const resumedExecution = completeTextLoadExecution(
+            currentExecution,
+            text,
+          )
+
+          return askResumeModeRef.current === 'run'
+            ? runExecution(resumedExecution)
+            : resumedExecution
+        })
+        setMessage('')
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return
+        }
+
+        setExecution((currentExecution) =>
+          currentExecution === loadingExecution
+            ? failTextLoadExecution(
+                currentExecution,
+                textLoadErrorMessage(url, error),
+              )
+            : currentExecution,
+        )
+        setMessage('')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [execution])
+
   const pushHistorySnapshot = useCallback(() => {
     const snapshot = cloneCanvasSnapshot({
       nodes: nodesRef.current,
@@ -411,6 +465,8 @@ function App() {
     }
   }, [importResolution.errors, importedFunctionNames, importsLoading, program])
   const currentNodeId = execution?.currentNodeId ?? null
+  const executionIsBusy =
+    execution?.status === 'asking' || execution?.status === 'loading'
   const showExecutionInputQueue =
     execution !== null && execution.status !== 'halted' && execution.status !== 'error'
   const visibleTurtleState = useMemo(
@@ -1253,21 +1309,21 @@ function App() {
               <button
                 type="button"
                 onClick={resetExecution}
-                disabled={!validation.valid || execution?.status === 'asking'}
+                disabled={!validation.valid || executionIsBusy}
               >
                 Reset
               </button>
               <button
                 type="button"
                 onClick={stepProgram}
-                disabled={!validation.valid || execution?.status === 'asking'}
+                disabled={!validation.valid || executionIsBusy}
               >
                 Step
               </button>
               <button
                 type="button"
                 onClick={runProgram}
-                disabled={!validation.valid || execution?.status === 'asking'}
+                disabled={!validation.valid || executionIsBusy}
               >
                 Run
               </button>
@@ -1953,6 +2009,25 @@ function downloadProgramJson(blob: Blob, fileName: string): void {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
+}
+
+async function loadTextFromUrl(url: string): Promise<string> {
+  if (!globalThis.fetch) {
+    throw new Error('This browser does not support URL text loading.')
+  }
+
+  const response = await fetch(url, { cache: 'no-store' })
+
+  if (!response.ok) {
+    throw new Error(`URL returned status ${response.status}`)
+  }
+
+  return response.text()
+}
+
+function textLoadErrorMessage(url: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return `Text load failed for "${url}": ${message}`
 }
 
 function nextBranchLabel(

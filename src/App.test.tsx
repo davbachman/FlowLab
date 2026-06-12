@@ -287,12 +287,39 @@ const turtleDrawingProgram: Program = {
   ],
 }
 
+const textFromUrlProgram: Program = {
+  version: 1,
+  imports: 'text',
+  nodes: [
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'load-text',
+      type: 'assignment',
+      text: 'page <- text_from_url("https://example.edu/page.txt")',
+      position: { x: 0, y: 100 },
+    },
+    {
+      id: 'output-text',
+      type: 'output',
+      text: 'page',
+      position: { x: 0, y: 200 },
+    },
+    { id: 'return', type: 'return', text: '0', position: { x: 0, y: 300 } },
+  ],
+  edges: [
+    { id: 'e1', source: 'main', target: 'load-text' },
+    { id: 'e2', source: 'load-text', target: 'output-text' },
+    { id: 'e3', source: 'output-text', target: 'return' },
+  ],
+}
+
 describe('App', () => {
   afterEach(() => {
     delete (window as TestWindowWithFilePickers).showSaveFilePicker
     delete (window as TestWindowWithFilePickers).showDirectoryPicker
     localStorage.clear()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('renders the classroom editor shell', () => {
@@ -754,6 +781,47 @@ describe('App', () => {
     expect(within(turtle).getByTestId('turtle-canvas')).toBeInTheDocument()
     expect(within(turtle).getAllByTestId('turtle-segment')).toHaveLength(2)
     expect(within(turtle).getByTestId('turtle-marker').tagName).toBe('polygon')
+    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+  })
+
+  it('loads URL text from the text native library and resumes running', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve('Fetched text from class data'),
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText(/^Import$/i), {
+      target: {
+        files: [
+          new File([JSON.stringify(textFromUrlProgram)], 'url-text.json', {
+            type: 'application/json',
+          }),
+        ],
+      },
+    })
+
+    await screen.findByDisplayValue(
+      'page <- text_from_url("https://example.edu/page.txt")',
+    )
+    await screen.findByText(/Native libraries: text/i)
+    await user.click(screen.getByRole('button', { name: /Run/i }))
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://example.edu/page.txt',
+        { cache: 'no-store' },
+      ),
+    )
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      'Fetched text from class data',
+    )
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
   })
 

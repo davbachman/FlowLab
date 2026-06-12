@@ -53,6 +53,19 @@ describe('imports', () => {
     ])
   })
 
+  it('resolves text as a native library without loading a JSON file', async () => {
+    const resolution = await resolveFlowLabImports('text')
+
+    expect(resolution.errors).toEqual([])
+    expect(resolution.files).toEqual([])
+    expect(resolution.nativeLibraries).toEqual([
+      {
+        name: 'text',
+        functionNames: ['text_from_url'],
+      },
+    ])
+  })
+
   it('resolves turtle alongside normal FlowLab JSON imports', async () => {
     const directoryHandle = {
       getFileHandle: (name: string) => {

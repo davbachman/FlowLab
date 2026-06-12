@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   answerAskExecution,
+  completeTextLoadExecution,
   createExecution,
   runExecution,
   stepExecution,
@@ -1030,6 +1031,46 @@ describe('interpreter', () => {
     expect(state.turtle?.segments).toEqual([
       { x1: 0, y1: 0, x2: 10, y2: 0, color: '#101828' },
     ])
+  })
+
+  it('loads URL text through the text native library and resumes execution', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'load',
+          type: 'assignment',
+          text: 'page <- text_from_url("https://example.edu/page.txt")',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'output',
+          type: 'output',
+          text: 'page',
+          position: { x: 0, y: 200 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 300 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'load' },
+        { id: 'e2', source: 'load', target: 'output' },
+        { id: 'e3', source: 'output', target: 'end' },
+      ],
+    }
+
+    let state = runExecution(
+      createExecution(program, [], { nativeLibraries: ['text'] }),
+    )
+
+    expect(state.status).toBe('loading')
+    expect(state.textRequest?.url).toBe('https://example.edu/page.txt')
+
+    state = runExecution(completeTextLoadExecution(state, 'Once upon a time'))
+
+    expect(state.status).toBe('halted')
+    expect(state.environment.page).toBe('Once upon a time')
+    expect(state.output).toEqual(['Once upon a time'])
   })
 
   it('stops runaway programs with a max-step guard', () => {

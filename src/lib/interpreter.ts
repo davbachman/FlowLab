@@ -23,6 +23,12 @@ import {
   type RuntimeValue,
 } from './types'
 import {
+  isTextFunctionName,
+  TEXT_FUNCTION_NAMES,
+  TEXT_LIBRARY_NAME,
+  validateTextFromUrlArguments,
+} from './text'
+import {
   initialTurtleState,
   isTurtleCommandName,
   runTurtleCommand,
@@ -36,6 +42,7 @@ export type ExecutionStatus =
   | 'running'
   | 'waiting'
   | 'asking'
+  | 'loading'
   | 'halted'
   | 'error'
 
@@ -76,10 +83,17 @@ interface AskingExpressionResult {
   turtle?: TurtleState
 }
 
+interface LoadingExpressionResult {
+  status: 'loading'
+  textLoad: TextLoadCallRequest
+  turtle?: TurtleState
+}
+
 type ProgramExpressionResult =
   | CompletedExpressionResult
   | SuspendedExpressionResult
   | AskingExpressionResult
+  | LoadingExpressionResult
 
 type AssignIndexedElementResult =
   | {
@@ -98,6 +112,12 @@ type AssignIndexedElementResult =
       status: 'asking'
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
       ask: AskCallRequest
+      turtle?: TurtleState
+    }
+  | {
+      status: 'loading'
+      pendingNode: Extract<PendingNode, { kind: 'assignment' }>
+      textLoad: TextLoadCallRequest
       turtle?: TurtleState
     }
 
@@ -154,7 +174,19 @@ interface AskCallRequest {
   callIndex: number
 }
 
+interface TextLoadCallRequest {
+  url: string
+  callIndex: number
+}
+
 interface PendingAsk {
+  pendingNode: PendingNode
+  pendingExpressionKey: PendingExpressionKey
+  pendingCallIndex: number
+}
+
+interface PendingTextLoad {
+  url: string
   pendingNode: PendingNode
   pendingExpressionKey: PendingExpressionKey
   pendingCallIndex: number
@@ -189,6 +221,7 @@ export interface ExecutionState {
   functionName: string
   turtle?: TurtleState
   askRequest?: PendingAsk
+  textRequest?: PendingTextLoad
   returnValue?: RuntimeValue
   error?: string
 }
@@ -211,6 +244,15 @@ class AskSuspension extends Error {
   constructor(ask: AskCallRequest) {
     super('ask() suspended.')
     this.ask = ask
+  }
+}
+
+class TextLoadSuspension extends Error {
+  readonly textLoad: TextLoadCallRequest
+
+  constructor(textLoad: TextLoadCallRequest) {
+    super(`Text URL load "${textLoad.url}" suspended.`)
+    this.textLoad = textLoad
   }
 }
 
@@ -294,7 +336,7 @@ export function stepExecution(state: ExecutionState): ExecutionState {
     return state
   }
 
-  if (state.status === 'asking') {
+  if (state.status === 'asking' || state.status === 'loading') {
     return state
   }
 
@@ -351,6 +393,48 @@ export function answerAskExecution(
       status: 'running',
     },
     pendingNode,
+  )
+}
+
+export function completeTextLoadExecution(
+  state: ExecutionState,
+  text: string,
+): ExecutionState {
+  if (state.status !== 'loading' || !state.textRequest) {
+    return state
+  }
+
+  const pendingNode = addCompletedCallResult(
+    state.textRequest.pendingNode,
+    state.textRequest.pendingExpressionKey,
+    state.textRequest.pendingCallIndex,
+    text,
+  )
+
+  return executePendingNode(
+    {
+      ...state,
+      textRequest: undefined,
+      status: 'running',
+    },
+    pendingNode,
+  )
+}
+
+export function failTextLoadExecution(
+  state: ExecutionState,
+  error: string,
+): ExecutionState {
+  if (state.status !== 'loading') {
+    return state
+  }
+
+  return fail(
+    {
+      ...state,
+      textRequest: undefined,
+    },
+    error,
   )
 }
 
@@ -522,6 +606,15 @@ function executeAssignmentNode(
       )
     }
 
+    if (result.status === 'loading') {
+      return startTextLoad(
+        { ...nextState, turtle: result.turtle },
+        pending,
+        'valueExpression',
+        result.textLoad,
+      )
+    }
+
     nextState = { ...nextState, output: result.output, turtle: result.turtle }
     value = result.value
     pending = { ...pending, value }
@@ -556,6 +649,15 @@ function executeAssignmentNode(
         assignmentResult.pendingNode,
         'indexExpression',
         assignmentResult.ask,
+      )
+    }
+
+    if (assignmentResult.status === 'loading') {
+      return startTextLoad(
+        { ...nextState, turtle: assignmentResult.turtle },
+        assignmentResult.pendingNode,
+        'indexExpression',
+        assignmentResult.textLoad,
       )
     }
 
@@ -606,6 +708,15 @@ function executeCallNode(
     )
   }
 
+  if (result.status === 'loading') {
+    return startTextLoad(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.textLoad,
+    )
+  }
+
   return advance(
     { ...state, output: result.output, turtle: result.turtle },
     pendingNode.node,
@@ -633,6 +744,15 @@ function executeOutputNode(
       pendingNode,
       'expression',
       result.ask,
+    )
+  }
+
+  if (result.status === 'loading') {
+    return startTextLoad(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.textLoad,
     )
   }
 
@@ -670,6 +790,15 @@ function executeBranchNode(
     )
   }
 
+  if (result.status === 'loading') {
+    return startTextLoad(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.textLoad,
+    )
+  }
+
   return advance(
     { ...state, output: result.output, turtle: result.turtle },
     pendingNode.node,
@@ -698,6 +827,15 @@ function executeReturnNode(
       pendingNode,
       'expression',
       result.ask,
+    )
+  }
+
+  if (result.status === 'loading') {
+    return startTextLoad(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.textLoad,
     )
   }
 
@@ -779,6 +917,13 @@ function evaluateProgramExpression(
         }
 
         if (isNativeFunctionAvailable(state, name)) {
+          if (isTextFunctionName(name)) {
+            throw new TextLoadSuspension({
+              url: validateTextFromUrlArguments(args),
+              callIndex: currentCallIndex,
+            })
+          }
+
           turtle = runNativeFunction(turtle, name, args)
           progress.completedCalls[currentCallIndex] = 0
           return 0
@@ -810,6 +955,10 @@ function evaluateProgramExpression(
       return { status: 'asking', ask: error.ask, turtle }
     }
 
+    if (error instanceof TextLoadSuspension) {
+      return { status: 'loading', textLoad: error.textLoad, turtle }
+    }
+
     throw error
   }
 }
@@ -829,6 +978,25 @@ function startAsk(
       pendingCallIndex: ask.callIndex,
     },
     status: 'asking',
+  }
+}
+
+function startTextLoad(
+  state: ExecutionState,
+  pendingNode: PendingNode,
+  pendingExpressionKey: PendingExpressionKey,
+  textLoad: TextLoadCallRequest,
+): ExecutionState {
+  return {
+    ...state,
+    currentNodeId: pendingNode.node.id,
+    textRequest: {
+      url: textLoad.url,
+      pendingNode,
+      pendingExpressionKey,
+      pendingCallIndex: textLoad.callIndex,
+    },
+    status: 'loading',
   }
 }
 
@@ -986,6 +1154,15 @@ function executeForPendingNode(
     )
   }
 
+  if (result.status === 'loading') {
+    return startTextLoad(
+      { ...state, turtle: result.turtle },
+      pendingNode,
+      'expression',
+      result.textLoad,
+    )
+  }
+
   return advanceForLoop(
     { ...state, turtle: result.turtle },
     pendingNode.node,
@@ -1109,6 +1286,15 @@ function assignIndexedElement(
     }
   }
 
+  if (indexResult.status === 'loading') {
+    return {
+      status: 'loading',
+      pendingNode,
+      textLoad: indexResult.textLoad,
+      turtle: indexResult.turtle,
+    }
+  }
+
   const { value: indexValue, output } = indexResult
 
   if (Array.isArray(currentValue)) {
@@ -1210,21 +1396,31 @@ function normalizeNativeLibraries(nativeLibraries: string[]): string[] {
     ...new Set(
       nativeLibraries
         .map((library) => library.trim().toLowerCase())
-        .filter((library) => library === TURTLE_LIBRARY_NAME),
+        .filter(
+          (library) =>
+            library === TURTLE_LIBRARY_NAME || library === TEXT_LIBRARY_NAME,
+        ),
     ),
   ]
 }
 
 function nativeFunctionNamesForLibraries(nativeLibraries: string[]): string[] {
-  return nativeLibraries.includes(TURTLE_LIBRARY_NAME)
-    ? [...TURTLE_COMMAND_NAMES]
-    : []
+  return [
+    ...(nativeLibraries.includes(TURTLE_LIBRARY_NAME)
+      ? [...TURTLE_COMMAND_NAMES]
+      : []),
+    ...(nativeLibraries.includes(TEXT_LIBRARY_NAME)
+      ? [...TEXT_FUNCTION_NAMES]
+      : []),
+  ]
 }
 
 function isNativeFunctionAvailable(state: ExecutionState, name: string): boolean {
   return (
-    state.nativeLibraries.includes(TURTLE_LIBRARY_NAME) &&
-    isTurtleCommandName(name) &&
+    ((state.nativeLibraries.includes(TURTLE_LIBRARY_NAME) &&
+      isTurtleCommandName(name)) ||
+      (state.nativeLibraries.includes(TEXT_LIBRARY_NAME) &&
+        isTextFunctionName(name))) &&
     !hasFlowLabFunctionTarget(state, name)
   )
 }

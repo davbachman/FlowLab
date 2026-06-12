@@ -16,6 +16,7 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 - Function calls inside block expressions, such as `x <- helper(5)`.
 - Function calls pass their arguments as the called function's local input queue.
 - Interactive input with `ask()`, such as `x <- ask()`.
+- Native text loading with the `text` import and `text_from_url(url)`.
 - Random numbers with `rand()`, which returns a number from 0 up to but not including 1.
 - Step-through execution enters called function flowcharts and shows the active function input queue.
 - Imports panel for listing FlowLab JSON files and calling non-`main` functions from those files.
@@ -47,6 +48,7 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 - Variable and function names must start with a letter or underscore and may contain letters, digits, and underscores.
 - Built-in function calls are `sqrt(x)`, `rand()`, and `ask()`.
 - Interactive input uses `ask()` inside expressions. It prompts for one value and parses the response like input queue values.
+- Import `text` to use `text_from_url(url)`, which loads a URL as a string. The URL must be readable by the browser, including any required cross-origin permissions.
 - Custom function calls use normal function notation, such as `helper(1, "text", [2, 3])`.
 - Dictionary keys may be strings, numbers, or booleans. `D[key]` reads a value, and `D[key] <- value` creates or overwrites a key.
 - For blocks over dictionaries iterate keys, so `item in D` assigns each key to `item`; use `D[item]` to read the value.

@@ -1,4 +1,5 @@
 import type { Program } from './types'
+import { TEXT_FUNCTION_NAMES, TEXT_LIBRARY_NAME } from './text'
 import { TURTLE_COMMAND_NAMES, TURTLE_LIBRARY_NAME } from './turtle'
 import { normalizeImportedProgram, validateProgram } from './validation'
 
@@ -156,14 +157,27 @@ export function callableImportedFunctionNames(
 }
 
 function isNativeLibraryImport(name: string): boolean {
-  return name.trim().toLowerCase() === TURTLE_LIBRARY_NAME
+  const normalizedName = name.trim().toLowerCase()
+  return (
+    normalizedName === TURTLE_LIBRARY_NAME ||
+    normalizedName === TEXT_LIBRARY_NAME
+  )
 }
 
 function nativeLibraryFor(name: string): NativeLibraryImport {
-  if (isNativeLibraryImport(name)) {
+  const normalizedName = name.trim().toLowerCase()
+
+  if (normalizedName === TURTLE_LIBRARY_NAME) {
     return {
       name: TURTLE_LIBRARY_NAME,
       functionNames: [...TURTLE_COMMAND_NAMES],
+    }
+  }
+
+  if (normalizedName === TEXT_LIBRARY_NAME) {
+    return {
+      name: TEXT_LIBRARY_NAME,
+      functionNames: [...TEXT_FUNCTION_NAMES],
     }
   }
 
