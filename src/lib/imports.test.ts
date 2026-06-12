@@ -61,7 +61,7 @@ describe('imports', () => {
     expect(resolution.nativeLibraries).toEqual([
       {
         name: 'text',
-        functionNames: ['text_from_url'],
+        functionNames: ['text_from_url', 'split_words'],
       },
     ])
   })

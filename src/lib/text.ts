@@ -1,6 +1,6 @@
 export const TEXT_LIBRARY_NAME = 'text'
 
-export const TEXT_FUNCTION_NAMES = ['text_from_url'] as const
+export const TEXT_FUNCTION_NAMES = ['text_from_url', 'split_words'] as const
 
 export type TextFunctionName = (typeof TEXT_FUNCTION_NAMES)[number]
 
@@ -16,4 +16,13 @@ export function validateTextFromUrlArguments(args: unknown[]): string {
   }
 
   return args[0]
+}
+
+export function splitWords(args: unknown[]): string[] {
+  if (args.length !== 1 || typeof args[0] !== 'string') {
+    throw new Error('split_words requires exactly one string')
+  }
+
+  const text = args[0].trim()
+  return text ? text.split(/\s+/) : []
 }

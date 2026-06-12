@@ -1073,6 +1073,34 @@ describe('interpreter', () => {
     expect(state.output).toEqual(['Once upon a time'])
   })
 
+  it('splits text into words through the text native library', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'split',
+          type: 'assignment',
+          text: 'words <- split_words("  alpha\\nbeta\\t gamma  ")',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'end', type: 'return', text: 'words', position: { x: 0, y: 200 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'split' },
+        { id: 'e2', source: 'split', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(
+      createExecution(program, [], { nativeLibraries: ['text'] }),
+    )
+
+    expect(state.status).toBe('halted')
+    expect(state.environment.words).toEqual(['alpha', 'beta', 'gamma'])
+    expect(state.returnValue).toEqual(['alpha', 'beta', 'gamma'])
+  })
+
   it('uses 100000 as the default max step guard', () => {
     const program: Program = {
       version: 1,

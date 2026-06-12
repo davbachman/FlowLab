@@ -24,6 +24,7 @@ import {
 } from './types'
 import {
   isTextFunctionName,
+  splitWords,
   TEXT_FUNCTION_NAMES,
   TEXT_LIBRARY_NAME,
   validateTextFromUrlArguments,
@@ -918,10 +919,16 @@ function evaluateProgramExpression(
 
         if (isNativeFunctionAvailable(state, name)) {
           if (isTextFunctionName(name)) {
-            throw new TextLoadSuspension({
-              url: validateTextFromUrlArguments(args),
-              callIndex: currentCallIndex,
-            })
+            if (name === 'text_from_url') {
+              throw new TextLoadSuspension({
+                url: validateTextFromUrlArguments(args),
+                callIndex: currentCallIndex,
+              })
+            }
+
+            const result = splitWords(args)
+            progress.completedCalls[currentCallIndex] = result
+            return result
           }
 
           turtle = runNativeFunction(turtle, name, args)
