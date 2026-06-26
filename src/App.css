@@ -1,6 +1,10 @@
 .app-shell {
-  height: 100vh;
-  min-height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--app-viewport-width, 100vw);
+  height: var(--app-viewport-height, 100vh);
+  min-height: 0;
   display: grid;
   grid-template-rows: auto 1fr;
   overflow: hidden;
@@ -138,14 +142,17 @@ button:disabled {
 }
 
 .workspace {
+  width: 100%;
+  min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: 220px minmax(420px, 1fr) var(--runtime-sidebar-width, 340px);
-  overflow: hidden;
+  grid-template-columns: 260px minmax(420px, 1fr) var(--runtime-sidebar-width, 420px);
+  overflow: auto;
 }
 
 .palette,
 .console-panel {
+  box-sizing: border-box;
   min-height: 0;
   overflow: auto;
   padding: 14px;
@@ -283,10 +290,12 @@ button:disabled {
 }
 
 .flow-node[data-current='true'] {
-  border-color: #f59e0b;
+  border-color: #d97706;
+  background: #fffbeb;
   box-shadow:
-    0 0 0 4px rgba(245, 158, 11, 0.22),
-    0 8px 18px rgba(15, 23, 42, 0.08);
+    0 0 0 3px #ffffff,
+    0 0 0 9px rgba(245, 158, 11, 0.42),
+    0 14px 28px rgba(146, 64, 14, 0.18);
 }
 
 .react-flow__node.selected .flow-node {
@@ -297,10 +306,37 @@ button:disabled {
 }
 
 .react-flow__node.selected .flow-node[data-current='true'] {
-  border-color: #f59e0b;
+  border-color: #d97706;
+  background: #fffbeb;
   box-shadow:
-    0 0 0 4px rgba(245, 158, 11, 0.22),
-    0 8px 18px rgba(15, 23, 42, 0.08);
+    0 0 0 3px #ffffff,
+    0 0 0 9px rgba(245, 158, 11, 0.42),
+    0 14px 28px rgba(146, 64, 14, 0.18);
+}
+
+.current-node-marker {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow:
+    0 0 0 2px #92400e,
+    0 6px 14px rgba(146, 64, 14, 0.24);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.current-node-marker::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 999px;
+  background: #fff7ed;
 }
 
 .flow-node-function,
@@ -351,10 +387,12 @@ button:disabled {
 .flow-node-if[data-current='true']::before,
 .flow-node-while[data-current='true']::before,
 .flow-node-for[data-current='true']::before {
-  border-color: #f59e0b;
+  border-color: #d97706;
+  background: #fffbeb;
   box-shadow:
-    0 0 0 4px rgba(245, 158, 11, 0.22),
-    0 8px 18px rgba(15, 23, 42, 0.08);
+    0 0 0 3px #ffffff,
+    0 0 0 9px rgba(245, 158, 11, 0.42),
+    0 14px 28px rgba(146, 64, 14, 0.18);
 }
 
 .react-flow__node.selected .flow-node-if::before,
@@ -369,10 +407,12 @@ button:disabled {
 .react-flow__node.selected .flow-node-if[data-current='true']::before,
 .react-flow__node.selected .flow-node-while[data-current='true']::before,
 .react-flow__node.selected .flow-node-for[data-current='true']::before {
-  border-color: #f59e0b;
+  border-color: #d97706;
+  background: #fffbeb;
   box-shadow:
-    0 0 0 4px rgba(245, 158, 11, 0.22),
-    0 8px 18px rgba(15, 23, 42, 0.08);
+    0 0 0 3px #ffffff,
+    0 0 0 9px rgba(245, 158, 11, 0.42),
+    0 14px 28px rgba(146, 64, 14, 0.18);
 }
 
 .flow-node-if .node-content,
@@ -652,7 +692,13 @@ textarea {
   border: 0;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 980px) and (min-width: 721px) {
+  .workspace {
+    grid-template-columns: 220px minmax(320px, 1fr) minmax(340px, var(--runtime-sidebar-width, 420px));
+  }
+}
+
+@media (max-width: 720px) {
   .topbar {
     align-items: flex-start;
     flex-direction: column;
@@ -660,7 +706,7 @@ textarea {
 
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 60vh auto;
+    grid-template-rows: auto minmax(360px, 60vh) minmax(320px, 50vh);
   }
 
   .palette,

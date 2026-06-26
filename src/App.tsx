@@ -145,6 +145,11 @@ interface SidebarResizeDrag {
   startWidth: number
 }
 
+interface ViewportSize {
+  width: number
+  height: number
+}
+
 interface SaveFilePickerWritable {
   write: (value: Blob) => Promise<void> | void
   close: () => Promise<void> | void
@@ -227,8 +232,8 @@ const INITIAL_CANVAS_VIEWPORT = { x: 0, y: 0, zoom: 0.85 }
 const COPY_PASTE_OFFSET = { x: 36, y: 36 }
 const HISTORY_LIMIT = 80
 const NO_SELECTION_KEY = null satisfies KeyCode | null
-const DEFAULT_SIDEBAR_WIDTH = 340
-const MIN_SIDEBAR_WIDTH = 280
+const DEFAULT_SIDEBAR_WIDTH = 420
+const MIN_SIDEBAR_WIDTH = 340
 const MAX_SIDEBAR_WIDTH = 720
 const VARIABLE_VALUE_PREVIEW_LINES = 4
 const DEFAULT_TURTLE_VIEW: TurtleViewState = { panX: 0, panY: 0, zoom: 1 }
@@ -241,7 +246,43 @@ const EMPTY_IMPORT_RESOLUTION: ImportResolution = {
   errors: [],
 }
 
+function currentViewportSize(): ViewportSize {
+  const viewport = window.visualViewport
+
+  return {
+    width: viewport?.width ?? window.innerWidth,
+    height: viewport?.height ?? window.innerHeight,
+  }
+}
+
+function useViewportSize(): ViewportSize {
+  const [viewportSize, setViewportSize] =
+    useState<ViewportSize>(currentViewportSize)
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+
+    function updateViewportSize(): void {
+      setViewportSize(currentViewportSize())
+    }
+
+    updateViewportSize()
+    window.addEventListener('resize', updateViewportSize)
+    viewport?.addEventListener('resize', updateViewportSize)
+    viewport?.addEventListener('scroll', updateViewportSize)
+
+    return () => {
+      window.removeEventListener('resize', updateViewportSize)
+      viewport?.removeEventListener('resize', updateViewportSize)
+      viewport?.removeEventListener('scroll', updateViewportSize)
+    }
+  }, [])
+
+  return viewportSize
+}
+
 function App() {
+  const viewportSize = useViewportSize()
   const [nodes, setNodes] = useState<EditorNode[]>([])
   const [edges, setEdges] = useState<EditorEdge[]>([])
   const [inputQueueText, setInputQueueText] = useState('')
@@ -1122,7 +1163,15 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main
+      className="app-shell"
+      style={
+        {
+          '--app-viewport-width': `${viewportSize.width}px`,
+          '--app-viewport-height': `${viewportSize.height}px`,
+        } as CSSProperties
+      }
+    >
       <header className="topbar">
         <div>
           <h1>FlowLab</h1>
@@ -1503,7 +1552,15 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
       data-testid={`flow-node-${id}`}
       data-current={data.isCurrent ? 'true' : 'false'}
       data-shape={isBranchNodeType(data.nodeType) ? 'diamond' : 'block'}
+      aria-current={data.isCurrent ? 'step' : undefined}
     >
+      {data.isCurrent ? (
+        <span
+          className="current-node-marker"
+          data-testid="current-node-marker"
+          aria-hidden="true"
+        />
+      ) : null}
       {data.nodeType !== 'function' ? (
         <Handle className="node-handle" type="target" position={Position.Top} />
       ) : null}

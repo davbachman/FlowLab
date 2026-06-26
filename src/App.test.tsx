@@ -384,6 +384,27 @@ describe('App', () => {
     expect(screen.getByLabelText(/Imports list/i)).toBeInTheDocument()
   })
 
+  it('sizes the shell from the browser visual viewport', () => {
+    vi.stubGlobal('visualViewport', {
+      width: 1728,
+      height: 1040,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })
+
+    const { container } = render(<App />)
+    const shell = container.querySelector('.app-shell')
+
+    expect(shell).toHaveAttribute(
+      'style',
+      expect.stringContaining('--app-viewport-width: 1728px'),
+    )
+    expect(shell).toHaveAttribute(
+      'style',
+      expect.stringContaining('--app-viewport-height: 1040px'),
+    )
+  })
+
   it('starts the blank canvas at a modest default zoom', () => {
     const { container } = render(<App />)
 
@@ -957,13 +978,13 @@ describe('App', () => {
       name: /Resize right sidebar/i,
     })
 
-    expect(sidebar).toHaveStyle({ width: '340px' })
+    expect(sidebar).toHaveStyle({ width: '420px' })
 
     fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 })
     fireEvent.pointerMove(window, { clientX: 420, pointerId: 1 })
     fireEvent.pointerUp(window, { clientX: 420, pointerId: 1 })
 
-    expect(sidebar).toHaveStyle({ width: '420px' })
+    expect(sidebar).toHaveStyle({ width: '500px' })
   })
 
   it('keeps execution controls in a sticky sidebar header', () => {
@@ -1101,6 +1122,25 @@ describe('App', () => {
       'data-current',
       'true',
     )
+  })
+
+  it('marks the current node with a distinct step indicator', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+
+    await user.click(screen.getByRole('button', { name: /Reset/i }))
+
+    const currentNode = screen.getByTestId('flow-node-main')
+    expect(currentNode).toHaveAttribute('aria-current', 'step')
+    expect(
+      within(currentNode).getByTestId('current-node-marker'),
+    ).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('flow-node-input-n')).queryByTestId(
+        'current-node-marker',
+      ),
+    ).not.toBeInTheDocument()
   })
 
   it('shows the active function input queue while stepping through a helper', async () => {
