@@ -89,6 +89,33 @@ describe('app layout scrolling', () => {
     })
   })
 
+  it('keeps current branch-node highlighting clipped to the diamond shape', () => {
+    expect(
+      declarationsFor(
+        ".flow-node-if[data-current='true'],\n.flow-node-while[data-current='true'],\n.flow-node-for[data-current='true']",
+      ),
+    ).toMatchObject({
+      background: 'transparent',
+      'box-shadow': 'none',
+    })
+    expect(
+      declarationsFor(
+        ".react-flow__node.selected .flow-node-if[data-current='true'],\n.react-flow__node.selected .flow-node-while[data-current='true'],\n.react-flow__node.selected .flow-node-for[data-current='true']",
+      ),
+    ).toMatchObject({
+      background: 'transparent',
+      'box-shadow': 'none',
+    })
+    expect(
+      declarationsFor(
+        ".flow-node-if[data-current='true']::before,\n.flow-node-while[data-current='true']::before,\n.flow-node-for[data-current='true']::before",
+      ),
+    ).toMatchObject({
+      background: '#fffbeb',
+      'border-color': '#d97706',
+    })
+  })
+
   it('keeps the three-column editor layout at zoomed desktop widths', () => {
     const zoomedDesktop = mediaBlockFor('(max-width: 980px) and (min-width: 721px)')
 

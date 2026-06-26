@@ -1124,7 +1124,7 @@ describe('App', () => {
     )
   })
 
-  it('marks the current node with a distinct step indicator', async () => {
+  it('marks the current node semantically without a separate badge', async () => {
     const user = userEvent.setup()
     render(<App />)
     await user.click(screen.getByRole('button', { name: /Load Sample/i }))
@@ -1133,14 +1133,7 @@ describe('App', () => {
 
     const currentNode = screen.getByTestId('flow-node-main')
     expect(currentNode).toHaveAttribute('aria-current', 'step')
-    expect(
-      within(currentNode).getByTestId('current-node-marker'),
-    ).toBeInTheDocument()
-    expect(
-      within(screen.getByTestId('flow-node-input-n')).queryByTestId(
-        'current-node-marker',
-      ),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('current-node-marker')).not.toBeInTheDocument()
   })
 
   it('shows the active function input queue while stepping through a helper', async () => {

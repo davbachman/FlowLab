@@ -314,31 +314,6 @@ button:disabled {
     0 14px 28px rgba(146, 64, 14, 0.18);
 }
 
-.current-node-marker {
-  position: absolute;
-  top: -12px;
-  right: -12px;
-  z-index: 3;
-  width: 22px;
-  height: 22px;
-  border: 3px solid #ffffff;
-  border-radius: 999px;
-  background: #f59e0b;
-  box-shadow:
-    0 0 0 2px #92400e,
-    0 6px 14px rgba(146, 64, 14, 0.24);
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-.current-node-marker::after {
-  content: '';
-  position: absolute;
-  inset: 5px;
-  border-radius: 999px;
-  background: #fff7ed;
-}
-
 .flow-node-function,
 .flow-node-return {
   border-radius: 999px;
@@ -381,6 +356,7 @@ button:disabled {
 .flow-node-if[data-current='true'],
 .flow-node-while[data-current='true'],
 .flow-node-for[data-current='true'] {
+  background: transparent;
   box-shadow: none;
 }
 
@@ -413,6 +389,13 @@ button:disabled {
     0 0 0 3px #ffffff,
     0 0 0 9px rgba(245, 158, 11, 0.42),
     0 14px 28px rgba(146, 64, 14, 0.18);
+}
+
+.react-flow__node.selected .flow-node-if[data-current='true'],
+.react-flow__node.selected .flow-node-while[data-current='true'],
+.react-flow__node.selected .flow-node-for[data-current='true'] {
+  background: transparent;
+  box-shadow: none;
 }
 
 .flow-node-if .node-content,

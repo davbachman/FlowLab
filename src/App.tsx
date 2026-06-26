@@ -1554,13 +1554,6 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
       data-shape={isBranchNodeType(data.nodeType) ? 'diamond' : 'block'}
       aria-current={data.isCurrent ? 'step' : undefined}
     >
-      {data.isCurrent ? (
-        <span
-          className="current-node-marker"
-          data-testid="current-node-marker"
-          aria-hidden="true"
-        />
-      ) : null}
       {data.nodeType !== 'function' ? (
         <Handle className="node-handle" type="target" position={Position.Top} />
       ) : null}
