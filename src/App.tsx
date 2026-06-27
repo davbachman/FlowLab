@@ -16,6 +16,7 @@ import {
   applyNodeChanges,
   Background,
   Controls,
+  ConnectionLineType,
   Handle,
   Position,
   ReactFlow,
@@ -1337,6 +1338,7 @@ function App() {
             panOnDrag={CANVAS_DRAG_BUTTONS}
             panOnScroll
             defaultViewport={INITIAL_CANVAS_VIEWPORT}
+            connectionLineType={ConnectionLineType.SmoothStep}
             defaultEdgeOptions={{ type: 'smoothstep' }}
           >
             <Background color="#d4d9e2" gap={18} />
