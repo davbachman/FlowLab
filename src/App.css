@@ -483,9 +483,14 @@ button:disabled {
   box-sizing: border-box;
 }
 
-.node-handle-true::after {
+.node-handle-true-left::after {
   left: 0;
   transform: translate(-50%, -50%);
+}
+
+.node-handle-true-right::after {
+  right: 0;
+  transform: translate(50%, -50%);
 }
 
 .input-label {

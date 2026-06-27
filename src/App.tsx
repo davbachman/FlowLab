@@ -64,6 +64,7 @@ import {
 import {
   branchLabelFromHandle,
   sourceHandleForBranch,
+  sourceHandleForBranchConnection,
 } from './lib/flowRouting'
 import { sampleProgram } from './lib/sampleProgram'
 import {
@@ -83,6 +84,7 @@ interface FlowNodeData extends Record<string, unknown> {
   text: string
   comment?: string
   isCurrent?: boolean
+  trueBranchHandle?: string
   onTextChange?: (nodeId: string, text: string) => void
 }
 
@@ -562,10 +564,11 @@ function App() {
         data: {
           ...node.data,
           isCurrent: node.id === currentNodeId,
+          trueBranchHandle: trueBranchHandleForNode(node, edges),
           onTextChange: updateNodeText,
         },
       })),
-    [currentNodeId, nodes, updateNodeText],
+    [currentNodeId, edges, nodes, updateNodeText],
   )
 
   const onNodesChange = useCallback(
@@ -608,7 +611,11 @@ function App() {
           target: connection.target,
           sourceHandle:
             sourceNode && branchLabel
-              ? sourceHandleForBranch(sourceNode.data.nodeType, branchLabel)
+              ? sourceHandleForBranchConnection(
+                  sourceNode.data.nodeType,
+                  branchLabel,
+                  connection.sourceHandle,
+                )
               : connection.sourceHandle,
           type: 'smoothstep',
           label: branchLabel,
@@ -1545,6 +1552,12 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
     data.nodeType === 'if' ||
     data.nodeType === 'while' ||
     data.nodeType === 'for'
+  const trueLeftHandle = sourceHandleForBranch(data.nodeType, 'true', 'left')
+  const trueRightHandle = sourceHandleForBranch(data.nodeType, 'true', 'right')
+  const showTrueLeftHandle =
+    data.trueBranchHandle === undefined || data.trueBranchHandle === trueLeftHandle
+  const showTrueRightHandle =
+    data.trueBranchHandle === undefined || data.trueBranchHandle === trueRightHandle
 
   return (
     <div
@@ -1579,16 +1592,30 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
       </div>
       {isBranchNodeType(data.nodeType) ? (
         <>
-          <Handle
-            id={sourceHandleForBranch(data.nodeType, 'true')}
-            className="node-handle node-handle-true"
-            type="source"
-            position={Position.Left}
-            style={{
-              left: DECISION_SIDE_HANDLE_OFFSET,
-              transform: 'translateY(-50%)',
-            }}
-          />
+          {showTrueLeftHandle ? (
+            <Handle
+              id={trueLeftHandle}
+              className="node-handle node-handle-true node-handle-true-left"
+              type="source"
+              position={Position.Left}
+              style={{
+                left: DECISION_SIDE_HANDLE_OFFSET,
+                transform: 'translateY(-50%)',
+              }}
+            />
+          ) : null}
+          {showTrueRightHandle ? (
+            <Handle
+              id={trueRightHandle}
+              className="node-handle node-handle-true node-handle-true-right"
+              type="source"
+              position={Position.Right}
+              style={{
+                right: DECISION_SIDE_HANDLE_OFFSET,
+                transform: 'translateY(-50%)',
+              }}
+            />
+          ) : null}
           <Handle
             id={sourceHandleForBranch(data.nodeType, 'false')}
             className="node-handle node-handle-false"
@@ -2105,6 +2132,27 @@ function nextBranchLabel(
   }
 
   return 'true'
+}
+
+function trueBranchHandleForNode(
+  node: EditorNode,
+  edges: EditorEdge[],
+): string | undefined {
+  if (!isBranchNodeType(node.data.nodeType)) {
+    return undefined
+  }
+
+  const trueEdge = edges.find(
+    (edge) => edge.source === node.id && edge.label === 'true',
+  )
+
+  return trueEdge
+    ? sourceHandleForBranchConnection(
+        node.data.nodeType,
+        'true',
+        trueEdge.sourceHandle,
+      )
+    : undefined
 }
 
 function nextNodeId(nodeType: FlowNodeType, nodes: EditorNode[]): string {

@@ -1181,6 +1181,9 @@ describe('App', () => {
     expect(
       container.querySelector('[data-handleid="while-true"]'),
     ).toHaveStyle({ transform: 'translateY(-50%)' })
+    expect(
+      container.querySelector('[data-handleid="while-true-right"]'),
+    ).not.toBeInTheDocument()
 
     const trueEdge = sampleProgram.edges.find(
       (edge) => edge.id === 'edge-while-add',
@@ -1195,6 +1198,39 @@ describe('App', () => {
     expect(
       falseEdge && sourceHandleForProgramEdge(sampleProgram, falseEdge),
     ).toBe('while-false')
+  })
+
+  it('shows left and right true branch handles before a diamond branch is used', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    const addIfButton = screen.getByRole('button', { name: /^If$/i })
+
+    await user.click(addIfButton)
+    placePendingNodeOnPane(container.querySelector('.react-flow__pane') as Element)
+
+    const ifNode = screen.getByTestId('flow-node-if-1')
+
+    expect(
+      ifNode.querySelector('[data-handleid="if-true"]'),
+    ).toHaveStyle({ left: '15px' })
+    expect(
+      ifNode.querySelector('[data-handleid="if-true-right"]'),
+    ).toHaveStyle({
+      right: '15px',
+      transform: 'translateY(-50%)',
+    })
+  })
+
+  it('keeps a right-side true branch handle when routed edges are recomputed', () => {
+    const selectedEdges = programToEdges(sampleProgram).map((edge) =>
+      edge.id === 'edge-while-add'
+        ? { ...edge, sourceHandle: 'while-true-right' }
+        : edge,
+    )
+    const routedEdges = programToEdges(sampleProgram, selectedEdges)
+    const trueEdge = routedEdges.find((edge) => edge.id === 'edge-while-add')
+
+    expect(trueEdge?.sourceHandle).toBe('while-true-right')
   })
 
   it('routes loop-back wires into the incoming wire above decision diamonds', () => {

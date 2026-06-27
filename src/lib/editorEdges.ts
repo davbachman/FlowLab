@@ -23,18 +23,26 @@ export function programToEdges(
     currentEdges.map((edge) => [edge.id, edge]),
   )
 
-  return program.edges.map((edge) => ({
-    ...currentEdgesById.get(edge.id),
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    label: edge.label,
-    sourceHandle: sourceHandleForProgramEdge(program, edge),
-    targetHandle: targetHandleForProgramEdge(program, edge),
-    type: edgeTypeForProgramEdge(program, edge),
-    data: {
-      ...currentEdgesById.get(edge.id)?.data,
-      loopbackJoinOffset: loopbackJoinOffsetForProgramEdge(program, edge),
-    },
-  }))
+  return program.edges.map((edge) => {
+    const currentEdge = currentEdgesById.get(edge.id)
+
+    return {
+      ...currentEdge,
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      label: edge.label,
+      sourceHandle: sourceHandleForProgramEdge(
+        program,
+        edge,
+        currentEdge?.sourceHandle,
+      ),
+      targetHandle: targetHandleForProgramEdge(program, edge),
+      type: edgeTypeForProgramEdge(program, edge),
+      data: {
+        ...currentEdge?.data,
+        loopbackJoinOffset: loopbackJoinOffsetForProgramEdge(program, edge),
+      },
+    }
+  })
 }

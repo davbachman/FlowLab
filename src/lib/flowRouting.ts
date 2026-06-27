@@ -8,12 +8,17 @@ import type {
 import { isBranchNodeType } from './types'
 
 export const WHILE_TRUE_HANDLE = 'while-true'
+export const WHILE_TRUE_RIGHT_HANDLE = 'while-true-right'
 export const WHILE_FALSE_HANDLE = 'while-false'
 export const IF_TRUE_HANDLE = 'if-true'
+export const IF_TRUE_RIGHT_HANDLE = 'if-true-right'
 export const IF_FALSE_HANDLE = 'if-false'
 export const FOR_TRUE_HANDLE = 'for-true'
+export const FOR_TRUE_RIGHT_HANDLE = 'for-true-right'
 export const FOR_FALSE_HANDLE = 'for-false'
 export const DECISION_LOOPBACK_TARGET_HANDLE = 'decision-loopback-target'
+
+export type TrueBranchHandleSide = 'left' | 'right'
 
 const DEFAULT_LOOPBACK_JOIN_OFFSET = 28
 const MIN_LOOPBACK_JOIN_OFFSET = 16
@@ -28,8 +33,11 @@ export function branchLabelFromHandle(
 ): BranchLabel | undefined {
   if (
     sourceHandle === WHILE_TRUE_HANDLE ||
+    sourceHandle === WHILE_TRUE_RIGHT_HANDLE ||
     sourceHandle === IF_TRUE_HANDLE ||
-    sourceHandle === FOR_TRUE_HANDLE
+    sourceHandle === IF_TRUE_RIGHT_HANDLE ||
+    sourceHandle === FOR_TRUE_HANDLE ||
+    sourceHandle === FOR_TRUE_RIGHT_HANDLE
   ) {
     return 'true'
   }
@@ -48,31 +56,71 @@ export function branchLabelFromHandle(
 export function sourceHandleForBranch(
   nodeType: FlowNodeType,
   label: BranchLabel,
+  side: TrueBranchHandleSide = 'left',
 ): string | undefined {
   if (nodeType === 'if') {
-    return label === 'true' ? IF_TRUE_HANDLE : IF_FALSE_HANDLE
+    if (label === 'true') {
+      return side === 'right' ? IF_TRUE_RIGHT_HANDLE : IF_TRUE_HANDLE
+    }
+
+    return IF_FALSE_HANDLE
   }
 
   if (nodeType === 'while') {
-    return label === 'true' ? WHILE_TRUE_HANDLE : WHILE_FALSE_HANDLE
+    if (label === 'true') {
+      return side === 'right' ? WHILE_TRUE_RIGHT_HANDLE : WHILE_TRUE_HANDLE
+    }
+
+    return WHILE_FALSE_HANDLE
   }
 
   if (nodeType === 'for') {
-    return label === 'true' ? FOR_TRUE_HANDLE : FOR_FALSE_HANDLE
+    if (label === 'true') {
+      return side === 'right' ? FOR_TRUE_RIGHT_HANDLE : FOR_TRUE_HANDLE
+    }
+
+    return FOR_FALSE_HANDLE
   }
 
   return undefined
 }
 
+export function sourceHandleForBranchConnection(
+  nodeType: FlowNodeType,
+  label: BranchLabel,
+  sourceHandle: string | null | undefined,
+): string | undefined {
+  if (label === 'true' && isTrueBranchHandleForNodeType(nodeType, sourceHandle)) {
+    return sourceHandle
+  }
+
+  return sourceHandleForBranch(nodeType, label)
+}
+
 export function sourceHandleForProgramEdge(
   program: Program,
   edge: ProgramEdge,
+  currentSourceHandle?: string | null,
 ): string | undefined {
   const sourceNode = program.nodes.find((node) => node.id === edge.source)
 
   return sourceNode && edge.label
-    ? sourceHandleForBranch(sourceNode.type, edge.label)
+    ? sourceHandleForBranchConnection(
+        sourceNode.type,
+        edge.label,
+        currentSourceHandle,
+      )
     : undefined
+}
+
+function isTrueBranchHandleForNodeType(
+  nodeType: FlowNodeType,
+  sourceHandle: string | null | undefined,
+): sourceHandle is string {
+  return (
+    sourceHandle === sourceHandleForBranch(nodeType, 'true', 'left') ||
+    sourceHandle === sourceHandleForBranch(nodeType, 'true', 'right')
+  )
 }
 
 export function targetHandleForProgramEdge(
