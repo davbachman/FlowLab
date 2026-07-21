@@ -90,7 +90,7 @@ const validObjectProgram: Program = {
   version: 1,
   nodes: [
     { id: 'point', type: 'class', text: 'Point(x, y)', position: { x: 400, y: 0 } },
-    { id: 'move', type: 'method', text: 'Point.move', position: { x: 650, y: 0 } },
+    { id: 'move', type: 'method', text: 'move', position: { x: 650, y: 0 } },
     { id: 'move-end', type: 'return', text: 'self', position: { x: 650, y: 120 } },
     { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
     {
@@ -102,6 +102,7 @@ const validObjectProgram: Program = {
     { id: 'end', type: 'return', text: 'p', position: { x: 0, y: 240 } },
   ],
   edges: [
+    { id: 'point-move', source: 'point', target: 'move' },
     { id: 'm1', source: 'move', target: 'move-end' },
     { id: 'e1', source: 'main', target: 'make' },
     { id: 'e2', source: 'make', target: 'end' },
@@ -562,21 +563,64 @@ describe('validateProgram', () => {
     expect(validateProgram(validObjectProgram).errors).toEqual([])
   })
 
-  it('requires Classes to remain disconnected and Methods to be root nodes', () => {
+  it('requires each Method to attach to exactly one Class', () => {
+    const orphaned: Program = {
+      ...validObjectProgram,
+      edges: validObjectProgram.edges.filter((edge) => edge.id !== 'point-move'),
+    }
+    const multiplyAttached: Program = {
+      ...validObjectProgram,
+      edges: [
+        ...validObjectProgram.edges,
+        { id: 'second-class-edge', source: 'point', target: 'move' },
+      ],
+    }
+
+    expect(validateProgram(orphaned).errors.join('\n')).toMatch(
+      /Method node "move" must have exactly one incoming edge from a Class/i,
+    )
+    expect(validateProgram(multiplyAttached).errors.join('\n')).toMatch(
+      /Method node "move" must have exactly one incoming edge from a Class/i,
+    )
+  })
+
+  it('requires a Method attachment from a Class and an executable outgoing flow', () => {
+    const wrongOwner: Program = {
+      ...validObjectProgram,
+      edges: validObjectProgram.edges.map((edge) =>
+        edge.id === 'point-move' ? { ...edge, source: 'main' } : edge,
+      ),
+    }
+    const declarationTarget: Program = {
+      ...validObjectProgram,
+      edges: validObjectProgram.edges.map((edge) =>
+        edge.id === 'm1' ? { ...edge, target: 'main' } : edge,
+      ),
+    }
+
+    expect(validateProgram(wrongOwner).errors.join('\n')).toMatch(
+      /Method node "move" must receive its incoming edge from a Class/i,
+    )
+    expect(validateProgram(declarationTarget).errors.join('\n')).toMatch(
+      /Method node "move" must connect to an executable node/i,
+    )
+  })
+
+  it('allows Classes to connect only to Methods', () => {
     const program: Program = {
       ...validObjectProgram,
       edges: [
         ...validObjectProgram.edges,
-        { id: 'bad-class-edge', source: 'point', target: 'move' },
+        { id: 'bad-class-edge', source: 'point', target: 'end' },
       ],
     }
 
-    const errors = validateProgram(program).errors.join('\n')
-    expect(errors).toMatch(/Class node "point" cannot have incoming or outgoing edges/i)
-    expect(errors).toMatch(/Method node "move" cannot have incoming edges/i)
+    expect(validateProgram(program).errors.join('\n')).toMatch(
+      /Class node "point" may connect only to Method nodes/i,
+    )
   })
 
-  it('rejects duplicate Classes, fields, and qualified Methods', () => {
+  it('rejects duplicate Classes, fields, and Methods attached to one Class', () => {
     const duplicateClass: Program = {
       ...validObjectProgram,
       nodes: [
@@ -594,11 +638,12 @@ describe('validateProgram', () => {
       ...validObjectProgram,
       nodes: [
         ...validObjectProgram.nodes,
-        { id: 'move-2', type: 'method', text: 'Point.move', position: { x: 900, y: 0 } },
+        { id: 'move-2', type: 'method', text: 'move', position: { x: 900, y: 0 } },
         { id: 'move-2-end', type: 'return', text: 'self', position: { x: 900, y: 120 } },
       ],
       edges: [
         ...validObjectProgram.edges,
+        { id: 'point-move-2', source: 'point', target: 'move-2' },
         { id: 'm2', source: 'move-2', target: 'move-2-end' },
       ],
     }
@@ -614,11 +659,30 @@ describe('validateProgram', () => {
     )
   })
 
-  it('rejects Methods for missing Classes and Function/Class name conflicts', () => {
-    const missingClass: Program = {
+  it('allows different Classes to use the same bare Method name', () => {
+    const program: Program = {
+      ...validObjectProgram,
+      nodes: [
+        ...validObjectProgram.nodes,
+        { id: 'box', type: 'class', text: 'Box(value)', position: { x: 900, y: 0 } },
+        { id: 'box-move', type: 'method', text: 'move', position: { x: 900, y: 120 } },
+        { id: 'box-end', type: 'return', text: 'self', position: { x: 900, y: 240 } },
+      ],
+      edges: [
+        ...validObjectProgram.edges,
+        { id: 'box-move-owner', source: 'box', target: 'box-move' },
+        { id: 'box-move-flow', source: 'box-move', target: 'box-end' },
+      ],
+    }
+
+    expect(validateProgram(program).errors).toEqual([])
+  })
+
+  it('derives Method ownership from its Class edge and rejects name conflicts', () => {
+    const invalidQualifiedMethod: Program = {
       ...validObjectProgram,
       nodes: validObjectProgram.nodes.map((node) =>
-        node.id === 'move' ? { ...node, text: 'Missing.move' } : node,
+        node.id === 'move' ? { ...node, text: 'Point.move' } : node,
       ),
     }
     const conflictingName: Program = {
@@ -628,8 +692,8 @@ describe('validateProgram', () => {
       ),
     }
 
-    expect(validateProgram(missingClass).errors.join('\n')).toMatch(
-      /Method "Missing\.move" references missing Class "Missing"/i,
+    expect(validateProgram(invalidQualifiedMethod).errors.join('\n')).toMatch(
+      /Method node "move" has invalid text.*Method name/i,
     )
     expect(validateProgram(conflictingName).errors.join('\n')).toMatch(
       /Function and Class cannot both use the name "main"/i,

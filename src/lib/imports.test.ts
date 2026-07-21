@@ -38,11 +38,12 @@ const objectLibraryProgram: Program = {
     { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
     { id: 'main-end', type: 'return', text: '0', position: { x: 0, y: 100 } },
     { id: 'point', type: 'class', text: 'Point(x, y)', position: { x: 300, y: 0 } },
-    { id: 'move', type: 'method', text: 'Point.move', position: { x: 600, y: 0 } },
+    { id: 'move', type: 'method', text: 'move', position: { x: 600, y: 0 } },
     { id: 'move-end', type: 'return', text: 'self', position: { x: 600, y: 100 } },
   ],
   edges: [
     { id: 'e1', source: 'main', target: 'main-end' },
+    { id: 'point-move', source: 'point', target: 'move' },
     { id: 'm1', source: 'move', target: 'move-end' },
   ],
 }

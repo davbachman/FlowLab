@@ -110,7 +110,7 @@ const pointProgram: Program = {
   version: 1,
   nodes: [
     { id: 'point', type: 'class', text: 'Point(x, y)', position: { x: 500, y: 0 } },
-    { id: 'move', type: 'method', text: 'Point.move', position: { x: 750, y: 0 } },
+    { id: 'move', type: 'method', text: 'move', position: { x: 750, y: 0 } },
     { id: 'dx', type: 'input', text: 'dx', position: { x: 750, y: 100 } },
     { id: 'dy', type: 'input', text: 'dy', position: { x: 750, y: 200 } },
     {
@@ -146,6 +146,7 @@ const pointProgram: Program = {
     { id: 'end', type: 'return', text: 'p', position: { x: 0, y: 700 } },
   ],
   edges: [
+    { id: 'point-move', source: 'point', target: 'move' },
     { id: 'm1', source: 'move', target: 'dx' },
     { id: 'm2', source: 'dx', target: 'dy' },
     { id: 'm3', source: 'dy', target: 'set-x' },
@@ -1208,6 +1209,65 @@ describe('interpreter', () => {
     expect(state.nextObjectId).toBe(2)
   })
 
+  it('dispatches a bare Method name through its attached Class and can return a new object', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'date', type: 'class', text: 'Date(day)', position: { x: 400, y: 0 } },
+        { id: 'next-day', type: 'method', text: 'next_day', position: { x: 400, y: 120 } },
+        {
+          id: 'next-day-end',
+          type: 'return',
+          text: 'Date(self.day + 1)',
+          position: { x: 400, y: 240 },
+        },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'make-today',
+          type: 'assignment',
+          text: 'today <- Date(21)',
+          position: { x: 0, y: 120 },
+        },
+        {
+          id: 'make-tomorrow',
+          type: 'assignment',
+          text: 'tomorrow <- today.next_day()',
+          position: { x: 0, y: 240 },
+        },
+        {
+          id: 'show-days',
+          type: 'output',
+          text: '[today.day, tomorrow.day]',
+          position: { x: 0, y: 360 },
+        },
+        { id: 'end', type: 'return', text: 'tomorrow', position: { x: 0, y: 480 } },
+      ],
+      edges: [
+        { id: 'date-next-day', source: 'date', target: 'next-day' },
+        { id: 'next-day-flow', source: 'next-day', target: 'next-day-end' },
+        { id: 'main-1', source: 'main', target: 'make-today' },
+        { id: 'main-2', source: 'make-today', target: 'make-tomorrow' },
+        { id: 'main-3', source: 'make-tomorrow', target: 'show-days' },
+        { id: 'main-4', source: 'show-days', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual(['[21, 22]'])
+    expect(state.environment.today).toEqual({
+      kind: 'object',
+      id: 1,
+      className: 'Date',
+    })
+    expect(state.environment.tomorrow).toEqual({
+      kind: 'object',
+      id: 2,
+      className: 'Date',
+    })
+  })
+
   it('compares objects by identity', () => {
     const program: Program = {
       version: 1,
@@ -1276,11 +1336,11 @@ describe('interpreter', () => {
       version: 1,
       nodes: [
         { id: 'counter', type: 'class', text: 'Counter(value)', position: { x: 400, y: 0 } },
-        { id: 'choose', type: 'method', text: 'Counter.choose', position: { x: 650, y: 0 } },
+        { id: 'choose', type: 'method', text: 'choose', position: { x: 650, y: 0 } },
         { id: 'first', type: 'input', text: 'first', position: { x: 650, y: 100 } },
         { id: 'ignored', type: 'input', text: 'ignored', position: { x: 650, y: 200 } },
         { id: 'choose-end', type: 'return', text: 'first', position: { x: 650, y: 300 } },
-        { id: 'bump', type: 'method', text: 'Counter.bump', position: { x: 900, y: 0 } },
+        { id: 'bump', type: 'method', text: 'bump', position: { x: 900, y: 0 } },
         {
           id: 'increment',
           type: 'assignment',
@@ -1304,6 +1364,8 @@ describe('interpreter', () => {
         { id: 'end', type: 'return', text: 'p', position: { x: 0, y: 300 } },
       ],
       edges: [
+        { id: 'counter-choose', source: 'counter', target: 'choose' },
+        { id: 'counter-bump', source: 'counter', target: 'bump' },
         { id: 'choose-1', source: 'choose', target: 'first' },
         { id: 'choose-2', source: 'first', target: 'ignored' },
         { id: 'choose-3', source: 'ignored', target: 'choose-end' },
@@ -1327,7 +1389,7 @@ describe('interpreter', () => {
       version: 1,
       nodes: [
         { id: 'gate', type: 'class', text: 'Gate(flag, hits)', position: { x: 400, y: 0 } },
-        { id: 'a', type: 'method', text: 'Gate.a', position: { x: 650, y: 0 } },
+        { id: 'a', type: 'method', text: 'a', position: { x: 650, y: 0 } },
         {
           id: 'clear-flag',
           type: 'assignment',
@@ -1335,7 +1397,7 @@ describe('interpreter', () => {
           position: { x: 650, y: 100 },
         },
         { id: 'a-end', type: 'return', text: 'False', position: { x: 650, y: 200 } },
-        { id: 'b', type: 'method', text: 'Gate.b', position: { x: 900, y: 0 } },
+        { id: 'b', type: 'method', text: 'b', position: { x: 900, y: 0 } },
         {
           id: 'count-hit',
           type: 'assignment',
@@ -1360,6 +1422,8 @@ describe('interpreter', () => {
         { id: 'end', type: 'return', text: 'p', position: { x: 0, y: 400 } },
       ],
       edges: [
+        { id: 'gate-a', source: 'gate', target: 'a' },
+        { id: 'gate-b', source: 'gate', target: 'b' },
         { id: 'a-1', source: 'a', target: 'clear-flag' },
         { id: 'a-2', source: 'clear-flag', target: 'a-end' },
         { id: 'b-1', source: 'b', target: 'count-hit' },
@@ -1449,7 +1513,7 @@ describe('interpreter', () => {
       version: 1,
       nodes: [
         { id: 'import-box', type: 'class', text: 'Box(value, other)', position: { x: 400, y: 0 } },
-        { id: 'import-method', type: 'method', text: 'Box.getOther', position: { x: 650, y: 0 } },
+        { id: 'import-method', type: 'method', text: 'getOther', position: { x: 650, y: 0 } },
         { id: 'import-method-end', type: 'return', text: 'self.other', position: { x: 650, y: 100 } },
         { id: 'import-main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         { id: 'import-main-end', type: 'return', text: '0', position: { x: 0, y: 100 } },
@@ -1468,6 +1532,7 @@ describe('interpreter', () => {
         },
       ],
       edges: [
+        { id: 'box-method', source: 'import-box', target: 'import-method' },
         { id: 'm1', source: 'import-method', target: 'import-method-end' },
         { id: 'e1', source: 'import-main', target: 'import-main-end' },
         { id: 'f1', source: 'try-get', target: 'box-input' },
@@ -1503,12 +1568,13 @@ describe('interpreter', () => {
       version: 1,
       nodes: [
         { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
-        { id: 'get', type: 'method', text: 'Box.get', position: { x: 650, y: 0 } },
+        { id: 'get', type: 'method', text: 'get', position: { x: 650, y: 0 } },
         { id: 'get-end', type: 'return', text: 'self.value', position: { x: 650, y: 100 } },
         { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         { id: 'main-end', type: 'return', text: '0', position: { x: 0, y: 100 } },
       ],
       edges: [
+        { id: 'box-get', source: 'box', target: 'get' },
         { id: 'm1', source: 'get', target: 'get-end' },
         { id: 'e1', source: 'main', target: 'main-end' },
       ],

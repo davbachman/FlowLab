@@ -20,6 +20,7 @@ import {
   Handle,
   Position,
   ReactFlow,
+  useUpdateNodeInternals,
   type Connection,
   type EdgeChange,
   type EdgeTypes,
@@ -65,6 +66,9 @@ import {
 } from './lib/editorEdges'
 import {
   branchLabelFromHandle,
+  CLASS_METHOD_NEW_HANDLE,
+  classMethodHandleId,
+  METHOD_OWNER_HANDLE,
   sourceHandleForBranch,
   sourceHandleForBranchConnection,
 } from './lib/flowRouting'
@@ -93,7 +97,13 @@ interface FlowNodeData extends Record<string, unknown> {
   comment?: string
   isCurrent?: boolean
   trueBranchHandle?: string
+  attachedMethods?: AttachedMethodHandle[]
   onTextChange?: (nodeId: string, text: string) => void
+}
+
+interface AttachedMethodHandle {
+  nodeId: string
+  name: string
 }
 
 type EditorNode = Node<FlowNodeData, 'flowNode'>
@@ -204,7 +214,7 @@ const edgeTypes = {
 const DEFAULT_NODE_TEXT: Record<FlowNodeType, string> = {
   function: 'main',
   class: 'Point(x, y)',
-  method: 'Point.move',
+  method: 'move',
   return: '0',
   assignment: 'x <- x + 1',
   call: 'forward(50)',
@@ -594,6 +604,10 @@ function App() {
           ...node.data,
           isCurrent: node.id === currentNodeId,
           trueBranchHandle: trueBranchHandleForNode(node, edges),
+          attachedMethods:
+            node.data.nodeType === 'class'
+              ? attachedMethodsForClass(node.id, nodes, edges)
+              : undefined,
           onTextChange: updateNodeText,
         },
       })),
@@ -626,16 +640,26 @@ function App() {
         return
       }
 
+      const sourceNode = nodes.find((node) => node.id === connection.source)
+      const targetNode = nodes.find((node) => node.id === connection.target)
+      const isClassMethodAttachment =
+        sourceNode?.data.nodeType === 'class' &&
+        targetNode?.data.nodeType === 'method' &&
+        connection.sourceHandle === CLASS_METHOD_NEW_HANDLE &&
+        connection.targetHandle === METHOD_OWNER_HANDLE
+      const attachmentEdgeId = isClassMethodAttachment
+        ? nextEdgeId(connection, edges)
+        : null
+
       pushHistorySnapshot()
       setEdges((currentEdges) => {
-        const sourceNode = nodes.find((node) => node.id === connection.source)
         const branchLabel =
           branchLabelFromHandle(connection.sourceHandle) ??
           (sourceNode ? nextBranchLabel(sourceNode, currentEdges) : undefined)
 
         const edge: EditorEdge = {
           ...connection,
-          id: nextEdgeId(connection, currentEdges),
+          id: attachmentEdgeId ?? nextEdgeId(connection, currentEdges),
           source: connection.source,
           target: connection.target,
           sourceHandle:
@@ -652,9 +676,70 @@ function App() {
 
         return addEdge(edge, currentEdges)
       })
+
+      if (attachmentEdgeId) {
+        // Keep the edge on the already-measured open handle until React Flow
+        // has measured the newly expanded, method-specific handle row.
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              setEdges((currentEdges) =>
+                currentEdges.map((edge) =>
+                  edge.id === attachmentEdgeId
+                    ? {
+                        ...edge,
+                        sourceHandle: classMethodHandleId(connection.target),
+                      }
+                    : edge,
+                ),
+              )
+            })
+          })
+        })
+      }
+
       setExecution(null)
     },
-    [nodes, pushHistorySnapshot, setEdges],
+    [edges, nodes, pushHistorySnapshot, setEdges],
+  )
+
+  const isValidConnection = useCallback(
+    (connection: Connection | EditorEdge) => {
+      const sourceNode = nodes.find((node) => node.id === connection.source)
+      const targetNode = nodes.find((node) => node.id === connection.target)
+
+      if (!sourceNode || !targetNode) {
+        return false
+      }
+
+      const startsAtClass = sourceNode.data.nodeType === 'class'
+      const endsAtMethod = targetNode.data.nodeType === 'method'
+
+      if (startsAtClass || endsAtMethod) {
+        if (
+          !startsAtClass ||
+          !endsAtMethod ||
+          connection.sourceHandle !== CLASS_METHOD_NEW_HANDLE ||
+          connection.targetHandle !== METHOD_OWNER_HANDLE
+        ) {
+          return false
+        }
+
+        return !edges.some((edge) => {
+          if (edge.target !== targetNode.id) {
+            return false
+          }
+
+          return nodes.some(
+            (node) =>
+              node.id === edge.source && node.data.nodeType === 'class',
+          )
+        })
+      }
+
+      return true
+    },
+    [edges, nodes],
   )
 
   function selectNodeType(nodeType: FlowNodeType): void {
@@ -672,7 +757,7 @@ function App() {
       position: centerNodePosition(nodeType, position),
       data: {
         nodeType,
-        text: defaultNodeText(nodeType, nodes),
+        text: defaultNodeText(nodeType),
       },
     }
 
@@ -1400,6 +1485,7 @@ function App() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            isValidConnection={isValidConnection}
             onInit={setFlowInstance}
             onPaneClick={placePendingNode}
             onNodeClick={selectClickedNode}
@@ -1628,6 +1714,7 @@ function App() {
 }
 
 function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
+  const updateNodeInternals = useUpdateNodeInternals()
   const label = NODE_TYPE_LABELS[data.nodeType]
   const editable =
     data.nodeType === 'function' ||
@@ -1648,10 +1735,21 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
   const showTrueRightHandle =
     data.trueBranchHandle === undefined || data.trueBranchHandle === trueRightHandle
   const isDeclaration = data.nodeType === 'class'
-  const isFlowRoot = data.nodeType === 'function' || data.nodeType === 'method'
+  const isFunctionRoot = data.nodeType === 'function'
   const classSignature = isDeclaration
     ? tryParseClassDeclaration(data.text)
     : null
+  const attachedMethods = data.attachedMethods ?? []
+  const classMethodSlotCount = attachedMethods.length + 1
+  const attachedMethodIds = attachedMethods
+    .map((method) => method.nodeId)
+    .join('\u0000')
+
+  useEffect(() => {
+    if (typeof window.DOMMatrixReadOnly === 'function') {
+      updateNodeInternals(id)
+    }
+  }, [attachedMethodIds, id, updateNodeInternals])
 
   return (
     <div
@@ -1666,9 +1764,32 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
             : 'block'
       }
       aria-current={data.isCurrent ? 'step' : undefined}
+      style={
+        isDeclaration
+          ? ({
+              '--class-method-slot-count': classMethodSlotCount,
+              '--class-node-width': `${Math.max(
+                200,
+                classMethodSlotCount * 70 + 20,
+              )}px`,
+            } as CSSProperties)
+          : undefined
+      }
     >
-      {!isFlowRoot && !isDeclaration ? (
-        <Handle className="node-handle" type="target" position={Position.Top} />
+      {!isFunctionRoot && !isDeclaration ? (
+        <Handle
+          id={data.nodeType === 'method' ? METHOD_OWNER_HANDLE : undefined}
+          className={
+            data.nodeType === 'method'
+              ? 'node-handle method-owner-handle'
+              : 'node-handle'
+          }
+          type="target"
+          position={Position.Top}
+          aria-label={
+            data.nodeType === 'method' ? 'Owning class connection' : undefined
+          }
+        />
       ) : null}
       <div className="node-content">
         <div className="node-label">{label}</div>
@@ -1699,6 +1820,40 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
           <div className="fixed-node-text">{label}</div>
         )}
       </div>
+      {isDeclaration ? (
+        <div className="class-method-handles" aria-label="Method connections">
+          {attachedMethods.map((method) => (
+            <div
+              className="class-method-slot class-method-slot-attached"
+              key={method.nodeId}
+              title={`Connected to ${method.name}`}
+            >
+              <span className="class-method-name">{method.name}</span>
+              <Handle
+                id={classMethodHandleId(method.nodeId)}
+                className="node-handle class-method-handle"
+                type="source"
+                position={Position.Bottom}
+                isConnectableStart={false}
+                aria-label={`${method.name} method connection`}
+              />
+            </div>
+          ))}
+          <div
+            className="class-method-slot class-method-slot-new"
+            title="Attach another Method"
+          >
+            <span className="class-method-name">+ method</span>
+            <Handle
+              id={CLASS_METHOD_NEW_HANDLE}
+              className="node-handle class-method-handle"
+              type="source"
+              position={Position.Bottom}
+              aria-label="Attach another method"
+            />
+          </div>
+        </div>
+      ) : null}
       {isBranchNodeType(data.nodeType) ? (
         <>
           {showTrueLeftHandle ? (
@@ -2345,22 +2500,41 @@ function tryParseClassDeclaration(text: string): ClassDeclaration | null {
   }
 }
 
-function defaultNodeText(
-  nodeType: FlowNodeType,
+function defaultNodeText(nodeType: FlowNodeType): string {
+  return DEFAULT_NODE_TEXT[nodeType]
+}
+
+function attachedMethodsForClass(
+  classNodeId: string,
   nodes: EditorNode[],
-): string {
-  if (nodeType !== 'method') {
-    return DEFAULT_NODE_TEXT[nodeType]
-  }
+  edges: EditorEdge[],
+): AttachedMethodHandle[] {
+  const methodsById = new Map(
+    nodes
+      .filter((node) => node.data.nodeType === 'method')
+      .map((node) => [node.id, node] as const),
+  )
+  const seenMethodIds = new Set<string>()
 
-  const classDeclarations = nodes
-    .filter((node) => node.data.nodeType === 'class')
-    .map((node) => tryParseClassDeclaration(node.data.text))
-    .filter((declaration): declaration is ClassDeclaration => declaration !== null)
+  return edges.flatMap((edge) => {
+    if (edge.source !== classNodeId || seenMethodIds.has(edge.target)) {
+      return []
+    }
 
-  return classDeclarations.length === 1
-    ? `${classDeclarations[0].name}.move`
-    : DEFAULT_NODE_TEXT.method
+    const methodNode = methodsById.get(edge.target)
+
+    if (!methodNode) {
+      return []
+    }
+
+    seenMethodIds.add(methodNode.id)
+    return [
+      {
+        nodeId: methodNode.id,
+        name: methodNode.data.text.trim() || 'unnamed',
+      },
+    ]
+  })
 }
 
 function nextEdgeId(connection: Connection, edges: EditorEdge[]): string {
@@ -2387,7 +2561,7 @@ function centerNodePosition(
       : nodeType === 'assignment'
         ? 190
         : 170
-  const height = isBranchNodeType(nodeType) ? 142 : nodeType === 'class' ? 104 : 82
+  const height = isBranchNodeType(nodeType) ? 142 : nodeType === 'class' ? 138 : 82
 
   return {
     x: position.x - width / 2,

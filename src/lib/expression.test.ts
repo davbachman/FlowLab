@@ -262,7 +262,7 @@ describe('evaluateExpression', () => {
   it('rejects language keywords in Class fields and Method names', () => {
     expect(() => parseClassDeclaration('and(value)')).toThrow(/non-reserved/i)
     expect(() => parseClassDeclaration('Point(or)')).toThrow(/valid name/i)
-    expect(() => parseMethodDeclaration('Point.not')).toThrow(/non-reserved/i)
+    expect(() => parseMethodDeclaration('not')).toThrow(/non-reserved/i)
   })
 
   it('supports zero-based string indexing', () => {
@@ -351,16 +351,16 @@ describe('class and method declarations', () => {
     )
   })
 
-  it('parses qualified method declarations and rejects malformed ones', () => {
-    expect(parseMethodDeclaration(' Point . move ')).toEqual({
-      className: 'Point',
+  it('parses bare method declarations and rejects qualified names', () => {
+    expect(parseMethodDeclaration(' move ')).toEqual({
       methodName: 'move',
     })
-    expect(() => parseMethodDeclaration('Point')).toThrow(
-      /Method must use the form/,
-    )
+    expect(parseMethodDeclaration('next_day')).toEqual({
+      methodName: 'next_day',
+    })
+    expect(() => parseMethodDeclaration('Point.move')).toThrow(/Method name/)
     expect(() => parseMethodDeclaration('Point.move.again')).toThrow(
-      /Method must use the form/,
+      /Method name/,
     )
   })
 })

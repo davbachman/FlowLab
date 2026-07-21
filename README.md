@@ -13,7 +13,7 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 - Flowchart blocks for Function, Class, Method, Return, Assignment, Call, Input, Output, If, While, and For.
 - Editable Function names. Execution starts at the `main` Function.
 - Multiple disjoint function flowcharts on the same canvas.
-- Class declarations with ordered fields, positional object construction, field access, field assignment, and methods.
+- Class declarations with ordered fields, expandable method handles, positional object construction, field access, field assignment, and methods.
 - Expandable object values in the Variables panel, including stable class-and-identity labels such as `Point #1`.
 - Function calls inside block expressions, such as `x <- helper(5)`.
 - Function calls pass their arguments as the called function's local input queue.
@@ -58,9 +58,10 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 
 ## Classes and objects
 
-- A Class block declares a class name and its ordered fields with `ClassName(field1, field2)`, for example `Point(x, y)`. Class blocks are declarations, so they remain disconnected and have no flow handles.
+- A Class block declares a class name and its ordered fields with `ClassName(field1, field2)`, for example `Point(x, y)`.
 - Calling the class name constructs an object and initializes the fields positionally. For example, `p <- Point(2, 3)` creates a `Point` whose `x` is `2` and `y` is `3`.
-- A Method block starts a separate method flow with `ClassName.methodName`, for example `Point.move`. Connect its outgoing handle to the first step of the method just as you would for a Function.
+- To add a method, connect the Class block's dashed `+ method` handle to the top handle of a Method block. The Class block grows a named handle for every attached method and keeps a new `+ method` handle available.
+- A Method block contains only the method name, for example `move`, because its incoming Class connection determines which class it belongs to. Connect the Method block's outgoing handle to the first step of the method just as you would for a Function.
 - Inside a method, `self` is the object that received the call and cannot be replaced by an Input, Assignment, or For block. Method arguments are read by Input blocks in order; a `Point.move` flow can read `dx` and `dy`, then use `self.x <- self.x + dx` and `self.y <- self.y + dy`.
 - Call methods with dot notation in expressions or Call blocks, such as `moved <- p.move(5, -1)` or `p.move(5, -1)`.
 - Assigning an object to another variable creates an alias, not a copy: after `q <- p`, both variables display the same identity, such as `Point #1`, and changes through either name are shared.
@@ -71,4 +72,4 @@ The first class release intentionally omits inheritance, access modifiers and pr
 
 ## Instructions for use
 
-Add definition and step blocks to the canvas, connect executable flows with arrows, and edit each block's text directly. Leave Class declarations disconnected. Use the input queue panel for queued input values, then press Reset, Step, or Run to execute from the `main` Function and inspect variables and output. Choose **Object Sample** to load a complete `Point` class and method example.
+Add definition and step blocks to the canvas, connect executable flows with arrows, and edit each block's text directly. Attach each Method to its Class from the Class block's `+ method` handle, then build the method's executable flow from the Method block's bottom handle. Use the input queue panel for queued input values, then press Reset, Step, or Run to execute from the `main` Function and inspect variables and output. Choose **Object Sample** to load a complete `Point` class and method example.

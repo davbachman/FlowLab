@@ -36,7 +36,6 @@ export interface ClassDeclaration {
 }
 
 export interface MethodDeclaration {
-  className: string
   methodName: string
 }
 
@@ -85,19 +84,13 @@ export function parseClassDeclaration(text: string): ClassDeclaration {
 }
 
 export function parseMethodDeclaration(text: string): MethodDeclaration {
-  const match = text.match(
-    /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/,
-  )
+  const methodName = text.trim()
 
-  if (!match) {
-    throw new Error('Method must use the form: ClassName.methodName')
+  if (!isVariableName(methodName)) {
+    throw new Error('Method name must be a valid, non-reserved name')
   }
 
-  if (!isVariableName(match[1]) || !isVariableName(match[2])) {
-    throw new Error('Method class and method names must be valid, non-reserved names')
-  }
-
-  return { className: match[1], methodName: match[2] }
+  return { methodName }
 }
 
 export function parseAssignment(text: string): AssignmentStatement {

@@ -12,9 +12,9 @@ import {
   parseAssignment,
   parseClassDeclaration,
   parseForLoop,
-  parseMethodDeclaration,
   type AssignmentTarget,
 } from './statements'
+import { attachedMethodDefinition } from './classMethods'
 import {
   isBranchNodeType,
   type BranchLabel,
@@ -1766,11 +1766,9 @@ function buildImportedDefinitions(
         // The current program's validation reports malformed declarations.
       }
     } else if (node.type === 'method') {
-      try {
-        const method = parseMethodDeclaration(node.text)
-        claimedMethodNames.add(`${method.className}.${method.methodName}`)
-      } catch {
-        // The current program's validation reports malformed declarations.
+      const method = attachedMethodDefinition(program, node)
+      if (method) {
+        claimedMethodNames.add(method.qualifiedName)
       }
     }
   }
@@ -1817,27 +1815,23 @@ function buildImportedDefinitions(
         continue
       }
 
-      try {
-        const declaration = parseMethodDeclaration(node.text)
-        const name = `${declaration.className}.${declaration.methodName}`
-        if (
-          classOwnerIndexes.get(declaration.className) !== programIndex ||
-          claimedMethodNames.has(name)
-        ) {
-          continue
-        }
-
-        claimedMethodNames.add(name)
-        methods.push({
-          name,
-          className: declaration.className,
-          methodName: declaration.methodName,
-          program: importedProgram,
-          node,
-        })
-      } catch {
-        // Imported programs are validated before execution.
+      const declaration = attachedMethodDefinition(importedProgram, node)
+      if (
+        !declaration ||
+        classOwnerIndexes.get(declaration.className) !== programIndex ||
+        claimedMethodNames.has(declaration.qualifiedName)
+      ) {
+        continue
       }
+
+      claimedMethodNames.add(declaration.qualifiedName)
+      methods.push({
+        name: declaration.qualifiedName,
+        className: declaration.className,
+        methodName: declaration.methodName,
+        program: importedProgram,
+        node,
+      })
     }
   }
 
@@ -1856,16 +1850,7 @@ function findFunctionNode(
 
 function findMethodNode(program: Program, name: string): ProgramNode | undefined {
   return program.nodes.find((candidate) => {
-    if (candidate.type !== 'method') {
-      return false
-    }
-
-    try {
-      const method = parseMethodDeclaration(candidate.text)
-      return `${method.className}.${method.methodName}` === name
-    } catch {
-      return false
-    }
+    return attachedMethodDefinition(program, candidate)?.qualifiedName === name
   })
 }
 

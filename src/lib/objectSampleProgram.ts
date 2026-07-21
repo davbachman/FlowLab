@@ -12,38 +12,38 @@ export const objectSampleProgram: Program = {
     {
       id: 'point-move',
       type: 'method',
-      text: 'Point.move',
-      position: { x: 20, y: 150 },
+      text: 'move',
+      position: { x: 20, y: 220 },
     },
     {
       id: 'move-dx',
       type: 'input',
       text: 'dx',
-      position: { x: 20, y: 260 },
+      position: { x: 20, y: 330 },
     },
     {
       id: 'move-dy',
       type: 'input',
       text: 'dy',
-      position: { x: 20, y: 370 },
+      position: { x: 20, y: 440 },
     },
     {
       id: 'move-x',
       type: 'assignment',
       text: 'self.x <- self.x + dx',
-      position: { x: 20, y: 480 },
+      position: { x: 20, y: 550 },
     },
     {
       id: 'move-y',
       type: 'assignment',
       text: 'self.y <- self.y + dy',
-      position: { x: 20, y: 590 },
+      position: { x: 20, y: 660 },
     },
     {
       id: 'move-return',
       type: 'return',
       text: 'self',
-      position: { x: 20, y: 700 },
+      position: { x: 20, y: 770 },
     },
     {
       id: 'object-main',
@@ -95,6 +95,7 @@ export const objectSampleProgram: Program = {
     },
   ],
   edges: [
+    { id: 'edge-point-move', source: 'point-class', target: 'point-move' },
     { id: 'edge-move-dx', source: 'point-move', target: 'move-dx' },
     { id: 'edge-dx-dy', source: 'move-dx', target: 'move-dy' },
     { id: 'edge-dy-x', source: 'move-dy', target: 'move-x' },

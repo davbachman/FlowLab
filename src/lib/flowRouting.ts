@@ -17,6 +17,12 @@ export const FOR_TRUE_HANDLE = 'for-true'
 export const FOR_TRUE_RIGHT_HANDLE = 'for-true-right'
 export const FOR_FALSE_HANDLE = 'for-false'
 export const DECISION_LOOPBACK_TARGET_HANDLE = 'decision-loopback-target'
+export const CLASS_METHOD_NEW_HANDLE = 'class-method-new'
+export const METHOD_OWNER_HANDLE = 'method-owner'
+
+export function classMethodHandleId(methodNodeId: string): string {
+  return `class-method-${methodNodeId}`
+}
 
 export type TrueBranchHandleSide = 'left' | 'right'
 
@@ -103,6 +109,15 @@ export function sourceHandleForProgramEdge(
   currentSourceHandle?: string | null,
 ): string | undefined {
   const sourceNode = program.nodes.find((node) => node.id === edge.source)
+  const targetNode = program.nodes.find((node) => node.id === edge.target)
+
+  if (sourceNode?.type === 'class' && targetNode?.type === 'method') {
+    if (currentSourceHandle === CLASS_METHOD_NEW_HANDLE) {
+      return currentSourceHandle
+    }
+
+    return classMethodHandleId(targetNode.id)
+  }
 
   return sourceNode && edge.label
     ? sourceHandleForBranchConnection(
@@ -127,6 +142,13 @@ export function targetHandleForProgramEdge(
   program: Program,
   edge: ProgramEdge,
 ): string | undefined {
+  const sourceNode = program.nodes.find((node) => node.id === edge.source)
+  const targetNode = program.nodes.find((node) => node.id === edge.target)
+
+  if (sourceNode?.type === 'class' && targetNode?.type === 'method') {
+    return METHOD_OWNER_HANDLE
+  }
+
   if (isLoopBackToDecision(program, edge)) {
     return undefined
   }

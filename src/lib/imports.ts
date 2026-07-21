@@ -1,5 +1,6 @@
 import type { Program } from './types'
-import { parseClassDeclaration, parseMethodDeclaration } from './statements'
+import { parseClassDeclaration } from './statements'
+import { attachedMethodDefinition } from './classMethods'
 import { TEXT_FUNCTION_NAMES, TEXT_LIBRARY_NAME } from './text'
 import { TURTLE_COMMAND_NAMES, TURTLE_LIBRARY_NAME } from './turtle'
 import { normalizeImportedProgram, validateProgram } from './validation'
@@ -243,7 +244,7 @@ export function importWarnings(
       }
 
       if (node.type === 'method') {
-        const method = methodDetailsForNode(node)
+        const method = methodDetailsForNode(file.program, node)
         if (!method) {
           continue
         }
@@ -251,7 +252,8 @@ export function importWarnings(
         const classWinner = callableWinners.get(method.className)
         if (
           classWinner?.node.type !== 'class' ||
-          classWinner.fileIndex !== fileIndex
+          classWinner.fileIndex !== fileIndex ||
+          classWinner.node !== method.classNode
         ) {
           continue
         }
@@ -419,7 +421,11 @@ function currentProgramCallableNames(program: Program): Set<string> {
 }
 
 function currentProgramMethodNames(program: Program): Set<string> {
-  return new Set(program.nodes.map(methodNameForNode).filter(Boolean) as string[])
+  return new Set(
+    program.nodes
+      .map((node) => methodDetailsForNode(program, node)?.qualifiedName)
+      .filter(Boolean) as string[],
+  )
 }
 
 function importedCallableWinners(
@@ -461,26 +467,20 @@ function classNameForNode(node: Program['nodes'][number]): string | undefined {
   }
 }
 
-function methodNameForNode(node: Program['nodes'][number]): string | undefined {
-  return methodDetailsForNode(node)?.qualifiedName
-}
-
 function methodDetailsForNode(
+  program: Program,
   node: Program['nodes'][number],
-): { className: string; qualifiedName: string } | undefined {
-  if (node.type !== 'method') {
-    return undefined
-  }
-
-  try {
-    const method = parseMethodDeclaration(node.text)
-    return {
-      className: method.className,
-      qualifiedName: `${method.className}.${method.methodName}`,
-    }
-  } catch {
-    return undefined
-  }
+):
+  | { className: string; qualifiedName: string; classNode: Program['nodes'][number] }
+  | undefined {
+  const method = attachedMethodDefinition(program, node)
+  return method
+    ? {
+        className: method.className,
+        qualifiedName: method.qualifiedName,
+        classNode: method.classNode,
+      }
+    : undefined
 }
 
 function browserStorage(): Storage | null {

@@ -8,7 +8,10 @@ import { DELETE_KEY_CODES, programToEdges } from './lib/editorEdges'
 import { registerFlowLabProgram } from './lib/imports'
 import { objectSampleProgram } from './lib/objectSampleProgram'
 import {
+  CLASS_METHOD_NEW_HANDLE,
   DECISION_LOOPBACK_TARGET_HANDLE,
+  METHOD_OWNER_HANDLE,
+  classMethodHandleId,
   edgeTypeForProgramEdge,
   getLoopbackPath,
   loopbackJoinOffsetForProgramEdge,
@@ -332,6 +335,38 @@ const multilineVariableProgram: Program = {
   ],
 }
 
+const objectProgramWithTwoMethods: Program = {
+  ...objectSampleProgram,
+  nodes: [
+    ...objectSampleProgram.nodes,
+    {
+      id: 'point-reset',
+      type: 'method',
+      text: 'reset',
+      position: { x: 220, y: 150 },
+    },
+    {
+      id: 'reset-return',
+      type: 'return',
+      text: 'Point(0, 0)',
+      position: { x: 220, y: 260 },
+    },
+  ],
+  edges: [
+    ...objectSampleProgram.edges,
+    {
+      id: 'edge-point-reset',
+      source: 'point-class',
+      target: 'point-reset',
+    },
+    {
+      id: 'edge-reset-return',
+      source: 'point-reset',
+      target: 'reset-return',
+    },
+  ],
+}
+
 describe('App', () => {
   afterEach(() => {
     delete (window as TestWindowWithFilePickers).showSaveFilePicker
@@ -519,9 +554,22 @@ describe('App', () => {
     const methodNode = screen.getByTestId('flow-node-point-move')
 
     expect(classNode).toHaveAttribute('data-shape', 'declaration')
-    expect(classNode.querySelector('[data-handlepos]')).not.toBeInTheDocument()
-    expect(methodNode.querySelector('[data-handlepos="top"]')).not.toBeInTheDocument()
+    expect(
+      classNode.querySelector(
+        `[data-handleid="${classMethodHandleId('point-move')}"]`,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      classNode.querySelector(`[data-handleid="${CLASS_METHOD_NEW_HANDLE}"]`),
+    ).toBeInTheDocument()
+    expect(
+      methodNode.querySelector(`[data-handleid="${METHOD_OWNER_HANDLE}"]`),
+    ).toHaveAttribute('data-handlepos', 'top')
     expect(methodNode.querySelector('[data-handlepos="bottom"]')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('move')).toBeInTheDocument()
+    expect(
+      within(classNode).getByLabelText(/Method connections/i),
+    ).toHaveTextContent('move+ method')
     expect(within(classNode).getByLabelText(/Declared fields/i)).toHaveTextContent(
       'xy',
     )
@@ -556,6 +604,47 @@ describe('App', () => {
     expect(within(pRow as HTMLElement).getByText('7')).toBeInTheDocument()
     expect(within(pRow as HTMLElement).getByText('y')).toBeInTheDocument()
     expect(within(pRow as HTMLElement).getByText('2')).toBeInTheDocument()
+  })
+
+  it('expands a Class connector row for every attached Method plus one open slot', async () => {
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText(/^Import$/i), {
+      target: {
+        files: [
+          new File(
+            [JSON.stringify(objectProgramWithTwoMethods)],
+            'two-methods.json',
+            { type: 'application/json' },
+          ),
+        ],
+      },
+    })
+
+    await screen.findByDisplayValue('reset')
+    const classNode = screen.getByTestId('flow-node-point-class')
+    const connectorRow = within(classNode).getByLabelText(/Method connections/i)
+
+    expect(classNode).toHaveStyle({
+      '--class-method-slot-count': '3',
+      '--class-node-width': '230px',
+    })
+    expect(connectorRow).toHaveTextContent('movereset+ method')
+    expect(
+      connectorRow.querySelector(
+        `[data-handleid="${classMethodHandleId('point-move')}"]`,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      connectorRow.querySelector(
+        `[data-handleid="${classMethodHandleId('point-reset')}"]`,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      connectorRow.querySelector(
+        `[data-handleid="${CLASS_METHOD_NEW_HANDLE}"]`,
+      ),
+    ).toBeInTheDocument()
   })
 
   it('shows the active method flow and highlights its root while stepping', async () => {
@@ -1509,7 +1598,7 @@ describe('App', () => {
     expect(screen.getAllByDisplayValue('main')).toHaveLength(1)
   })
 
-  it('places disconnected Class declarations and prefills Methods from one valid class', async () => {
+  it('places Classes with an open Method connector and Methods with an owner input', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
     const pane = container.querySelector('.react-flow__pane')
@@ -1522,7 +1611,9 @@ describe('App', () => {
     const classInput = screen.getByDisplayValue('Point(x, y)')
 
     expect(classNode).toHaveAttribute('data-shape', 'declaration')
-    expect(classNode.querySelector('[data-handlepos]')).not.toBeInTheDocument()
+    expect(
+      classNode.querySelector(`[data-handleid="${CLASS_METHOD_NEW_HANDLE}"]`),
+    ).toHaveAttribute('data-handlepos', 'bottom')
     expect(within(classNode).getByText('x')).toHaveClass('class-field')
     expect(within(classNode).getByText('y')).toHaveClass('class-field')
 
@@ -1533,8 +1624,10 @@ describe('App', () => {
 
     const methodNode = screen.getByTestId('flow-node-method-1')
 
-    expect(screen.getByDisplayValue('Vector.move')).toBeInTheDocument()
-    expect(methodNode.querySelector('[data-handlepos="top"]')).not.toBeInTheDocument()
+    expect(screen.getByDisplayValue('move')).toBeInTheDocument()
+    expect(
+      methodNode.querySelector(`[data-handleid="${METHOD_OWNER_HANDLE}"]`),
+    ).toHaveAttribute('data-handlepos', 'top')
     expect(methodNode.querySelector('[data-handlepos="bottom"]')).toBeInTheDocument()
   })
 

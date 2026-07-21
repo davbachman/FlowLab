@@ -333,13 +333,8 @@ button:disabled {
   border-radius: 999px;
 }
 
-.flow-node-method {
-  border-color: #7c3aed;
-  background: #fbf8ff;
-}
-
 .flow-node-class {
-  width: 200px;
+  width: var(--class-node-width, 200px);
   border-color: #7c3aed;
   background: #f4f0ff;
   box-shadow: 0 8px 18px rgba(76, 29, 149, 0.1);
@@ -369,6 +364,59 @@ button:disabled {
   color: #5925dc;
   font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   padding: 3px 7px;
+}
+
+.class-method-handles {
+  display: grid;
+  grid-template-columns: repeat(var(--class-method-slot-count, 1), minmax(54px, 1fr));
+  gap: 6px;
+  margin: 9px -10px -10px;
+  border-top: 1px solid #d9d0fe;
+  border-radius: 0 0 6px 6px;
+  background: #ebe6ff;
+  padding: 7px 7px 10px;
+}
+
+.class-method-slot {
+  position: relative;
+  min-width: 0;
+  border: 1px solid #c3b5fd;
+  border-radius: 5px;
+  background: #ffffff;
+  padding: 4px 5px 7px;
+}
+
+.class-method-name {
+  display: block;
+  overflow: hidden;
+  color: #5925dc;
+  font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.class-method-slot-new {
+  border-style: dashed;
+  background: #f8f6ff;
+}
+
+.class-method-slot-new .class-method-name {
+  color: #6941c6;
+}
+
+.class-method-handle.react-flow__handle-bottom {
+  bottom: -7px;
+  background: #7c3aed;
+  border-color: #ffffff;
+}
+
+.class-method-slot-new .class-method-handle {
+  background: #ffffff;
+  border-color: #7c3aed;
+}
+
+.method-owner-handle.react-flow__handle-top {
+  background: #7c3aed;
 }
 
 .flow-node-if,

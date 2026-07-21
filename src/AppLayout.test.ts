@@ -116,11 +116,16 @@ describe('app layout scrolling', () => {
     })
   })
 
-  it('distinguishes class declarations while keeping method roots pill-shaped', () => {
+  it('expands class method slots while keeping methods function-shaped', () => {
     expect(declarationsFor('.flow-node-class')).toMatchObject({
-      width: '200px',
+      width: 'var(--class-node-width, 200px)',
       'border-color': '#7c3aed',
       background: '#f4f0ff',
+    })
+    expect(declarationsFor('.class-method-handles')).toMatchObject({
+      display: 'grid',
+      'grid-template-columns':
+        'repeat(var(--class-method-slot-count, 1), minmax(54px, 1fr))',
     })
     expect(
       declarationsFor(
@@ -129,6 +134,7 @@ describe('app layout scrolling', () => {
     ).toMatchObject({
       'border-radius': '999px',
     })
+    expect(appCss).not.toMatch(/\n\.flow-node-method\s*\{/)
   })
 
   it('keeps the three-column editor layout at zoomed desktop widths', () => {

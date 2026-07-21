@@ -4,6 +4,7 @@ import {
   parseCallExpression,
   parseExpression,
 } from './expression'
+import { attachedMethodDefinition } from './classMethods'
 import {
   isVariableName,
   parseAssignment,
@@ -136,6 +137,9 @@ export function validateProgram(
     }
   }
 
+  const outgoingByNode = groupEdges(program.edges, 'source')
+  const incomingByNode = groupEdges(program.edges, 'target')
+
   const functions = program.nodes.filter((node) => node.type === 'function')
   const classes = program.nodes.filter((node) => node.type === 'class')
   const methods = program.nodes.filter((node) => node.type === 'method')
@@ -197,26 +201,15 @@ export function validateProgram(
   }
 
   for (const node of methods) {
-    try {
-      const declaration = parseMethodDeclaration(node.text)
-      const qualifiedName = `${declaration.className}.${declaration.methodName}`
+    const definition = attachedMethodDefinition(program, node)
+    if (!definition) {
+      continue
+    }
 
-      if (methodsByName.has(qualifiedName)) {
-        duplicateMethodNames.add(qualifiedName)
-      } else {
-        methodsByName.set(qualifiedName, node)
-      }
-
-      if (
-        !classesByName.has(declaration.className) &&
-        !options.externalClassNames?.has(declaration.className)
-      ) {
-        errors.push(
-          `Method "${qualifiedName}" references missing Class "${declaration.className}".`,
-        )
-      }
-    } catch {
-      // Invalid Method text is reported by validateNodeText.
+    if (methodsByName.has(definition.qualifiedName)) {
+      duplicateMethodNames.add(definition.qualifiedName)
+    } else {
+      methodsByName.set(definition.qualifiedName, node)
     }
   }
 
@@ -238,21 +231,47 @@ export function validateProgram(
     errors.push('Program must have at least one Return node.')
   }
 
-  const outgoingByNode = groupEdges(program.edges, 'source')
-  const incomingByNode = groupEdges(program.edges, 'target')
-
   for (const node of program.nodes) {
     const outgoing = outgoingByNode.get(node.id) ?? []
     const incoming = incomingByNode.get(node.id) ?? []
 
     if (node.type === 'class') {
-      if (incoming.length > 0 || outgoing.length > 0) {
-        errors.push(`Class node "${node.id}" cannot have incoming or outgoing edges.`)
+      if (incoming.length > 0) {
+        errors.push(`Class node "${node.id}" cannot have incoming edges.`)
+      }
+      rejectBranchLabelsFrom(outgoing, errors)
+      for (const edge of outgoing) {
+        const target = nodesById.get(edge.target)
+        if (target && target.type !== 'method') {
+          errors.push(
+            `Class node "${node.id}" may connect only to Method nodes.`,
+          )
+        }
       }
       continue
     }
 
-    if (node.type === 'function' || node.type === 'method') {
+    if (node.type === 'method') {
+      if (incoming.length !== 1) {
+        errors.push(
+          `Method node "${node.id}" must have exactly one incoming edge from a Class.`,
+        )
+      } else {
+        const owner = nodesById.get(incoming[0].source)
+        if (owner && owner.type !== 'class') {
+          errors.push(
+            `Method node "${node.id}" must receive its incoming edge from a Class.`,
+          )
+        }
+      }
+      rejectBranchLabelsFrom(incoming, errors)
+      requireOutgoingCount(node, outgoing, 1, errors)
+      rejectBranchLabelsFrom(outgoing, errors)
+      rejectDeclarationTargets(node, outgoing, nodesById, errors)
+      continue
+    }
+
+    if (node.type === 'function') {
       if (incoming.length > 0) {
         errors.push(
           `${NODE_TYPE_LABELS[node.type]} node "${node.id}" cannot have incoming edges.`,
@@ -260,6 +279,7 @@ export function validateProgram(
       }
       requireOutgoingCount(node, outgoing, 1, errors)
       rejectBranchLabelsFrom(outgoing, errors)
+      rejectDeclarationTargets(node, outgoing, nodesById, errors)
       continue
     }
 
@@ -440,6 +460,27 @@ function rejectBranchLabelsFrom(outgoing: ProgramEdge[], errors: string[]): void
     if (edge.label !== undefined) {
       errors.push(
         `Edge "${edge.id}" has a branch label, but only If, While, and For nodes may use true/false labels.`,
+      )
+    }
+  }
+}
+
+function rejectDeclarationTargets(
+  node: ProgramNode,
+  outgoing: ProgramEdge[],
+  nodesById: Map<string, ProgramNode>,
+  errors: string[],
+): void {
+  for (const edge of outgoing) {
+    const target = nodesById.get(edge.target)
+    if (
+      target &&
+      (target.type === 'function' ||
+        target.type === 'class' ||
+        target.type === 'method')
+    ) {
+      errors.push(
+        `${NODE_TYPE_LABELS[node.type]} node "${node.id}" must connect to an executable node.`,
       )
     }
   }
