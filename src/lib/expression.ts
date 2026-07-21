@@ -41,7 +41,7 @@ interface Token {
 
 type Expression =
   | { kind: 'literal'; value: RuntimeValue }
-  | { kind: 'variable'; name: string }
+  | { kind: 'variable'; name: string; siteId: number }
   | { kind: 'list'; items: Expression[] }
   | {
       kind: 'dictionary'
@@ -57,14 +57,39 @@ type Expression =
       arguments: Expression[]
       siteId: number
     }
-  | { kind: 'unary'; operator: '-' | 'not'; right: Expression }
-  | { kind: 'binary'; operator: string; left: Expression; right: Expression }
+  | {
+      kind: 'unary'
+      operator: '-' | 'not'
+      right: Expression
+      siteId: number
+    }
+  | {
+      kind: 'binary'
+      operator: string
+      left: Expression
+      right: Expression
+      siteId: number
+    }
 
 const COMPARISON_OPERATORS = new Set(['<', '<=', '>', '>=', '=', '==', '!='])
+const LEFT_ONLY_OBJECT_OPERATORS = new Set([
+  '+',
+  '-',
+  '*',
+  '/',
+  '<',
+  '<=',
+  '>',
+  '>=',
+])
 const WORD_OPERATORS = new Set(['and', 'or', 'not'])
 const BUILT_IN_FUNCTIONS = new Set(['sqrt', 'rand', 'ask'])
 
 export interface ExpressionEvaluationContext {
+  getVariable?: (
+    name: string,
+    siteId: number,
+  ) => RuntimeValue | undefined
   callFunction?: (
     name: string,
     args: RuntimeValue[],
@@ -81,6 +106,12 @@ export interface ExpressionEvaluationContext {
     args: RuntimeValue[],
     siteId: number,
   ) => RuntimeValue
+  applyObjectOperator?: (
+    object: RuntimeObject,
+    operator: string,
+    args: RuntimeValue[],
+    siteId: number,
+  ) => RuntimeValue | undefined
   random?: (siteId: number) => number
 }
 
@@ -324,6 +355,7 @@ function readIdentifier(
 class Parser {
   private position = 0
   private nextSiteId = 0
+  private nextOperatorSiteId = -1
   private readonly tokens: Token[]
 
   constructor(tokens: Token[]) {
@@ -344,7 +376,13 @@ class Parser {
     while (this.peek().type === 'operator' && this.peek().value === 'or') {
       const operator = this.advance().value
       const right = this.and()
-      expression = { kind: 'binary', operator, left: expression, right }
+      expression = {
+        kind: 'binary',
+        operator,
+        left: expression,
+        right,
+        siteId: this.allocateOperatorSiteId(),
+      }
     }
 
     return expression
@@ -356,7 +394,13 @@ class Parser {
     while (this.peek().type === 'operator' && this.peek().value === 'and') {
       const operator = this.advance().value
       const right = this.not()
-      expression = { kind: 'binary', operator, left: expression, right }
+      expression = {
+        kind: 'binary',
+        operator,
+        left: expression,
+        right,
+        siteId: this.allocateOperatorSiteId(),
+      }
     }
 
     return expression
@@ -365,7 +409,12 @@ class Parser {
   private not(): Expression {
     if (this.peek().type === 'operator' && this.peek().value === 'not') {
       this.advance()
-      return { kind: 'unary', operator: 'not', right: this.not() }
+      return {
+        kind: 'unary',
+        operator: 'not',
+        right: this.not(),
+        siteId: this.allocateOperatorSiteId(),
+      }
     }
 
     return this.comparison()
@@ -380,7 +429,13 @@ class Parser {
     ) {
       const operator = this.advance().value
       const right = this.additive()
-      expression = { kind: 'binary', operator, left: expression, right }
+      expression = {
+        kind: 'binary',
+        operator,
+        left: expression,
+        right,
+        siteId: this.allocateOperatorSiteId(),
+      }
     }
 
     return expression
@@ -395,7 +450,13 @@ class Parser {
     ) {
       const operator = this.advance().value
       const right = this.multiplicative()
-      expression = { kind: 'binary', operator, left: expression, right }
+      expression = {
+        kind: 'binary',
+        operator,
+        left: expression,
+        right,
+        siteId: this.allocateOperatorSiteId(),
+      }
     }
 
     return expression
@@ -410,7 +471,13 @@ class Parser {
     ) {
       const operator = this.advance().value
       const right = this.unary()
-      expression = { kind: 'binary', operator, left: expression, right }
+      expression = {
+        kind: 'binary',
+        operator,
+        left: expression,
+        right,
+        siteId: this.allocateOperatorSiteId(),
+      }
     }
 
     return expression
@@ -419,7 +486,12 @@ class Parser {
   private unary(): Expression {
     if (this.peek().type === 'operator' && this.peek().value === '-') {
       this.advance()
-      return { kind: 'unary', operator: '-', right: this.unary() }
+      return {
+        kind: 'unary',
+        operator: '-',
+        right: this.unary(),
+        siteId: this.allocateOperatorSiteId(),
+      }
     }
 
     return this.postfix()
@@ -460,7 +532,7 @@ class Parser {
             kind: 'call',
             name: expression.name,
             arguments: args,
-            siteId: this.allocateSiteId(),
+            siteId: expression.siteId,
           }
           continue
         }
@@ -505,7 +577,11 @@ class Parser {
         return { kind: 'literal', value: false }
       }
 
-      return { kind: 'variable', name: token.value }
+      return {
+        kind: 'variable',
+        name: token.value,
+        siteId: this.allocateSiteId(),
+      }
     }
 
     if (token.type === 'leftParen') {
@@ -532,6 +608,12 @@ class Parser {
   private allocateSiteId(): number {
     const siteId = this.nextSiteId
     this.nextSiteId += 1
+    return siteId
+  }
+
+  private allocateOperatorSiteId(): number {
+    const siteId = this.nextOperatorSiteId
+    this.nextOperatorSiteId -= 1
     return siteId
   }
 
@@ -702,10 +784,18 @@ function evaluate(
     case 'literal':
       return expression.value
     case 'variable':
-      if (!Object.prototype.hasOwnProperty.call(environment, expression.name)) {
-        throw new Error(`Undefined variable "${expression.name}"`)
+      if (Object.prototype.hasOwnProperty.call(environment, expression.name)) {
+        return environment[expression.name]
       }
-      return environment[expression.name]
+
+      if (context.getVariable) {
+        const value = context.getVariable(expression.name, expression.siteId)
+        if (value !== undefined) {
+          return value
+        }
+      }
+
+      throw new Error(`Undefined variable "${expression.name}"`)
     case 'list':
       return expression.items.map((item) => evaluate(item, environment, context))
     case 'dictionary':
@@ -727,13 +817,36 @@ function evaluate(
     case 'methodCall':
       return evaluateMethodCall(expression, environment, context)
     case 'unary':
-      if (expression.operator === 'not') {
-        return !toBoolean(evaluate(expression.right, environment, context))
-      }
-      return -requireNumber(evaluate(expression.right, environment, context), '-')
+      return evaluateUnary(expression, environment, context)
     case 'binary':
       return evaluateBinary(expression, environment, context)
   }
+}
+
+function evaluateUnary(
+  expression: Extract<Expression, { kind: 'unary' }>,
+  environment: Environment,
+  context: ExpressionEvaluationContext,
+): RuntimeValue {
+  const value = evaluate(expression.right, environment, context)
+
+  if (expression.operator === 'not') {
+    return !toBoolean(value)
+  }
+
+  if (isRuntimeObject(value) && context.applyObjectOperator) {
+    const overloaded = context.applyObjectOperator(
+      value,
+      expression.operator,
+      [],
+      expression.siteId,
+    )
+    if (overloaded !== undefined) {
+      return overloaded
+    }
+  }
+
+  return -requireNumber(value, '-')
 }
 
 function evaluateMember(
@@ -880,6 +993,28 @@ function evaluateBinary(
 
   const left = evaluate(expression.left, environment, context)
   const right = evaluate(expression.right, environment, context)
+
+  if (isRuntimeObject(left) && context.applyObjectOperator) {
+    const overloaded = context.applyObjectOperator(
+      left,
+      operator,
+      [right],
+      expression.siteId,
+    )
+    if (overloaded !== undefined) {
+      return overloaded
+    }
+  }
+
+  if (
+    isRuntimeObject(right) &&
+    context.applyObjectOperator &&
+    LEFT_ONLY_OBJECT_OPERATORS.has(operator)
+  ) {
+    throw new Error(
+      `Operator "${operator}" cannot use an object on the right because reflected dunder methods are not supported.`,
+    )
+  }
 
   if (operator === '+') {
     if (typeof left === 'number' && typeof right === 'number') {

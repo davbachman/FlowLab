@@ -15,7 +15,7 @@ import {
   parseClassDeclaration,
   parseMethodDeclaration,
 } from './statements'
-import type { RuntimeDictionary, RuntimeObject } from './types'
+import type { RuntimeDictionary, RuntimeObject, RuntimeValue } from './types'
 
 function dictionary(entries: RuntimeDictionary['entries']): RuntimeDictionary {
   return { kind: 'dictionary', entries }
@@ -33,6 +33,141 @@ describe('evaluateExpression', () => {
 
   it('supports variables and subtraction', () => {
     expect(evaluateExpression('x + y - 1', { x: 14, y: 2 })).toBe(15)
+  })
+
+  it('offers every overloadable operator to the left object with a stable site', () => {
+    const left = object('Box', 1)
+    const right = object('Box', 2)
+    const cases: Array<{
+      source: string
+      operator: string
+      args: RuntimeValue[]
+      result: RuntimeValue
+    }> = [
+      { source: '-left', operator: '-', args: [], result: 'negated' },
+      { source: 'left + right', operator: '+', args: [right], result: 'added' },
+      { source: 'left - right', operator: '-', args: [right], result: 'subtracted' },
+      { source: 'left * right', operator: '*', args: [right], result: 'multiplied' },
+      { source: 'left / right', operator: '/', args: [right], result: 'divided' },
+      { source: 'left = right', operator: '=', args: [right], result: true },
+      { source: 'left == right', operator: '==', args: [right], result: true },
+      { source: 'left != right', operator: '!=', args: [right], result: true },
+      { source: 'left < right', operator: '<', args: [right], result: true },
+      { source: 'left <= right', operator: '<=', args: [right], result: true },
+      { source: 'left > right', operator: '>', args: [right], result: true },
+      { source: 'left >= right', operator: '>=', args: [right], result: true },
+    ]
+
+    for (const testCase of cases) {
+      const calls: Array<{
+        receiver: RuntimeObject
+        operator: string
+        args: RuntimeValue[]
+        siteId: number
+      }> = []
+      const result = evaluateExpression(
+        testCase.source,
+        { left, right },
+        {
+          applyObjectOperator: (receiver, operator, args, siteId) => {
+            calls.push({ receiver, operator, args, siteId })
+            return testCase.result
+          },
+        },
+      )
+
+      expect(result).toEqual(testCase.result)
+      expect(calls).toEqual([
+        {
+          receiver: left,
+          operator: testCase.operator,
+          args: testCase.args,
+          siteId: -1,
+        },
+      ])
+    }
+  })
+
+  it('does not reflect arithmetic or ordering operators onto a right object', () => {
+    const right = object('Box', 2)
+    const calls: string[] = []
+    const context = {
+      applyObjectOperator: (
+        _receiver: RuntimeObject,
+        operator: string,
+      ): RuntimeValue => {
+        calls.push(operator)
+        return 99
+      },
+    }
+
+    expect(() => evaluateExpression('1 + right', { right }, context)).toThrow(
+      /object on the right.*reflected.*not supported/i,
+    )
+    expect(() => evaluateExpression('1 < right', { right }, context)).toThrow(
+      /object on the right.*reflected.*not supported/i,
+    )
+    expect(evaluateExpression('1 == right', { right }, context)).toBe(false)
+    expect(calls).toEqual([])
+  })
+
+  it('keeps nested object operator sites distinct', () => {
+    const left = object('Box', 1)
+    const right = object('Box', 2)
+    const sites: number[] = []
+
+    expect(
+      evaluateExpression('left + right * left', { left, right }, {
+        applyObjectOperator: (receiver, _operator, _args, siteId) => {
+          sites.push(siteId)
+          return receiver
+        },
+      }),
+    ).toEqual(left)
+    expect(sites).toEqual([-1, -2])
+  })
+
+  it('resolves missing variables through stable expression sites', () => {
+    const visited: Array<{ name: string; siteId: number }> = []
+    const getVariable = (name: string, siteId: number) => {
+      visited.push({ name, siteId })
+      return name === 'left' ? 3 : 4
+    }
+
+    expect(evaluateExpression('left + right + left', {}, { getVariable })).toBe(
+      10,
+    )
+    expect(visited).toEqual([
+      { name: 'left', siteId: 0 },
+      { name: 'right', siteId: 1 },
+      { name: 'left', siteId: 2 },
+    ])
+
+    visited.length = 0
+    evaluateExpression('left + right + left', {}, { getVariable })
+    expect(visited.map(({ siteId }) => siteId)).toEqual([0, 1, 2])
+  })
+
+  it('prefers ordinary environment variables over contextual variables', () => {
+    const visited: string[] = []
+
+    expect(
+      evaluateExpression('local + field', { local: 5 }, {
+        getVariable: (name) => {
+          visited.push(name)
+          return name === 'field' ? 7 : 100
+        },
+      }),
+    ).toBe(12)
+    expect(visited).toEqual(['field'])
+  })
+
+  it('keeps undefined-variable errors when the context cannot resolve a name', () => {
+    expect(() =>
+      evaluateExpression('missing + 1', {}, {
+        getVariable: () => undefined,
+      }),
+    ).toThrow('Undefined variable "missing"')
   })
 
   it('supports sqrt and rand numeric functions', () => {

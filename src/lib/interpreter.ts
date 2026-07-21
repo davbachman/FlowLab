@@ -14,7 +14,13 @@ import {
   parseForLoop,
   type AssignmentTarget,
 } from './statements'
-import { attachedMethodDefinition } from './classMethods'
+import {
+  attachedMethodDefinition,
+  objectDunderInputCount,
+  objectDunderMethodForOperator,
+  OBJECT_COMPARISON_DUNDER_METHOD_NAMES,
+  OBJECT_REPR_METHOD_NAME,
+} from './classMethods'
 import {
   isBranchNodeType,
   type BranchLabel,
@@ -174,11 +180,21 @@ type AssignIndexedElementResult =
 interface ExpressionProgress {
   source: string
   completedCalls: Record<number, RuntimeValue>
+  completedVariableReads: Record<number, RuntimeValue>
   completedMemberReads: Record<number, RuntimeValue>
   completedRandomValues: Record<number, number>
 }
 
-type PendingExpressionKey = 'expression' | 'valueExpression' | 'indexExpression'
+interface RepresentationProgress {
+  value: RuntimeValue
+  completedReprs: Record<number, RuntimeValue>
+}
+
+type PendingExpressionKey =
+  | 'expression'
+  | 'valueExpression'
+  | 'indexExpression'
+  | 'representation'
 
 type PendingNode =
   | {
@@ -188,6 +204,7 @@ type PendingNode =
       valueExpression: ExpressionProgress
       value?: RuntimeValue
       indexExpression?: ExpressionProgress
+      indexTarget?: { value: RuntimeValue; receiver?: RuntimeObject }
     }
   | {
       kind: 'call'
@@ -198,6 +215,7 @@ type PendingNode =
       kind: 'output'
       node: ProgramNode
       expression: ExpressionProgress
+      representation?: RepresentationProgress
     }
   | {
       kind: 'branch'
@@ -221,6 +239,12 @@ interface FunctionCallRequest {
   args: RuntimeValue[]
   callIndex: number
   receiver?: RuntimeObject
+}
+
+interface ObjectOperatorDispatch {
+  qualifiedName: string
+  methodName: string
+  negateBoolean: boolean
 }
 
 interface AskCallRequest {
@@ -249,6 +273,7 @@ interface SuspendedFrame {
   program: Program
   currentNodeId: string | null
   environment: Environment
+  receiver?: RuntimeObject
   forLoops: Record<string, ForLoopFrame>
   inputQueue: RuntimeValue[]
   functionName: string
@@ -266,6 +291,7 @@ export interface ExecutionState {
   nativeLibraries: string[]
   currentNodeId: string | null
   environment: Environment
+  receiver?: RuntimeObject
   objectHeap: ObjectHeap
   nextObjectId: number
   forLoops: Record<string, ForLoopFrame>
@@ -458,7 +484,7 @@ export function answerAskExecution(
     parseInputValue(rawValue),
   )
 
-  return executePendingNode(
+  return resumePendingNode(
     {
       ...state,
       askRequest: undefined,
@@ -483,7 +509,7 @@ export function completeTextLoadExecution(
     text,
   )
 
-  return executePendingNode(
+  return resumePendingNode(
     {
       ...state,
       textRequest: undefined,
@@ -628,6 +654,7 @@ function createExpressionProgress(source: string): ExpressionProgress {
   return {
     source,
     completedCalls: {},
+    completedVariableReads: {},
     completedMemberReads: {},
     completedRandomValues: {},
   }
@@ -650,6 +677,17 @@ function executePendingNode(
       return executeForPendingNode(state, pendingNode)
     case 'return':
       return executeReturnNode(state, pendingNode)
+  }
+}
+
+function resumePendingNode(
+  state: ExecutionState,
+  pendingNode: PendingNode,
+): ExecutionState {
+  try {
+    return executePendingNode(state, pendingNode)
+  } catch (error) {
+    return fail(state, error instanceof Error ? error.message : String(error))
   }
 }
 
@@ -770,12 +808,31 @@ function executeAssignmentNode(
     )
   }
 
+  const variable = pending.assignment.target.variable
+  if (!Object.prototype.hasOwnProperty.call(nextState.environment, variable)) {
+    const field = implicitReceiverField(nextState, variable)
+    if (field) {
+      return advance(
+        {
+          ...nextState,
+          objectHeap: setObjectField(
+            nextState.objectHeap,
+            field.receiver,
+            variable,
+            value,
+          ),
+        },
+        pending.node,
+      )
+    }
+  }
+
   return advance(
     {
       ...nextState,
       environment: {
         ...nextState.environment,
-        [pending.assignment.target.variable]: value,
+        [variable]: value,
       },
     },
     pending.node,
@@ -825,45 +882,79 @@ function executeOutputNode(
   state: ExecutionState,
   pendingNode: Extract<PendingNode, { kind: 'output' }>,
 ): ExecutionState {
-  const result = evaluateProgramExpression(state, pendingNode.expression)
+  let nextState = state
+  let pending = pendingNode
 
-  if (result.status === 'suspended') {
-    return startFunctionCall(
-      withExpressionRuntime(state, result),
-      pendingNode,
-      'expression',
-      result.call,
-    )
+  if (!pending.representation) {
+    const result = evaluateProgramExpression(nextState, pending.expression)
+
+    if (result.status === 'suspended') {
+      return startFunctionCall(
+        withExpressionRuntime(nextState, result),
+        pending,
+        'expression',
+        result.call,
+      )
+    }
+
+    if (result.status === 'asking') {
+      return startAsk(
+        withExpressionRuntime(nextState, result),
+        pending,
+        'expression',
+        result.ask,
+      )
+    }
+
+    if (result.status === 'loading') {
+      return startTextLoad(
+        withExpressionRuntime(nextState, result),
+        pending,
+        'expression',
+        result.textLoad,
+      )
+    }
+
+    nextState = {
+      ...withExpressionRuntime(nextState, result),
+      output: result.output,
+    }
+    pending = {
+      ...pending,
+      representation: {
+        value: result.value,
+        completedReprs: {},
+      },
+    }
   }
 
-  if (result.status === 'asking') {
-    return startAsk(
-      withExpressionRuntime(state, result),
-      pendingNode,
-      'expression',
-      result.ask,
-    )
+  const representation = pending.representation
+  if (!representation) {
+    throw new Error('Output representation progress is missing.')
   }
 
-  if (result.status === 'loading') {
-    return startTextLoad(
-      withExpressionRuntime(state, result),
-      pendingNode,
-      'expression',
-      result.textLoad,
+  try {
+    const line = stringifyHeapValue(
+      representation.value,
+      nextState,
+      representation,
     )
-  }
+    return advance(
+      { ...nextState, output: [...nextState.output, line] },
+      pending.node,
+    )
+  } catch (error) {
+    if (error instanceof FunctionCallSuspension) {
+      return startFunctionCall(
+        nextState,
+        pending,
+        'representation',
+        error.call,
+      )
+    }
 
-  return advance(
-    {
-      ...withExpressionRuntime(state, result),
-      output: [
-        ...result.output,
-        stringifyHeapValue(result.value, result.objectHeap),
-      ],
-    },
-    pendingNode.node,
-  )
+    throw error
+  }
 }
 
 function executeBranchNode(
@@ -967,6 +1058,22 @@ function completeReturn(
   }
 
   const callerFrame = state.callStack[state.callStack.length - 1]
+  const methodName = objectMethodName(state.functionName, state.receiver)
+  if (
+    methodName === OBJECT_REPR_METHOD_NAME &&
+    typeof value !== 'string'
+  ) {
+    throw new Error(`Method "${state.functionName}" must return a string.`)
+  }
+
+  if (
+    methodName &&
+    OBJECT_COMPARISON_DUNDER_METHOD_NAMES.has(methodName) &&
+    typeof value !== 'boolean'
+  ) {
+    throw new Error(`Method "${state.functionName}" must return a Boolean.`)
+  }
+
   const pendingNode = addCompletedCallResult(
     callerFrame.pendingNode,
     callerFrame.pendingExpressionKey,
@@ -980,6 +1087,7 @@ function completeReturn(
       program: callerFrame.program,
       currentNodeId: callerFrame.currentNodeId,
       environment: callerFrame.environment,
+      receiver: callerFrame.receiver,
       forLoops: callerFrame.forLoops,
       inputQueue: callerFrame.inputQueue,
       functionName: callerFrame.functionName,
@@ -1004,6 +1112,24 @@ function evaluateProgramExpression(
 
   try {
     const value = evaluateExpression(progress.source, environment, {
+      getVariable: (name, siteId) => {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            progress.completedVariableReads,
+            siteId,
+          )
+        ) {
+          return progress.completedVariableReads[siteId]
+        }
+
+        const field = implicitReceiverField(state, name, objectHeap)
+        if (!field) {
+          return undefined
+        }
+
+        progress.completedVariableReads[siteId] = field.value
+        return field.value
+      },
       callFunction: (name, args, siteId) => {
         const currentCallIndex = siteId
 
@@ -1114,6 +1240,37 @@ function evaluateProgramExpression(
           name: `${instance.className}.${method}`,
           args,
           callIndex: currentCallIndex,
+          receiver: object,
+        })
+      },
+      applyObjectOperator: (object, operator, args, siteId) => {
+        const dispatch = findObjectOperatorDispatch(
+          state,
+          objectHeap,
+          object,
+          operator,
+          args.length,
+        )
+        if (!dispatch) {
+          return undefined
+        }
+
+        if (
+          Object.prototype.hasOwnProperty.call(
+            progress.completedCalls,
+            siteId,
+          )
+        ) {
+          return objectOperatorResult(
+            dispatch,
+            progress.completedCalls[siteId],
+          )
+        }
+
+        throw new FunctionCallSuspension({
+          name: dispatch.qualifiedName,
+          args,
+          callIndex: siteId,
           receiver: object,
         })
       },
@@ -1244,6 +1401,7 @@ function startFunctionCall(
   let targetProgram: Program | undefined
   let targetFunctionNode: ProgramNode | undefined
   let environment: Environment = {}
+  let receiver: RuntimeObject | undefined
 
   if (call.receiver) {
     const instance = requireObjectInstance(state.objectHeap, call.receiver)
@@ -1254,19 +1412,36 @@ function startFunctionCall(
       )
     }
 
-    const rootMethodNode = findMethodNode(state.rootProgram, call.name)
-    const importedMethod = rootMethodNode
-      ? undefined
-      : findImportedMethod(state, call.name)
-
-    targetProgram = rootMethodNode
-      ? state.rootProgram
-      : importedMethod?.program
-    targetFunctionNode = rootMethodNode ?? importedMethod?.node
+    const methodTarget = findMethodTarget(state, call.name)
+    targetProgram = methodTarget?.program
+    targetFunctionNode = methodTarget?.node
     environment = { self: call.receiver }
+    receiver = call.receiver
 
     if (!targetProgram || !targetFunctionNode) {
       throw new Error(`Method "${call.name}" does not exist.`)
+    }
+
+    const methodName = objectMethodName(call.name, call.receiver)
+    const expectedInputCount = methodName
+      ? objectDunderInputCount(methodName)
+      : undefined
+    if (
+      expectedInputCount !== undefined &&
+      call.args.length !== expectedInputCount
+    ) {
+      throw new Error(
+        `Method "${call.name}" expects exactly ${expectedInputCount} argument${expectedInputCount === 1 ? '' : 's'}, but received ${call.args.length}.`,
+      )
+    }
+
+    if (
+      expectedInputCount !== undefined &&
+      isActiveMethodCall(state, call.name, call.receiver)
+    ) {
+      throw new Error(
+        `Method "${call.name}" cannot recursively call itself for ${instance.className} #${instance.id}.`,
+      )
     }
   } else {
     const functionNode = findFunctionNode(state.program, call.name)
@@ -1295,6 +1470,7 @@ function startFunctionCall(
     program: targetProgram,
     currentNodeId: targetFunctionNode.id,
     environment,
+    receiver,
     forLoops: {},
     inputQueue: [...call.args],
     functionName: call.name,
@@ -1304,6 +1480,7 @@ function startFunctionCall(
         program: state.program,
         currentNodeId: state.currentNodeId,
         environment: state.environment,
+        receiver: state.receiver,
         forLoops: state.forLoops,
         inputQueue: state.inputQueue,
         functionName: state.functionName,
@@ -1322,6 +1499,23 @@ function addCompletedCallResult(
   callIndex: number,
   value: RuntimeValue,
 ): PendingNode {
+  if (key === 'representation') {
+    if (pendingNode.kind !== 'output' || !pendingNode.representation) {
+      throw new Error('Only Output nodes have representation progress.')
+    }
+
+    return {
+      ...pendingNode,
+      representation: {
+        ...pendingNode.representation,
+        completedReprs: {
+          ...pendingNode.representation.completedReprs,
+          [callIndex]: value,
+        },
+      },
+    }
+  }
+
   const progress = expressionProgressForKey(pendingNode, key)
   const completedCalls = {
     ...progress.completedCalls,
@@ -1347,7 +1541,7 @@ function addCompletedCallResult(
 
 function expressionProgressForKey(
   pendingNode: PendingNode,
-  key: PendingExpressionKey,
+  key: Exclude<PendingExpressionKey, 'representation'>,
 ): ExpressionProgress {
   switch (key) {
     case 'expression':
@@ -1507,12 +1701,25 @@ function assignIndexedElement(
   indexExpression: ExpressionProgress,
 ): AssignIndexedElementResult {
   const { variable } = target
+  let indexTarget = pendingNode.indexTarget
+  if (!indexTarget) {
+    const hasLocal = Object.prototype.hasOwnProperty.call(environment, variable)
+    const implicitField = hasLocal
+      ? undefined
+      : implicitReceiverField(state, variable)
 
-  if (!Object.prototype.hasOwnProperty.call(environment, variable)) {
-    throw new Error(`Undefined variable "${variable}"`)
+    if (!hasLocal && !implicitField) {
+      throw new Error(`Undefined variable "${variable}"`)
+    }
+
+    indexTarget = {
+      value: hasLocal ? environment[variable] : implicitField!.value,
+      ...(implicitField ? { receiver: implicitField.receiver } : {}),
+    }
   }
 
-  const currentValue = environment[variable]
+  const currentValue = indexTarget.value
+  const nextPendingNode = { ...pendingNode, indexTarget }
 
   if (!Array.isArray(currentValue) && !isRuntimeDictionary(currentValue)) {
     throw new Error(
@@ -1529,7 +1736,7 @@ function assignIndexedElement(
   if (indexResult.status === 'suspended') {
     return {
       status: 'suspended',
-      pendingNode,
+      pendingNode: nextPendingNode,
       call: indexResult.call,
       turtle: indexResult.turtle,
       objectHeap: indexResult.objectHeap,
@@ -1540,7 +1747,7 @@ function assignIndexedElement(
   if (indexResult.status === 'asking') {
     return {
       status: 'asking',
-      pendingNode,
+      pendingNode: nextPendingNode,
       ask: indexResult.ask,
       turtle: indexResult.turtle,
       objectHeap: indexResult.objectHeap,
@@ -1551,7 +1758,7 @@ function assignIndexedElement(
   if (indexResult.status === 'loading') {
     return {
       status: 'loading',
-      pendingNode,
+      pendingNode: nextPendingNode,
       textLoad: indexResult.textLoad,
       turtle: indexResult.turtle,
       objectHeap: indexResult.objectHeap,
@@ -1570,16 +1777,23 @@ function assignIndexedElement(
 
     const nextValue = [...currentValue]
     nextValue[index] = value
+    const nextObjectHeap = indexTarget.receiver
+      ? setObjectField(
+          indexResult.objectHeap,
+          indexTarget.receiver,
+          variable,
+          nextValue,
+        )
+      : indexResult.objectHeap
 
     return {
       status: 'complete',
-      environment: {
-        ...environment,
-        [variable]: nextValue,
-      },
+      environment: indexTarget.receiver
+        ? environment
+        : { ...environment, [variable]: nextValue },
       output,
       turtle: indexResult.turtle,
-      objectHeap: indexResult.objectHeap,
+      objectHeap: nextObjectHeap,
       nextObjectId: indexResult.nextObjectId,
     }
   }
@@ -1588,15 +1802,24 @@ function assignIndexedElement(
     throw new Error('Dictionary keys must be strings, numbers, or booleans')
   }
 
+  const nextValue = setDictionaryValue(currentValue, indexValue, value)
+  const nextObjectHeap = indexTarget.receiver
+    ? setObjectField(
+        indexResult.objectHeap,
+        indexTarget.receiver,
+        variable,
+        nextValue,
+      )
+    : indexResult.objectHeap
+
   return {
     status: 'complete',
-    environment: {
-      ...environment,
-      [variable]: setDictionaryValue(currentValue, indexValue, value),
-    },
+    environment: indexTarget.receiver
+      ? environment
+      : { ...environment, [variable]: nextValue },
     output,
     turtle: indexResult.turtle,
-    objectHeap: indexResult.objectHeap,
+    objectHeap: nextObjectHeap,
     nextObjectId: indexResult.nextObjectId,
   }
 }
@@ -1607,11 +1830,21 @@ function assignObjectMember(
   member: string,
   value: RuntimeValue,
 ): ExecutionState {
-  if (!Object.prototype.hasOwnProperty.call(state.environment, variable)) {
+  const hasLocal = Object.prototype.hasOwnProperty.call(
+    state.environment,
+    variable,
+  )
+  const implicitField = hasLocal
+    ? undefined
+    : implicitReceiverField(state, variable)
+
+  if (!hasLocal && !implicitField) {
     throw new Error(`Undefined variable "${variable}"`)
   }
 
-  const object = state.environment[variable]
+  const object = hasLocal
+    ? state.environment[variable]
+    : implicitField!.value
   if (!isRuntimeObject(object)) {
     throw new Error(`Member assignment target "${variable}" must be an object.`)
   }
@@ -1623,14 +1856,45 @@ function assignObjectMember(
 
   return {
     ...state,
-    objectHeap: {
-      ...state.objectHeap,
-      [instance.id]: {
-        ...instance,
-        fields: {
-          ...instance.fields,
-          [member]: value,
-        },
+    objectHeap: setObjectField(state.objectHeap, object, member, value),
+  }
+}
+
+function implicitReceiverField(
+  state: ExecutionState,
+  name: string,
+  objectHeap: ObjectHeap = state.objectHeap,
+): { receiver: RuntimeObject; value: RuntimeValue } | undefined {
+  if (!state.receiver) {
+    return undefined
+  }
+
+  const instance = requireObjectInstance(objectHeap, state.receiver)
+  if (!Object.prototype.hasOwnProperty.call(instance.fields, name)) {
+    return undefined
+  }
+
+  return { receiver: state.receiver, value: instance.fields[name] }
+}
+
+function setObjectField(
+  objectHeap: ObjectHeap,
+  object: RuntimeObject,
+  field: string,
+  value: RuntimeValue,
+): ObjectHeap {
+  const instance = requireObjectInstance(objectHeap, object)
+  if (!Object.prototype.hasOwnProperty.call(instance.fields, field)) {
+    throw new Error(`Class "${instance.className}" has no field "${field}".`)
+  }
+
+  return {
+    ...objectHeap,
+    [instance.id]: {
+      ...instance,
+      fields: {
+        ...instance.fields,
+        [field]: value,
       },
     },
   }
@@ -1659,12 +1923,13 @@ function requireObjectInstance(
 
 function stringifyHeapValue(
   value: RuntimeValue,
-  objectHeap: ObjectHeap,
+  state: ExecutionState,
+  progress: RepresentationProgress,
   seenObjectIds: Set<number> = new Set<number>(),
   nested = false,
 ): string {
   if (isRuntimeObject(value)) {
-    const instance = objectHeap[value.id]
+    const instance = state.objectHeap[value.id]
     if (!instance) {
       return `${value.className} #${value.id} <missing>`
     }
@@ -1673,12 +1938,45 @@ function stringifyHeapValue(
       return `${instance.className} #${instance.id} {...}`
     }
 
+    if (
+      Object.prototype.hasOwnProperty.call(
+        progress.completedReprs,
+        instance.id,
+      )
+    ) {
+      const representation = progress.completedReprs[instance.id]
+      if (typeof representation !== 'string') {
+        throw new Error(
+          `Method "${instance.className}.${OBJECT_REPR_METHOD_NAME}" must return a string.`,
+        )
+      }
+
+      return representation
+    }
+
+    const representationMethod =
+      `${instance.className}.${OBJECT_REPR_METHOD_NAME}`
+    if (findMethodTarget(state, representationMethod)) {
+      throw new FunctionCallSuspension({
+        name: representationMethod,
+        args: [],
+        callIndex: instance.id,
+        receiver: value,
+      })
+    }
+
     const nextSeen = new Set(seenObjectIds)
     nextSeen.add(instance.id)
     const fields = Object.entries(instance.fields)
       .map(
         ([name, fieldValue]) =>
-          `${name}: ${stringifyHeapValue(fieldValue, objectHeap, nextSeen, true)}`,
+          `${name}: ${stringifyHeapValue(
+            fieldValue,
+            state,
+            progress,
+            nextSeen,
+            true,
+          )}`,
       )
       .join(', ')
     return `${instance.className} #${instance.id} {${fields}}`
@@ -1686,12 +1984,14 @@ function stringifyHeapValue(
 
   if (Array.isArray(value)) {
     return `[${value
-      .map((item) => stringifyHeapValue(item, objectHeap, seenObjectIds, true))
+      .map((item) =>
+        stringifyHeapValue(item, state, progress, seenObjectIds, true),
+      )
       .join(', ')}]`
   }
 
   if (isRuntimeDictionary(value)) {
-    return stringifyHeapDictionary(value, objectHeap, seenObjectIds)
+    return stringifyHeapDictionary(value, state, progress, seenObjectIds)
   }
 
   if (typeof value === 'string') {
@@ -1707,7 +2007,8 @@ function stringifyHeapValue(
 
 function stringifyHeapDictionary(
   dictionary: RuntimeDictionary,
-  objectHeap: ObjectHeap,
+  state: ExecutionState,
+  progress: RepresentationProgress,
   seenObjectIds: Set<number>,
 ): string {
   return `{${dictionary.entries
@@ -1715,7 +2016,8 @@ function stringifyHeapDictionary(
       (entry) =>
         `${stringifyDictionaryKey(entry.key)}: ${stringifyHeapValue(
           entry.value,
-          objectHeap,
+          state,
+          progress,
           seenObjectIds,
           true,
         )}`,
@@ -1852,6 +2154,103 @@ function findMethodNode(program: Program, name: string): ProgramNode | undefined
   return program.nodes.find((candidate) => {
     return attachedMethodDefinition(program, candidate)?.qualifiedName === name
   })
+}
+
+function findMethodTarget(
+  state: ExecutionState,
+  name: string,
+): { program: Program; node: ProgramNode } | undefined {
+  const rootMethodNode = findMethodNode(state.rootProgram, name)
+  if (rootMethodNode) {
+    return { program: state.rootProgram, node: rootMethodNode }
+  }
+
+  const importedMethod = findImportedMethod(state, name)
+  return importedMethod
+    ? { program: importedMethod.program, node: importedMethod.node }
+    : undefined
+}
+
+function findObjectOperatorDispatch(
+  state: ExecutionState,
+  objectHeap: ObjectHeap,
+  object: RuntimeObject,
+  operator: string,
+  argumentCount: number,
+): ObjectOperatorDispatch | undefined {
+  const instance = requireObjectInstance(objectHeap, object)
+  const methodName = objectDunderMethodForOperator(operator, argumentCount)
+  if (!methodName) {
+    return undefined
+  }
+
+  const qualifiedName = `${instance.className}.${methodName}`
+  if (findMethodTarget(state, qualifiedName)) {
+    return { qualifiedName, methodName, negateBoolean: false }
+  }
+
+  if (methodName === '__ne__') {
+    const equalityName = `${instance.className}.__eq__`
+    if (findMethodTarget(state, equalityName)) {
+      return {
+        qualifiedName: equalityName,
+        methodName: '__eq__',
+        negateBoolean: true,
+      }
+    }
+  }
+
+  if (methodName === '__eq__' || methodName === '__ne__') {
+    return undefined
+  }
+
+  throw new Error(
+    `Class "${instance.className}" does not define Method "${methodName}" for operator "${operator}".`,
+  )
+}
+
+function objectOperatorResult(
+  dispatch: ObjectOperatorDispatch,
+  value: RuntimeValue,
+): RuntimeValue {
+  if (OBJECT_COMPARISON_DUNDER_METHOD_NAMES.has(dispatch.methodName)) {
+    if (typeof value !== 'boolean') {
+      throw new Error(
+        `Method "${dispatch.qualifiedName}" must return a Boolean.`,
+      )
+    }
+
+    return dispatch.negateBoolean ? !value : value
+  }
+
+  return value
+}
+
+function isActiveMethodCall(
+  state: ExecutionState,
+  name: string,
+  receiver: RuntimeObject,
+): boolean {
+  if (state.functionName === name && state.receiver?.id === receiver.id) {
+    return true
+  }
+
+  return state.callStack.some(
+    (frame) =>
+      frame.functionName === name && frame.receiver?.id === receiver.id,
+  )
+}
+
+function objectMethodName(
+  name: string,
+  receiver: RuntimeObject | undefined,
+): string | undefined {
+  if (!receiver) {
+    return undefined
+  }
+
+  const prefix = `${receiver.className}.`
+  return name.startsWith(prefix) ? name.slice(prefix.length) : undefined
 }
 
 function findClassDefinition(

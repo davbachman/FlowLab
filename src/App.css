@@ -248,6 +248,44 @@ button:disabled {
   font-weight: 700;
 }
 
+.special-methods-reference {
+  margin-top: 16px;
+  border-top: 1px solid #e4e7ec;
+  padding-top: 12px;
+  color: #344054;
+  font-size: 12px;
+}
+
+.special-methods-reference summary {
+  cursor: pointer;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.special-methods-reference p {
+  margin: 9px 0;
+}
+
+.special-methods-reference dl {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+}
+
+.special-methods-reference dt {
+  overflow-wrap: anywhere;
+  color: #5925dc;
+  font: 600 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.special-methods-reference dd {
+  margin: 2px 0 0;
+  color: #667085;
+}
+
 .validation-panel {
   margin-top: 18px;
   padding-top: 14px;

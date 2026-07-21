@@ -345,6 +345,7 @@ function App() {
   const clipboardRef = useRef<CanvasSnapshot | null>(null)
   const historyRef = useRef<CanvasSnapshot[]>([])
   const askResumeModeRef = useRef<'step' | 'run'>('step')
+  const fitViewAfterLoadRef = useRef(false)
 
   useEffect(() => {
     nodesRef.current = nodes
@@ -353,6 +354,30 @@ function App() {
   useEffect(() => {
     edgesRef.current = edges
   }, [edges])
+
+  useEffect(() => {
+    if (!flowInstance || !fitViewAfterLoadRef.current) {
+      return
+    }
+
+    const allNodesMeasured =
+      nodes.length > 0 &&
+      nodes.every(
+        (node) =>
+          (node.measured?.width ?? 0) > 0 &&
+          (node.measured?.height ?? 0) > 0,
+      )
+    if (!allNodesMeasured) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      fitViewAfterLoadRef.current = false
+      void flowInstance.fitView({ padding: 0.08 })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [edges, flowInstance, nodes])
 
   useEffect(() => {
     if (!sidebarResizeDrag) {
@@ -793,6 +818,7 @@ function App() {
 
   function resetObjectSample(): void {
     pushHistorySnapshot()
+    fitViewAfterLoadRef.current = true
     setNodes(programToNodes(objectSampleProgram))
     setEdges(programToEdges(objectSampleProgram))
     setInputQueueText('')
@@ -1396,6 +1422,32 @@ function App() {
               ))}
             </div>
           </section>
+
+          <details
+            className="special-methods-reference"
+            aria-label="Special methods reference"
+          >
+            <summary>Special methods</summary>
+            <p>Attach these exact Method names to a Class.</p>
+            <dl>
+              <div>
+                <dt>__repr__</dt>
+                <dd>Output · 0 Inputs · String</dd>
+              </div>
+              <div>
+                <dt>__neg__</dt>
+                <dd>unary - · 0 Inputs</dd>
+              </div>
+              <div>
+                <dt>__add__ · __sub__ · __mul__ · __truediv__</dt>
+                <dd>+ · - · * · / · 1 Input</dd>
+              </div>
+              <div>
+                <dt>__eq__ · __ne__ · __lt__ · __le__ · __gt__ · __ge__</dt>
+                <dd>= / == · != · &lt; · &lt;= · &gt; · &gt;= · 1 Input · Boolean</dd>
+              </div>
+            </dl>
+          </details>
 
           <section className="validation-panel" aria-label="Graph validation">
             <h2>Validation</h2>

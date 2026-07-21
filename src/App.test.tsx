@@ -544,6 +544,16 @@ describe('App', () => {
     expect(screen.getByLabelText(/Input queue/i)).toHaveValue('3')
   })
 
+  it('keeps a compact special-method reference beside the node palette', () => {
+    render(<App />)
+
+    const reference = screen.getByLabelText(/Special methods reference/i)
+    expect(reference).toHaveTextContent('__repr__')
+    expect(reference).toHaveTextContent('__add__')
+    expect(reference).toHaveTextContent('__eq__')
+    expect(reference).toHaveTextContent('1 Input · Boolean')
+  })
+
   it('loads and runs the object sample with shared object identities and fields', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -552,11 +562,17 @@ describe('App', () => {
 
     const classNode = screen.getByTestId('flow-node-point-class')
     const methodNode = screen.getByTestId('flow-node-point-move')
+    const reprNode = screen.getByTestId('flow-node-point-repr')
 
     expect(classNode).toHaveAttribute('data-shape', 'declaration')
     expect(
       classNode.querySelector(
         `[data-handleid="${classMethodHandleId('point-move')}"]`,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      classNode.querySelector(
+        `[data-handleid="${classMethodHandleId('point-repr')}"]`,
       ),
     ).toBeInTheDocument()
     expect(
@@ -566,10 +582,16 @@ describe('App', () => {
       methodNode.querySelector(`[data-handleid="${METHOD_OWNER_HANDLE}"]`),
     ).toHaveAttribute('data-handlepos', 'top')
     expect(methodNode.querySelector('[data-handlepos="bottom"]')).toBeInTheDocument()
+    expect(
+      reprNode.querySelector(`[data-handleid="${METHOD_OWNER_HANDLE}"]`),
+    ).toHaveAttribute('data-handlepos', 'top')
     expect(screen.getByDisplayValue('move')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('__repr__')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('x <- x + dx')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('y <- y + dy')).toBeInTheDocument()
     expect(
       within(classNode).getByLabelText(/Method connections/i),
-    ).toHaveTextContent('move+ method')
+    ).toHaveTextContent('move__repr__+ method')
     expect(within(classNode).getByLabelText(/Declared fields/i)).toHaveTextContent(
       'xy',
     )
@@ -577,9 +599,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^Run$/i }))
 
     const output = screen.getByRole('region', { name: /Output/i })
-    expect(
-      within(output).getByText(/Point #1 \{x: 7, y: 2\}/),
-    ).toBeInTheDocument()
+    expect(within(output).getByText('Point(7, 2)')).toBeInTheDocument()
     expect(within(output).getByText('7')).toBeInTheDocument()
     expect(within(output).getByText('2')).toBeInTheDocument()
 
@@ -626,13 +646,18 @@ describe('App', () => {
     const connectorRow = within(classNode).getByLabelText(/Method connections/i)
 
     expect(classNode).toHaveStyle({
-      '--class-method-slot-count': '3',
-      '--class-node-width': '230px',
+      '--class-method-slot-count': '4',
+      '--class-node-width': '300px',
     })
-    expect(connectorRow).toHaveTextContent('movereset+ method')
+    expect(connectorRow).toHaveTextContent('move__repr__reset+ method')
     expect(
       connectorRow.querySelector(
         `[data-handleid="${classMethodHandleId('point-move')}"]`,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      connectorRow.querySelector(
+        `[data-handleid="${classMethodHandleId('point-repr')}"]`,
       ),
     ).toBeInTheDocument()
     expect(

@@ -4,7 +4,10 @@ import {
   parseCallExpression,
   parseExpression,
 } from './expression'
-import { attachedMethodDefinition } from './classMethods'
+import {
+  attachedMethodDefinition,
+  objectDunderInputCount,
+} from './classMethods'
 import {
   isVariableName,
   parseAssignment,
@@ -191,6 +194,12 @@ export function validateProgram(
       for (const field of duplicateFields) {
         errors.push(`Class "${declaration.name}" has duplicate field "${field}".`)
       }
+
+      if (declaration.fields.includes('self')) {
+        errors.push(
+          `Class "${declaration.name}" cannot declare field "self" because "self" is reserved for the Method receiver.`,
+        )
+      }
     } catch {
       // Invalid Class text is reported by validateNodeText.
     }
@@ -310,6 +319,7 @@ export function validateProgram(
   const ownersByNodeId = findFunctionOwners(program, [...functions, ...methods])
   validateFunctionOwnership(program, ownersByNodeId, errors)
   validateMethodSelfBindings(program, methods, ownersByNodeId, errors)
+  validateDunderInputs(program, methods, ownersByNodeId, errors)
 
   return { valid: errors.length === 0, errors }
 }
@@ -619,6 +629,52 @@ function validateMethodSelfBindings(
     for (const method of owningMethods) {
       errors.push(
         `${NODE_TYPE_LABELS[node.type]} node "${node.id}" in Method "${method.text.trim()}" cannot bind the reserved receiver name "self".`,
+      )
+    }
+  }
+}
+
+function validateDunderInputs(
+  program: Program,
+  methods: ProgramNode[],
+  ownersByNodeId: Map<string, Set<string>>,
+  errors: string[],
+): void {
+  const inputNodes = program.nodes.filter((node) => node.type === 'input')
+
+  for (const method of methods) {
+    const definition = attachedMethodDefinition(program, method)
+    if (!definition) {
+      continue
+    }
+
+    const expectedCount = objectDunderInputCount(definition.methodName)
+    if (expectedCount === undefined) {
+      continue
+    }
+
+    const ownedInputs = inputNodes.filter((node) =>
+      ownersByNodeId.get(node.id)?.has(method.id),
+    )
+    if (ownedInputs.length !== expectedCount) {
+      errors.push(
+        `Method "${definition.qualifiedName}" must have exactly ${expectedCount} Input block${expectedCount === 1 ? '' : 's'}, but has ${ownedInputs.length}.`,
+      )
+      continue
+    }
+
+    if (expectedCount === 0) {
+      continue
+    }
+
+    const inputNode = ownedInputs[0]
+    const incoming = program.edges.filter((edge) => edge.target === inputNode.id)
+    if (
+      incoming.length !== 1 ||
+      incoming[0].source !== method.id
+    ) {
+      errors.push(
+        `Method "${definition.qualifiedName}" must connect directly to its single Input block, with no other incoming edges.`,
       )
     }
   }

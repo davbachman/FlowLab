@@ -116,13 +116,13 @@ const pointProgram: Program = {
     {
       id: 'set-x',
       type: 'assignment',
-      text: 'self.x <- self.x + dx',
+      text: 'x <- x + dx',
       position: { x: 750, y: 300 },
     },
     {
       id: 'set-y',
       type: 'assignment',
-      text: 'self.y <- self.y + dy',
+      text: 'y <- y + dy',
       position: { x: 750, y: 400 },
     },
     { id: 'move-return', type: 'return', text: 'self', position: { x: 750, y: 500 } },
@@ -160,6 +160,162 @@ const pointProgram: Program = {
     { id: 'e6', source: 'show-x', target: 'show-y' },
     { id: 'e7', source: 'show-y', target: 'end' },
   ],
+}
+
+const reprProgram: Program = {
+  version: 1,
+  nodes: [
+    { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
+    {
+      id: 'repr',
+      type: 'method',
+      text: '__repr__',
+      position: { x: 400, y: 120 },
+    },
+    {
+      id: 'repr-end',
+      type: 'return',
+      text: '"Box(" + value + ")"',
+      position: { x: 400, y: 240 },
+    },
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'make',
+      type: 'assignment',
+      text: 'b <- Box(7)',
+      position: { x: 0, y: 120 },
+    },
+    { id: 'show', type: 'output', text: 'b', position: { x: 0, y: 240 } },
+    { id: 'end', type: 'return', text: 'b', position: { x: 0, y: 360 } },
+  ],
+  edges: [
+    { id: 'box-repr', source: 'box', target: 'repr' },
+    { id: 'repr-flow', source: 'repr', target: 'repr-end' },
+    { id: 'main-1', source: 'main', target: 'make' },
+    { id: 'main-2', source: 'make', target: 'show' },
+    { id: 'main-3', source: 'show', target: 'end' },
+  ],
+}
+
+interface DunderMethodSpec {
+  name: string
+  input?: string
+  statements?: string[]
+  returnExpression: string
+}
+
+function objectOperatorProgram(
+  methods: DunderMethodSpec[],
+  mainExpression: string,
+): Program {
+  const nodes: Program['nodes'] = [
+    {
+      id: 'operator-box',
+      type: 'class',
+      text: 'Box(value, calls)',
+      position: { x: 500, y: 0 },
+    },
+  ]
+  const edges: Program['edges'] = []
+
+  methods.forEach((method, methodIndex) => {
+    const methodId = `operator-method-${methodIndex}`
+    const inputId = `operator-input-${methodIndex}`
+    const returnId = `operator-return-${methodIndex}`
+    const pathIds: string[] = []
+
+    nodes.push({
+      id: methodId,
+      type: 'method',
+      text: method.name,
+      position: { x: 500 + methodIndex * 180, y: 120 },
+    })
+    edges.push({
+      id: `operator-owner-${methodIndex}`,
+      source: 'operator-box',
+      target: methodId,
+    })
+
+    if (method.input) {
+      nodes.push({
+        id: inputId,
+        type: 'input',
+        text: method.input,
+        position: { x: 500 + methodIndex * 180, y: 220 },
+      })
+      pathIds.push(inputId)
+    }
+
+    for (const [statementIndex, statement] of (
+      method.statements ?? []
+    ).entries()) {
+      const statementId = `operator-statement-${methodIndex}-${statementIndex}`
+      nodes.push({
+        id: statementId,
+        type: 'assignment',
+        text: statement,
+        position: {
+          x: 500 + methodIndex * 180,
+          y: 320 + statementIndex * 100,
+        },
+      })
+      pathIds.push(statementId)
+    }
+
+    nodes.push({
+      id: returnId,
+      type: 'return',
+      text: method.returnExpression,
+      position: { x: 500 + methodIndex * 180, y: 500 },
+    })
+    pathIds.push(returnId)
+
+    edges.push({
+      id: `operator-start-${methodIndex}`,
+      source: methodId,
+      target: pathIds[0],
+    })
+    pathIds.slice(0, -1).forEach((pathId, pathIndex) => {
+      edges.push({
+        id: `operator-path-${methodIndex}-${pathIndex}`,
+        source: pathId,
+        target: pathIds[pathIndex + 1],
+      })
+    })
+  })
+
+  nodes.push(
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'make-left',
+      type: 'assignment',
+      text: 'left <- Box(8, 0)',
+      position: { x: 0, y: 120 },
+    },
+    {
+      id: 'make-right',
+      type: 'assignment',
+      text: 'right <- Box(2, 0)',
+      position: { x: 0, y: 240 },
+    },
+    {
+      id: 'operator-main-return',
+      type: 'return',
+      text: mainExpression,
+      position: { x: 0, y: 360 },
+    },
+  )
+  edges.push(
+    { id: 'operator-main-1', source: 'main', target: 'make-left' },
+    { id: 'operator-main-2', source: 'make-left', target: 'make-right' },
+    {
+      id: 'operator-main-3',
+      source: 'make-right',
+      target: 'operator-main-return',
+    },
+  )
+
+  return { version: 1, nodes, edges }
 }
 
 describe('interpreter', () => {
@@ -1209,23 +1365,1089 @@ describe('interpreter', () => {
     expect(state.nextObjectId).toBe(2)
   })
 
+  it('uses an attached __repr__ Method for automatic and explicit object output', () => {
+    const automatic = runExecution(createExecution(reprProgram, []))
+    const explicitProgram: Program = {
+      ...reprProgram,
+      nodes: reprProgram.nodes.map((node) =>
+        node.id === 'show' ? { ...node, text: 'b.__repr__()' } : node,
+      ),
+    }
+    const explicit = runExecution(createExecution(explicitProgram, []))
+
+    expect(automatic.status).toBe('halted')
+    expect(automatic.output).toEqual(['Box(7)'])
+    expect(explicit.status).toBe('halted')
+    expect(explicit.output).toEqual(['Box(7)'])
+  })
+
+  it('treats legacy repr as an ordinary Method and keeps structural object output', () => {
+    const legacyProgram: Program = {
+      ...reprProgram,
+      nodes: reprProgram.nodes.map((node) => {
+        if (node.id === 'repr') {
+          return { ...node, text: 'repr' }
+        }
+
+        if (node.id === 'show') {
+          return { ...node, text: '[b, b.repr()]' }
+        }
+
+        return node
+      }),
+    }
+
+    const state = runExecution(createExecution(legacyProgram, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual(['[Box #1 {value: 7}, "Box(7)"]'])
+  })
+
+  it('formats nested objects with raw __repr__ text and memoizes once per object per Output', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        {
+          id: 'card',
+          type: 'class',
+          text: 'Card(label, calls)',
+          position: { x: 500, y: 0 },
+        },
+        {
+          id: 'repr',
+          type: 'method',
+          text: '__repr__',
+          position: { x: 500, y: 120 },
+        },
+        {
+          id: 'count',
+          type: 'assignment',
+          text: 'calls <- calls + 1',
+          position: { x: 500, y: 240 },
+        },
+        {
+          id: 'repr-end',
+          type: 'return',
+          text: '"Card(" + label + ", " + calls + ")"',
+          position: { x: 500, y: 360 },
+        },
+        {
+          id: 'wrapper',
+          type: 'class',
+          text: 'Wrapper(value)',
+          position: { x: 800, y: 0 },
+        },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'make-card',
+          type: 'assignment',
+          text: 'card <- Card("A", 0)',
+          position: { x: 0, y: 120 },
+        },
+        {
+          id: 'make-wrapper',
+          type: 'assignment',
+          text: 'wrapper <- Wrapper(card)',
+          position: { x: 0, y: 240 },
+        },
+        {
+          id: 'show-nested',
+          type: 'output',
+          text: '[card, {"again": card}, wrapper]',
+          position: { x: 0, y: 360 },
+        },
+        {
+          id: 'show-again',
+          type: 'output',
+          text: 'card',
+          position: { x: 0, y: 480 },
+        },
+        { id: 'end', type: 'return', text: 'card', position: { x: 0, y: 600 } },
+      ],
+      edges: [
+        { id: 'card-repr', source: 'card', target: 'repr' },
+        { id: 'repr-1', source: 'repr', target: 'count' },
+        { id: 'repr-2', source: 'count', target: 'repr-end' },
+        { id: 'main-1', source: 'main', target: 'make-card' },
+        { id: 'main-2', source: 'make-card', target: 'make-wrapper' },
+        { id: 'main-3', source: 'make-wrapper', target: 'show-nested' },
+        { id: 'main-4', source: 'show-nested', target: 'show-again' },
+        { id: 'main-5', source: 'show-again', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual([
+      '[Card(A, 1), {"again": Card(A, 1)}, Wrapper #2 {value: Card(A, 1)}]',
+      'Card(A, 2)',
+    ])
+    expect(state.objectHeap[1]?.fields.calls).toBe(2)
+  })
+
+  it('requires __repr__ Methods to return strings', () => {
+    for (const expression of ['value', 'self']) {
+      const program: Program = {
+        ...reprProgram,
+        nodes: reprProgram.nodes.map((node) =>
+          node.id === 'repr-end' ? { ...node, text: expression } : node,
+        ),
+      }
+
+      const state = runExecution(createExecution(program, []))
+      const explicitProgram: Program = {
+        ...program,
+        nodes: program.nodes.map((node) =>
+          node.id === 'show' ? { ...node, text: 'b.__repr__()' } : node,
+        ),
+      }
+      const explicitState = runExecution(createExecution(explicitProgram, []))
+
+      expect(state.status).toBe('error')
+      expect(state.error).toMatch(/Method "Box\.__repr__".*return a string/i)
+      expect(explicitState.status).toBe('error')
+      expect(explicitState.error).toMatch(
+        /Method "Box\.__repr__".*return a string/i,
+      )
+    }
+  })
+
+  it('resumes ask-based __repr__ Methods with either output or a contained type error', () => {
+    const program: Program = {
+      ...reprProgram,
+      nodes: reprProgram.nodes.map((node) =>
+        node.id === 'repr-end' ? { ...node, text: 'ask()' } : node,
+      ),
+    }
+
+    let invalid = runExecution(createExecution(program, []))
+    expect(invalid.status).toBe('asking')
+
+    invalid = answerAskExecution(invalid, '5')
+
+    expect(invalid.status).toBe('error')
+    expect(invalid.error).toMatch(/Method "Box\.__repr__".*return a string/i)
+
+    let valid = runExecution(createExecution(program, []))
+    valid = runExecution(answerAskExecution(valid, 'Box from ask'))
+
+    expect(valid.status).toBe('halted')
+    expect(valid.output).toEqual(['Box from ask'])
+  })
+
+  it('resumes text-loaded __repr__ Methods with either output or a contained type error', () => {
+    const urlExpression = 'text_from_url("https://example.edu/repr.txt")'
+    const programFor = (returnExpression: string): Program => ({
+      ...reprProgram,
+      nodes: reprProgram.nodes.map((node) =>
+        node.id === 'repr-end' ? { ...node, text: returnExpression } : node,
+      ),
+    })
+
+    let invalid = runExecution(
+      createExecution(programFor(`${urlExpression} = "match"`), [], {
+        nativeLibraries: ['text'],
+      }),
+    )
+    expect(invalid.status).toBe('loading')
+
+    invalid = completeTextLoadExecution(invalid, 'match')
+
+    expect(invalid.status).toBe('error')
+    expect(invalid.error).toMatch(/Method "Box\.__repr__".*return a string/i)
+
+    let valid = runExecution(
+      createExecution(programFor(urlExpression), [], {
+        nativeLibraries: ['text'],
+      }),
+    )
+    valid = runExecution(completeTextLoadExecution(valid, 'Box from URL'))
+
+    expect(valid.status).toBe('halted')
+    expect(valid.output).toEqual(['Box from URL'])
+  })
+
+  it('rejects arguments passed explicitly to __repr__', () => {
+    const program: Program = {
+      ...reprProgram,
+      nodes: reprProgram.nodes.map((node) =>
+        node.id === 'show' ? { ...node, text: 'b.__repr__(1)' } : node,
+      ),
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('error')
+    expect(state.error).toMatch(
+      /Method "Box\.__repr__".*exactly 0 arguments?.*received 1/i,
+    )
+  })
+
+  it('reports recursive __repr__ calls clearly', () => {
+    const program: Program = {
+      ...reprProgram,
+      nodes: reprProgram.nodes.map((node) =>
+        node.id === 'repr-end' ? { ...node, text: 'self.__repr__()' } : node,
+      ),
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('error')
+    expect(state.error).toMatch(/recurs.*__repr__|__repr__.*recurs/i)
+  })
+
+  it('uses imported __repr__ Methods without leaking one from a shadowed Class', () => {
+    const importedConsumer: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'make',
+          type: 'assignment',
+          text: 'b <- Box(7)',
+          position: { x: 0, y: 120 },
+        },
+        { id: 'show', type: 'output', text: 'b', position: { x: 0, y: 240 } },
+        { id: 'end', type: 'return', text: 'b', position: { x: 0, y: 360 } },
+      ],
+      edges: [
+        { id: 'main-1', source: 'main', target: 'make' },
+        { id: 'main-2', source: 'make', target: 'show' },
+        { id: 'main-3', source: 'show', target: 'end' },
+      ],
+    }
+    const localWinner: Program = {
+      ...importedConsumer,
+      nodes: [
+        {
+          id: 'local-box',
+          type: 'class',
+          text: 'Box(value)',
+          position: { x: 400, y: 0 },
+        },
+        ...importedConsumer.nodes,
+      ],
+    }
+
+    const imported = runExecution(
+      createExecution(importedConsumer, [], { importedPrograms: [reprProgram] }),
+    )
+    const shadowed = runExecution(
+      createExecution(localWinner, [], { importedPrograms: [reprProgram] }),
+    )
+
+    expect(imported.status).toBe('halted')
+    expect(imported.output).toEqual(['Box(7)'])
+    expect(shadowed.status).toBe('halted')
+    expect(shadowed.output).toEqual(['Box #1 {value: 7}'])
+  })
+
+  it('dispatches imported arithmetic and comparison dunders, including explicit calls', () => {
+    const importedProgram = objectOperatorProgram(
+      [
+        {
+          name: '__add__',
+          input: 'other',
+          returnExpression: 'value + other.value',
+        },
+        {
+          name: '__eq__',
+          input: 'other',
+          returnExpression: 'value = other.value',
+        },
+      ],
+      '0',
+    )
+    const consumer: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'make-left',
+          type: 'assignment',
+          text: 'left <- Box(8, 0)',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'make-right',
+          type: 'assignment',
+          text: 'right <- Box(2, 0)',
+          position: { x: 0, y: 200 },
+        },
+        {
+          id: 'end',
+          type: 'return',
+          text: '[left + right, left.__add__(right), left == right, left.__eq__(right), left != right]',
+          position: { x: 0, y: 300 },
+        },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'make-left' },
+        { id: 'e2', source: 'make-left', target: 'make-right' },
+        { id: 'e3', source: 'make-right', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(
+      createExecution(consumer, [], { importedPrograms: [importedProgram] }),
+    )
+
+    expect(state.status).toBe('halted')
+    expect(state.returnValue).toEqual([10, 10, false, false, true])
+  })
+
+  it('does not leak imported operator dunders onto a shadowing local Class', () => {
+    const importedProgram = objectOperatorProgram(
+      [
+        {
+          name: '__add__',
+          input: 'other',
+          returnExpression: '99',
+        },
+        {
+          name: '__eq__',
+          input: 'other',
+          returnExpression: 'True',
+        },
+      ],
+      '0',
+    )
+    const localConsumer = (expression: string): Program => ({
+      version: 1,
+      nodes: [
+        {
+          id: 'local-box',
+          type: 'class',
+          text: 'Box(value, calls)',
+          position: { x: 400, y: 0 },
+        },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'make-left',
+          type: 'assignment',
+          text: 'left <- Box(8, 0)',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'make-right',
+          type: 'assignment',
+          text: 'right <- Box(2, 0)',
+          position: { x: 0, y: 200 },
+        },
+        {
+          id: 'end',
+          type: 'return',
+          text: expression,
+          position: { x: 0, y: 300 },
+        },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'make-left' },
+        { id: 'e2', source: 'make-left', target: 'make-right' },
+        { id: 'e3', source: 'make-right', target: 'end' },
+      ],
+    })
+
+    const identityInitial = createExecution(
+      localConsumer('[left == right, left != right]'),
+      [],
+      { importedPrograms: [importedProgram] },
+    )
+    const identity = runExecution(identityInitial)
+    const arithmetic = runExecution(
+      createExecution(localConsumer('left + right'), [], {
+        importedPrograms: [importedProgram],
+      }),
+    )
+
+    expect(
+      identityInitial.importedMethods.some(
+        (method) => method.name === 'Box.__add__' || method.name === 'Box.__eq__',
+      ),
+    ).toBe(false)
+    expect(identity.status).toBe('halted')
+    expect(identity.returnValue).toEqual([false, true])
+    expect(arithmetic.status).toBe('error')
+    expect(arithmetic.error).toMatch(/Box.*does not define Method "__add__"/i)
+  })
+
+  it('dispatches every arithmetic dunder and permits any RuntimeValue result', () => {
+    const cases = [
+      {
+        method: '__add__',
+        input: 'other',
+        expression: 'left + right',
+        returnExpression: '"added"',
+        expected: 'added',
+      },
+      {
+        method: '__sub__',
+        input: 'other',
+        expression: 'left - right',
+        returnExpression: '[value, other.value]',
+        expected: [8, 2],
+      },
+      {
+        method: '__mul__',
+        input: 'other',
+        expression: 'left * right',
+        returnExpression: '{"kind": "multiplied"}',
+        expected: dictionary([{ key: 'kind', value: 'multiplied' }]),
+      },
+      {
+        method: '__truediv__',
+        input: 'other',
+        expression: 'left / right',
+        returnExpression: 'other',
+        expected: { kind: 'object', className: 'Box', id: 2 },
+      },
+      {
+        method: '__neg__',
+        expression: '-left',
+        returnExpression: 'False',
+        expected: false,
+      },
+    ]
+
+    for (const testCase of cases) {
+      const state = runExecution(
+        createExecution(
+          objectOperatorProgram(
+            [
+              {
+                name: testCase.method,
+                input: testCase.input,
+                returnExpression: testCase.returnExpression,
+              },
+            ],
+            testCase.expression,
+          ),
+          [],
+        ),
+      )
+
+      expect(state.status, testCase.method).toBe('halted')
+      expect(state.returnValue, testCase.method).toEqual(testCase.expected)
+    }
+  })
+
+  it('dispatches dunders on objects constructed inline in the same expression', () => {
+    const state = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__add__',
+              input: 'other',
+              returnExpression: 'value + other.value',
+            },
+            {
+              name: '__neg__',
+              returnExpression: '-value',
+            },
+            {
+              name: '__eq__',
+              input: 'other',
+              returnExpression: 'value = other.value',
+            },
+          ],
+          '[Box(8, 0) + Box(2, 0), -Box(8, 0), Box(3, 0) == Box(3, 0)]',
+        ),
+        [],
+      ),
+    )
+
+    expect(state.status).toBe('halted')
+    expect(state.returnValue).toEqual([10, -8, true])
+  })
+
+  it('lets __truediv__ handle a zero right operand itself', () => {
+    const state = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__truediv__',
+              input: 'divisor',
+              returnExpression: '"handled " + divisor',
+            },
+          ],
+          'left / 0',
+        ),
+        [],
+      ),
+    )
+
+    expect(state.status).toBe('halted')
+    expect(state.returnValue).toBe('handled 0')
+  })
+
+  it('dispatches both equality spellings and every comparison dunder', () => {
+    const cases = [
+      { method: '__eq__', operator: '=' },
+      { method: '__eq__', operator: '==' },
+      { method: '__ne__', operator: '!=' },
+      { method: '__lt__', operator: '<' },
+      { method: '__le__', operator: '<=' },
+      { method: '__gt__', operator: '>' },
+      { method: '__ge__', operator: '>=' },
+    ]
+
+    for (const testCase of cases) {
+      const state = runExecution(
+        createExecution(
+          objectOperatorProgram(
+            [
+              {
+                name: testCase.method,
+                input: 'other',
+                returnExpression: 'True',
+              },
+            ],
+            `left ${testCase.operator} right`,
+          ),
+          [],
+        ),
+      )
+
+      expect(state.status, testCase.method).toBe('halted')
+      expect(state.returnValue, testCase.method).toBe(true)
+    }
+  })
+
+  it('falls back from != to negated __eq__ but prefers an explicit __ne__', () => {
+    const fallback = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__eq__',
+              input: 'other',
+              returnExpression: 'value = other.value',
+            },
+          ],
+          '[left != right, left != left]',
+        ),
+        [],
+      ),
+    )
+    const explicit = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__eq__',
+              input: 'other',
+              returnExpression: 'True',
+            },
+            {
+              name: '__ne__',
+              input: 'other',
+              returnExpression: 'True',
+            },
+          ],
+          'left != right',
+        ),
+        [],
+      ),
+    )
+
+    expect(fallback.status).toBe('halted')
+    expect(fallback.returnValue).toEqual([true, false])
+    expect(explicit.status).toBe('halted')
+    expect(explicit.returnValue).toBe(true)
+  })
+
+  it('uses object identity when equality dunders are absent', () => {
+    const state = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [],
+          '[left = left, left == right, left != right]',
+        ),
+        [],
+      ),
+    )
+
+    expect(state.status).toBe('halted')
+    expect(state.returnValue).toEqual([true, false, true])
+  })
+
+  it('uses dunder equality only for direct operands, not objects nested in containers', () => {
+    const state = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__eq__',
+              input: 'other',
+              statements: ['calls <- calls + 1'],
+              returnExpression: 'True',
+            },
+          ],
+          '[left == right, [left] == [right], {"item": left} == {"item": right}, [left] == [left], {"item": left} == {"item": left}]',
+        ),
+        [],
+      ),
+    )
+
+    expect(state.status).toBe('halted')
+    expect(state.returnValue).toEqual([true, false, false, true, true])
+    expect(state.objectHeap[1]?.fields.calls).toBe(1)
+  })
+
+  it('requires every comparison dunder to return a Boolean', () => {
+    const cases = [
+      { method: '__eq__', operator: '==' },
+      { method: '__ne__', operator: '!=' },
+      { method: '__lt__', operator: '<' },
+      { method: '__le__', operator: '<=' },
+      { method: '__gt__', operator: '>' },
+      { method: '__ge__', operator: '>=' },
+    ]
+
+    for (const testCase of cases) {
+      const state = runExecution(
+        createExecution(
+          objectOperatorProgram(
+            [
+              {
+                name: testCase.method,
+                input: 'other',
+                returnExpression: '1',
+              },
+            ],
+            `left ${testCase.operator} right`,
+          ),
+          [],
+        ),
+      )
+
+      expect(state.status, testCase.method).toBe('error')
+      expect(state.error, testCase.method).toMatch(
+        new RegExp(`Method "Box\\.${testCase.method}".*return a Boolean`, 'i'),
+      )
+    }
+
+    const explicit = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__eq__',
+              input: 'other',
+              returnExpression: '1',
+            },
+          ],
+          'left.__eq__(right)',
+        ),
+        [],
+      ),
+    )
+    expect(explicit.status).toBe('error')
+    expect(explicit.error).toMatch(/Method "Box\.__eq__".*return a Boolean/i)
+  })
+
+  it('validates ask-resumed comparison dunder returns', () => {
+    const program = objectOperatorProgram(
+      [{ name: '__eq__', input: 'other', returnExpression: 'ask()' }],
+      'left == right',
+    )
+
+    let valid = runExecution(createExecution(program, []))
+    expect(valid.status).toBe('asking')
+    valid = runExecution(answerAskExecution(valid, 'True'))
+    expect(valid.status).toBe('halted')
+    expect(valid.returnValue).toBe(true)
+
+    for (const answer of ['5', 'not a Boolean']) {
+      let invalid = runExecution(createExecution(program, []))
+      expect(invalid.status).toBe('asking')
+      invalid = answerAskExecution(invalid, answer)
+      expect(invalid.status, answer).toBe('error')
+      expect(invalid.error, answer).toMatch(
+        /Method "Box\.__eq__".*return a Boolean/i,
+      )
+    }
+  })
+
+  it('validates text-resumed comparison dunder returns', () => {
+    const urlExpression = 'text_from_url("https://example.edu/compare.txt")'
+    const programFor = (returnExpression: string): Program =>
+      objectOperatorProgram(
+        [{ name: '__lt__', input: 'other', returnExpression }],
+        'left < right',
+      )
+
+    let valid = runExecution(
+      createExecution(programFor(`${urlExpression} = "match"`), [], {
+        nativeLibraries: ['text'],
+      }),
+    )
+    expect(valid.status).toBe('loading')
+    valid = runExecution(completeTextLoadExecution(valid, 'match'))
+    expect(valid.status).toBe('halted')
+    expect(valid.returnValue).toBe(true)
+
+    let invalid = runExecution(
+      createExecution(programFor(urlExpression), [], {
+        nativeLibraries: ['text'],
+      }),
+    )
+    expect(invalid.status).toBe('loading')
+    invalid = completeTextLoadExecution(invalid, 'plain text')
+    expect(invalid.status).toBe('error')
+    expect(invalid.error).toMatch(
+      /Method "Box\.__lt__".*return a Boolean/i,
+    )
+  })
+
+  it('rejects wrong explicit argument counts for every operator dunder', () => {
+    const binaryDunders = [
+      '__add__',
+      '__sub__',
+      '__mul__',
+      '__truediv__',
+      '__eq__',
+      '__ne__',
+      '__lt__',
+      '__le__',
+      '__gt__',
+      '__ge__',
+    ]
+
+    for (const methodName of binaryDunders) {
+      const state = runExecution(
+        createExecution(
+          objectOperatorProgram(
+            [
+              {
+                name: methodName,
+                input: 'other',
+                returnExpression: 'True',
+              },
+            ],
+            `left.${methodName}()`,
+          ),
+          [],
+        ),
+      )
+
+      expect(state.status, methodName).toBe('error')
+      expect(state.error, methodName).toMatch(
+        new RegExp(
+          `Method "Box\\.${methodName}".*exactly 1 argument.*received 0`,
+          'i',
+        ),
+      )
+    }
+
+    const unary = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [{ name: '__neg__', returnExpression: '0' }],
+          'left.__neg__(right)',
+        ),
+        [],
+      ),
+    )
+    expect(unary.status).toBe('error')
+    expect(unary.error).toMatch(
+      /Method "Box\.__neg__".*exactly 0 arguments?.*received 1/i,
+    )
+  })
+
+  it('errors clearly when object arithmetic or ordering lacks its dunder', () => {
+    const cases = [
+      { expression: 'left + right', method: '__add__', operator: '\\+' },
+      { expression: 'left - right', method: '__sub__', operator: '-' },
+      { expression: 'left * right', method: '__mul__', operator: '\\*' },
+      { expression: 'left / right', method: '__truediv__', operator: '/' },
+      { expression: '-left', method: '__neg__', operator: '-' },
+      { expression: 'left < right', method: '__lt__', operator: '<' },
+      { expression: 'left <= right', method: '__le__', operator: '<=' },
+      { expression: 'left > right', method: '__gt__', operator: '>' },
+      { expression: 'left >= right', method: '__ge__', operator: '>=' },
+    ]
+
+    for (const testCase of cases) {
+      const state = runExecution(
+        createExecution(objectOperatorProgram([], testCase.expression), []),
+      )
+
+      expect(state.status, testCase.expression).toBe('error')
+      expect(state.error, testCase.expression).toMatch(
+        new RegExp(
+          `Class "Box".*Method "${testCase.method}".*operator "${testCase.operator}"`,
+          'i',
+        ),
+      )
+    }
+  })
+
+  it('does not reflect arithmetic or ordering dunders from a right object', () => {
+    const cases = [
+      { expression: '1 + right', method: '__add__' },
+      { expression: '1 - right', method: '__sub__' },
+      { expression: '1 * right', method: '__mul__' },
+      { expression: '1 / right', method: '__truediv__' },
+      { expression: '1 < right', method: '__lt__' },
+      { expression: '1 <= right', method: '__le__' },
+      { expression: '1 > right', method: '__gt__' },
+      { expression: '1 >= right', method: '__ge__' },
+    ]
+
+    for (const testCase of cases) {
+      const state = runExecution(
+        createExecution(
+          objectOperatorProgram(
+            [
+              {
+                name: testCase.method,
+                input: 'other',
+                returnExpression: '99',
+              },
+            ],
+            testCase.expression,
+          ),
+          [],
+        ),
+      )
+
+      expect(state.status, testCase.expression).toBe('error')
+      expect(state.error, testCase.expression).toMatch(
+        /object on the right.*reflected.*not supported/i,
+      )
+    }
+  })
+
+  it('memoizes completed operator sites so replayed dunders run once each', () => {
+    const state = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__add__',
+              input: 'other',
+              statements: ['calls <- calls + 1'],
+              returnExpression: 'value + other.value',
+            },
+            {
+              name: '__neg__',
+              statements: ['calls <- calls + 1'],
+              returnExpression: '-value',
+            },
+            {
+              name: '__lt__',
+              input: 'other',
+              statements: ['calls <- calls + 1'],
+              returnExpression: 'value < other.value',
+            },
+          ],
+          '[left + right, -left, left < right]',
+        ),
+        [],
+      ),
+    )
+
+    expect(state.status).toBe('halted')
+    expect(state.returnValue).toEqual([10, -8, false])
+    expect(state.objectHeap[1]?.fields.calls).toBe(3)
+  })
+
+  it('steps into an automatic arithmetic dunder and returns to its caller', () => {
+    const program = objectOperatorProgram(
+      [
+        {
+          name: '__add__',
+          input: 'other',
+          statements: ['calls <- calls + 1'],
+          returnExpression: 'value + other.value',
+        },
+      ],
+      'left + right',
+    )
+    let state = createExecution(program, [])
+
+    state = stepExecution(state)
+    state = stepExecution(state)
+    state = stepExecution(state)
+    expect(state.currentNodeId).toBe('operator-main-return')
+
+    state = stepExecution(state)
+    expect(state.currentNodeId).toBe('operator-method-0')
+    expect(state.functionName).toBe('Box.__add__')
+    expect(state.callStack).toHaveLength(1)
+    expect(state.inputQueue).toEqual([
+      { kind: 'object', className: 'Box', id: 2 },
+    ])
+
+    state = stepExecution(state)
+    expect(state.currentNodeId).toBe('operator-input-0')
+    state = stepExecution(state)
+    expect(state.currentNodeId).toBe('operator-statement-0-0')
+    expect(state.environment.other).toEqual({
+      kind: 'object',
+      className: 'Box',
+      id: 2,
+    })
+    expect(state.inputQueue).toEqual([])
+
+    state = stepExecution(state)
+    expect(state.currentNodeId).toBe('operator-return-0')
+    state = stepExecution(state)
+
+    expect(state.status).toBe('halted')
+    expect(state.currentNodeId).toBe('operator-main-return')
+    expect(state.functionName).toBe('main')
+    expect(state.callStack).toHaveLength(0)
+    expect(state.returnValue).toBe(10)
+    expect(state.objectHeap[1]?.fields.calls).toBe(1)
+  })
+
+  it('steps through automatic __repr__ using representation resume state', () => {
+    let state = createExecution(reprProgram, [])
+
+    state = stepExecution(state)
+    state = stepExecution(state)
+    state = stepExecution(state)
+
+    expect(state.currentNodeId).toBe('repr')
+    expect(state.functionName).toBe('Box.__repr__')
+    expect(state.callStack).toHaveLength(1)
+    expect(state.output).toEqual([])
+
+    state = stepExecution(state)
+    expect(state.currentNodeId).toBe('repr-end')
+    state = stepExecution(state)
+
+    expect(state.status).toBe('running')
+    expect(state.currentNodeId).toBe('end')
+    expect(state.functionName).toBe('main')
+    expect(state.callStack).toHaveLength(0)
+    expect(state.output).toEqual(['Box(7)'])
+
+    state = stepExecution(state)
+    expect(state.status).toBe('halted')
+  })
+
+  it('contains comparison return-type failures while stepping', () => {
+    let state = createExecution(
+      objectOperatorProgram(
+        [{ name: '__lt__', input: 'other', returnExpression: '1' }],
+        'left < right',
+      ),
+      [],
+    )
+
+    for (let step = 0; step < 10 && state.status !== 'error'; step += 1) {
+      state = stepExecution(state)
+    }
+
+    expect(state.status).toBe('error')
+    expect(state.error).toMatch(/Method "Box\.__lt__".*return a Boolean/i)
+  })
+
+  it('reports direct arithmetic dunder recursion clearly', () => {
+    const state = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__add__',
+              input: 'other',
+              returnExpression: 'self + other',
+            },
+          ],
+          'left + right',
+        ),
+        [],
+      ),
+    )
+
+    expect(state.status).toBe('error')
+    expect(state.error).toMatch(/Box\.__add__.*recurs/i)
+  })
+
+  it('reports direct comparison dunder recursion clearly', () => {
+    const state = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__eq__',
+              input: 'other',
+              returnExpression: 'self == other',
+            },
+          ],
+          'left == right',
+        ),
+        [],
+      ),
+    )
+
+    expect(state.status).toBe('error')
+    expect(state.error).toMatch(/Box\.__eq__.*recurs/i)
+  })
+
+  it('allows one comparison dunder to compose other comparison dunders', () => {
+    const state = runExecution(
+      createExecution(
+        objectOperatorProgram(
+          [
+            {
+              name: '__le__',
+              input: 'other',
+              returnExpression: 'self < other or self == other',
+            },
+            {
+              name: '__lt__',
+              input: 'other',
+              statements: ['calls <- calls + 1'],
+              returnExpression: 'value < other.value',
+            },
+            {
+              name: '__eq__',
+              input: 'other',
+              statements: ['calls <- calls + 1'],
+              returnExpression: 'value = other.value',
+            },
+          ],
+          'left <= right',
+        ),
+        [],
+      ),
+    )
+
+    expect(state.status).toBe('halted')
+    expect(state.returnValue).toBe(false)
+    expect(state.objectHeap[1]?.fields.calls).toBe(2)
+  })
+
   it('dispatches a bare Method name through its attached Class and can return a new object', () => {
     const program: Program = {
       version: 1,
       nodes: [
-        { id: 'date', type: 'class', text: 'Date(day)', position: { x: 400, y: 0 } },
+        {
+          id: 'date',
+          type: 'class',
+          text: 'Date(day, month, year)',
+          position: { x: 400, y: 0 },
+        },
         { id: 'next-day', type: 'method', text: 'next_day', position: { x: 400, y: 120 } },
         {
           id: 'next-day-end',
           type: 'return',
-          text: 'Date(self.day + 1)',
+          text: 'Date(day + 1, month, year)',
           position: { x: 400, y: 240 },
         },
         { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         {
           id: 'make-today',
           type: 'assignment',
-          text: 'today <- Date(21)',
+          text: 'today <- Date(21, 7, 2026)',
           position: { x: 0, y: 120 },
         },
         {
@@ -1237,7 +2459,7 @@ describe('interpreter', () => {
         {
           id: 'show-days',
           type: 'output',
-          text: '[today.day, tomorrow.day]',
+          text: '[today.day, tomorrow.day, tomorrow.month, tomorrow.year]',
           position: { x: 0, y: 360 },
         },
         { id: 'end', type: 'return', text: 'tomorrow', position: { x: 0, y: 480 } },
@@ -1255,7 +2477,7 @@ describe('interpreter', () => {
     const state = runExecution(createExecution(program, []))
 
     expect(state.status).toBe('halted')
-    expect(state.output).toEqual(['[21, 22]'])
+    expect(state.output).toEqual(['[21, 22, 7, 2026]'])
     expect(state.environment.today).toEqual({
       kind: 'object',
       id: 1,
@@ -1344,10 +2566,10 @@ describe('interpreter', () => {
         {
           id: 'increment',
           type: 'assignment',
-          text: 'self.value <- self.value + 1',
+          text: 'value <- value + 1',
           position: { x: 900, y: 100 },
         },
-        { id: 'bump-end', type: 'return', text: 'self.value', position: { x: 900, y: 200 } },
+        { id: 'bump-end', type: 'return', text: 'value', position: { x: 900, y: 200 } },
         { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         {
           id: 'make',
@@ -1384,6 +2606,169 @@ describe('interpreter', () => {
     expect(state.objectHeap[1]?.fields.value).toBe(2)
   })
 
+  it('preserves implicit field evaluation order around nested Method calls', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'counter', type: 'class', text: 'Counter(value)', position: { x: 500, y: 0 } },
+        { id: 'bump', type: 'method', text: 'bump', position: { x: 500, y: 120 } },
+        { id: 'increment', type: 'assignment', text: 'value <- value + 1', position: { x: 500, y: 240 } },
+        { id: 'bump-end', type: 'return', text: 'value', position: { x: 500, y: 360 } },
+        { id: 'before', type: 'method', text: 'before', position: { x: 750, y: 120 } },
+        { id: 'before-end', type: 'return', text: 'value + self.bump()', position: { x: 750, y: 240 } },
+        { id: 'after', type: 'method', text: 'after', position: { x: 1000, y: 120 } },
+        { id: 'after-end', type: 'return', text: 'self.bump() + value', position: { x: 1000, y: 240 } },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'make-before', type: 'assignment', text: 'a <- Counter(1)', position: { x: 0, y: 120 } },
+        { id: 'call-before', type: 'assignment', text: 'before_result <- a.before()', position: { x: 0, y: 240 } },
+        { id: 'make-after', type: 'assignment', text: 'b <- Counter(1)', position: { x: 0, y: 360 } },
+        { id: 'call-after', type: 'assignment', text: 'after_result <- b.after()', position: { x: 0, y: 480 } },
+        {
+          id: 'show',
+          type: 'output',
+          text: '[before_result, a.value, after_result, b.value]',
+          position: { x: 0, y: 600 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 720 } },
+      ],
+      edges: [
+        { id: 'counter-bump', source: 'counter', target: 'bump' },
+        { id: 'counter-before', source: 'counter', target: 'before' },
+        { id: 'counter-after', source: 'counter', target: 'after' },
+        { id: 'bump-1', source: 'bump', target: 'increment' },
+        { id: 'bump-2', source: 'increment', target: 'bump-end' },
+        { id: 'before-1', source: 'before', target: 'before-end' },
+        { id: 'after-1', source: 'after', target: 'after-end' },
+        { id: 'main-1', source: 'main', target: 'make-before' },
+        { id: 'main-2', source: 'make-before', target: 'call-before' },
+        { id: 'main-3', source: 'call-before', target: 'make-after' },
+        { id: 'main-4', source: 'make-after', target: 'call-after' },
+        { id: 'main-5', source: 'call-after', target: 'show' },
+        { id: 'main-6', source: 'show', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual(['[3, 2, 4, 2]'])
+  })
+
+  it('lets Method locals shadow fields while self disambiguates the receiver', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
+        { id: 'set', type: 'method', text: 'set', position: { x: 400, y: 120 } },
+        { id: 'new-value', type: 'input', text: 'value', position: { x: 400, y: 240 } },
+        { id: 'set-value', type: 'assignment', text: 'self.value <- value', position: { x: 400, y: 360 } },
+        { id: 'set-end', type: 'return', text: 'value', position: { x: 400, y: 480 } },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'make', type: 'assignment', text: 'b <- Box(1)', position: { x: 0, y: 120 } },
+        { id: 'call', type: 'assignment', text: 'result <- b.set(7)', position: { x: 0, y: 240 } },
+        { id: 'show', type: 'output', text: '[result, b.value]', position: { x: 0, y: 360 } },
+        { id: 'end', type: 'return', text: 'b', position: { x: 0, y: 480 } },
+      ],
+      edges: [
+        { id: 'box-set', source: 'box', target: 'set' },
+        { id: 'set-1', source: 'set', target: 'new-value' },
+        { id: 'set-2', source: 'new-value', target: 'set-value' },
+        { id: 'set-3', source: 'set-value', target: 'set-end' },
+        { id: 'main-1', source: 'main', target: 'make' },
+        { id: 'main-2', source: 'make', target: 'call' },
+        { id: 'main-3', source: 'call', target: 'show' },
+        { id: 'main-4', source: 'show', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual(['[7, 7]'])
+  })
+
+  it('updates indexed collections stored in implicit receiver fields', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'bag', type: 'class', text: 'Bag(items, counts)', position: { x: 450, y: 0 } },
+        { id: 'update', type: 'method', text: 'update', position: { x: 450, y: 120 } },
+        { id: 'set-item', type: 'assignment', text: 'items[0] <- 9', position: { x: 450, y: 240 } },
+        {
+          id: 'set-count',
+          type: 'assignment',
+          text: 'counts["x"] <- counts["x"] + 1',
+          position: { x: 450, y: 360 },
+        },
+        { id: 'update-end', type: 'return', text: 'self', position: { x: 450, y: 480 } },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'make',
+          type: 'assignment',
+          text: 'b <- Bag([1, 2], {"x": 3})',
+          position: { x: 0, y: 120 },
+        },
+        { id: 'call', type: 'call', text: 'b.update()', position: { x: 0, y: 240 } },
+        {
+          id: 'show',
+          type: 'output',
+          text: '[b.items[0], b.counts["x"]]',
+          position: { x: 0, y: 360 },
+        },
+        { id: 'end', type: 'return', text: 'b', position: { x: 0, y: 480 } },
+      ],
+      edges: [
+        { id: 'bag-update', source: 'bag', target: 'update' },
+        { id: 'update-1', source: 'update', target: 'set-item' },
+        { id: 'update-2', source: 'set-item', target: 'set-count' },
+        { id: 'update-3', source: 'set-count', target: 'update-end' },
+        { id: 'main-1', source: 'main', target: 'make' },
+        { id: 'main-2', source: 'make', target: 'call' },
+        { id: 'main-3', source: 'call', target: 'show' },
+        { id: 'main-4', source: 'show', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual(['[9, 4]'])
+  })
+
+  it('uses an implicit object field as a member-assignment target', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
+        { id: 'wrapper', type: 'class', text: 'Wrapper(child)', position: { x: 650, y: 0 } },
+        { id: 'replace', type: 'method', text: 'replace', position: { x: 650, y: 120 } },
+        { id: 'set-child', type: 'assignment', text: 'child.value <- 8', position: { x: 650, y: 240 } },
+        { id: 'replace-end', type: 'return', text: 'child', position: { x: 650, y: 360 } },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'make-box', type: 'assignment', text: 'b <- Box(1)', position: { x: 0, y: 120 } },
+        { id: 'make-wrapper', type: 'assignment', text: 'w <- Wrapper(b)', position: { x: 0, y: 240 } },
+        { id: 'call', type: 'call', text: 'w.replace()', position: { x: 0, y: 360 } },
+        { id: 'show', type: 'output', text: 'b.value', position: { x: 0, y: 480 } },
+        { id: 'end', type: 'return', text: 'w', position: { x: 0, y: 600 } },
+      ],
+      edges: [
+        { id: 'wrapper-replace', source: 'wrapper', target: 'replace' },
+        { id: 'replace-1', source: 'replace', target: 'set-child' },
+        { id: 'replace-2', source: 'set-child', target: 'replace-end' },
+        { id: 'main-1', source: 'main', target: 'make-box' },
+        { id: 'main-2', source: 'make-box', target: 'make-wrapper' },
+        { id: 'main-3', source: 'make-wrapper', target: 'call' },
+        { id: 'main-4', source: 'call', target: 'show' },
+        { id: 'main-5', source: 'show', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual(['8'])
+  })
+
   it('keeps short-circuit Method call sites distinct while replaying', () => {
     const program: Program = {
       version: 1,
@@ -1393,7 +2778,7 @@ describe('interpreter', () => {
         {
           id: 'clear-flag',
           type: 'assignment',
-          text: 'self.flag <- False',
+          text: 'flag <- False',
           position: { x: 650, y: 100 },
         },
         { id: 'a-end', type: 'return', text: 'False', position: { x: 650, y: 200 } },
@@ -1401,7 +2786,7 @@ describe('interpreter', () => {
         {
           id: 'count-hit',
           type: 'assignment',
-          text: 'self.hits <- self.hits + 1',
+          text: 'hits <- hits + 1',
           position: { x: 900, y: 100 },
         },
         { id: 'b-end', type: 'return', text: 'True', position: { x: 900, y: 200 } },
@@ -1514,7 +2899,7 @@ describe('interpreter', () => {
       nodes: [
         { id: 'import-box', type: 'class', text: 'Box(value, other)', position: { x: 400, y: 0 } },
         { id: 'import-method', type: 'method', text: 'getOther', position: { x: 650, y: 0 } },
-        { id: 'import-method-end', type: 'return', text: 'self.other', position: { x: 650, y: 100 } },
+        { id: 'import-method-end', type: 'return', text: 'other', position: { x: 650, y: 100 } },
         { id: 'import-main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         { id: 'import-main-end', type: 'return', text: '0', position: { x: 0, y: 100 } },
         {
@@ -1569,7 +2954,7 @@ describe('interpreter', () => {
       nodes: [
         { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
         { id: 'get', type: 'method', text: 'get', position: { x: 650, y: 0 } },
-        { id: 'get-end', type: 'return', text: 'self.value', position: { x: 650, y: 100 } },
+        { id: 'get-end', type: 'return', text: 'value', position: { x: 650, y: 100 } },
         { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         { id: 'main-end', type: 'return', text: '0', position: { x: 0, y: 100 } },
       ],

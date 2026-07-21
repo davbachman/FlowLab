@@ -659,6 +659,154 @@ describe('validateProgram', () => {
     )
   })
 
+  it('reserves self for the implicit Method receiver instead of a Class field', () => {
+    const reservedField: Program = {
+      ...validObjectProgram,
+      nodes: validObjectProgram.nodes.map((node) =>
+        node.id === 'point' ? { ...node, text: 'Point(x, self)' } : node,
+      ),
+    }
+    const similarFieldName: Program = {
+      ...validObjectProgram,
+      nodes: validObjectProgram.nodes.map((node) =>
+        node.id === 'point' ? { ...node, text: 'Point(x, self_value)' } : node,
+      ),
+    }
+
+    expect(validateProgram(reservedField).errors.join('\n')).toMatch(
+      /Class "Point" cannot declare field "self".*reserved.*Method receiver/i,
+    )
+    expect(validateProgram(similarFieldName).errors).toEqual([])
+  })
+
+  it('allows only exact zero-argument dunders without Input blocks', () => {
+    const withInput = (methodName: string): Program => ({
+      ...validObjectProgram,
+      nodes: [
+        ...validObjectProgram.nodes.map((node) =>
+          node.id === 'move' ? { ...node, text: methodName } : node,
+        ),
+        {
+          id: 'repr-input',
+          type: 'input',
+          text: 'format',
+          position: { x: 650, y: 60 },
+        },
+      ],
+      edges: [
+        ...validObjectProgram.edges.filter((edge) => edge.id !== 'm1'),
+        { id: 'repr-input-start', source: 'move', target: 'repr-input' },
+        { id: 'repr-input-end', source: 'repr-input', target: 'move-end' },
+      ],
+    })
+
+    for (const methodName of ['__repr__', '__neg__']) {
+      const withoutInput: Program = {
+        ...validObjectProgram,
+        nodes: validObjectProgram.nodes.map((node) =>
+          node.id === 'move' ? { ...node, text: methodName } : node,
+        ),
+      }
+
+      expect(validateProgram(withoutInput).errors).toEqual([])
+      expect(validateProgram(withInput(methodName)).errors.join('\n')).toMatch(
+        new RegExp(
+          `Method "Point\\.${methodName}".*exactly 0 Input blocks?.*has 1`,
+          'i',
+        ),
+      )
+    }
+
+    expect(validateProgram(withInput('repr')).errors).toEqual([])
+    expect(validateProgram(withInput('__Repr__')).errors).toEqual([])
+  })
+
+  it('requires binary dunders to start with exactly one sole Input block', () => {
+    const binaryDunders = [
+      '__add__',
+      '__sub__',
+      '__mul__',
+      '__truediv__',
+      '__eq__',
+      '__ne__',
+      '__lt__',
+      '__le__',
+      '__gt__',
+      '__ge__',
+    ]
+    const withInputs = (
+      methodName: string,
+      inputCount: 0 | 1 | 2,
+      immediate = true,
+    ): Program => {
+      const inputs = Array.from({ length: inputCount }, (_, index) => ({
+        id: `dunder-input-${index}`,
+        type: 'input' as const,
+        text: `argument_${index}`,
+        position: { x: 650, y: 80 + index * 80 },
+      }))
+      const prefix = immediate
+        ? []
+        : [
+            {
+              id: 'before-input',
+              type: 'assignment' as const,
+              text: 'temporary <- 0',
+              position: { x: 650, y: 40 },
+            },
+          ]
+      const path = [...prefix, ...inputs]
+
+      return {
+        ...validObjectProgram,
+        nodes: [
+          ...validObjectProgram.nodes.map((node) =>
+            node.id === 'move' ? { ...node, text: methodName } : node,
+          ),
+          ...path,
+        ],
+        edges: [
+          ...validObjectProgram.edges.filter((edge) => edge.id !== 'm1'),
+          ...(path.length === 0
+            ? [{ id: 'dunder-start', source: 'move', target: 'move-end' }]
+            : [
+                { id: 'dunder-start', source: 'move', target: path[0].id },
+                ...path.slice(0, -1).map((node, index) => ({
+                  id: `dunder-path-${index}`,
+                  source: node.id,
+                  target: path[index + 1].id,
+                })),
+                {
+                  id: 'dunder-end',
+                  source: path[path.length - 1].id,
+                  target: 'move-end',
+                },
+              ]),
+        ],
+      }
+    }
+
+    for (const methodName of binaryDunders) {
+      expect(validateProgram(withInputs(methodName, 1)).errors).toEqual([])
+      expect(validateProgram(withInputs(methodName, 0)).errors.join('\n')).toMatch(
+        new RegExp(
+          `Method "Point\\.${methodName}".*exactly 1 Input block.*has 0`,
+          'i',
+        ),
+      )
+      expect(validateProgram(withInputs(methodName, 2)).errors.join('\n')).toMatch(
+        new RegExp(
+          `Method "Point\\.${methodName}".*exactly 1 Input block.*has 2`,
+          'i',
+        ),
+      )
+    }
+
+    expect(
+      validateProgram(withInputs('__add__', 1, false)).errors.join('\n'),
+    ).toMatch(/Point\.__add__.*connect directly.*single Input/i)
+  })
+
   it('allows different Classes to use the same bare Method name', () => {
     const program: Program = {
       ...validObjectProgram,
