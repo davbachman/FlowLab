@@ -2,12 +2,19 @@ import {
   getDictionaryValue,
   isDictionaryKey,
   isRuntimeDictionary,
+  isRuntimeObject,
   setDictionaryValue,
   stringifyValue,
   toBoolean,
   valuesEqual,
 } from './runtimeValues'
-import type { DictionaryKey, Environment, RuntimeDictionary, RuntimeValue } from './types'
+import type {
+  DictionaryKey,
+  Environment,
+  RuntimeDictionary,
+  RuntimeObject,
+  RuntimeValue,
+} from './types'
 
 export { stringifyValue, toBoolean } from './runtimeValues'
 
@@ -24,6 +31,7 @@ type TokenType =
   | 'rightBrace'
   | 'colon'
   | 'comma'
+  | 'dot'
   | 'eof'
 
 interface Token {
@@ -40,7 +48,15 @@ type Expression =
       entries: Array<{ key: DictionaryKey; value: Expression }>
     }
   | { kind: 'index'; target: Expression; index: Expression }
-  | { kind: 'call'; name: string; arguments: Expression[] }
+  | { kind: 'member'; target: Expression; name: string; siteId: number }
+  | { kind: 'call'; name: string; arguments: Expression[]; siteId: number }
+  | {
+      kind: 'methodCall'
+      target: Expression
+      name: string
+      arguments: Expression[]
+      siteId: number
+    }
   | { kind: 'unary'; operator: '-' | 'not'; right: Expression }
   | { kind: 'binary'; operator: string; left: Expression; right: Expression }
 
@@ -49,7 +65,23 @@ const WORD_OPERATORS = new Set(['and', 'or', 'not'])
 const BUILT_IN_FUNCTIONS = new Set(['sqrt', 'rand', 'ask'])
 
 export interface ExpressionEvaluationContext {
-  callFunction?: (name: string, args: RuntimeValue[]) => RuntimeValue
+  callFunction?: (
+    name: string,
+    args: RuntimeValue[],
+    siteId: number,
+  ) => RuntimeValue
+  getMember?: (
+    object: RuntimeObject,
+    member: string,
+    siteId: number,
+  ) => RuntimeValue
+  callMethod?: (
+    object: RuntimeObject,
+    method: string,
+    args: RuntimeValue[],
+    siteId: number,
+  ) => RuntimeValue
+  random?: (siteId: number) => number
 }
 
 export function parseExpression(source: string): Expression {
@@ -63,7 +95,7 @@ export function parseCallExpression(source: string): {
 } {
   const expression = parseExpression(source)
 
-  if (expression.kind !== 'call') {
+  if (expression.kind !== 'call' && expression.kind !== 'methodCall') {
     throw new Error('Call must contain a function call')
   }
 
@@ -162,6 +194,12 @@ function tokenize(source: string): Token[] {
       const result = readNumber(source, index)
       tokens.push({ type: 'number', value: result.value })
       index = result.nextIndex
+      continue
+    }
+
+    if (char === '.') {
+      tokens.push({ type: 'dot', value: char })
+      index += 1
       continue
     }
 
@@ -285,6 +323,7 @@ function readIdentifier(
 
 class Parser {
   private position = 0
+  private nextSiteId = 0
   private readonly tokens: Token[]
 
   constructor(tokens: Token[]) {
@@ -389,11 +428,58 @@ class Parser {
   private postfix(): Expression {
     let expression = this.primary()
 
-    while (this.peek().type === 'leftBracket') {
-      this.advance()
-      const index = this.or()
-      this.consume('rightBracket', 'Expected "]"')
-      expression = { kind: 'index', target: expression, index }
+    while (true) {
+      if (this.peek().type === 'leftBracket') {
+        this.advance()
+        const index = this.or()
+        this.consume('rightBracket', 'Expected "]"')
+        expression = { kind: 'index', target: expression, index }
+        continue
+      }
+
+      if (this.peek().type === 'dot') {
+        this.advance()
+        const member = this.consume(
+          'identifier',
+          'Expected a member name after "."',
+        )
+        expression = {
+          kind: 'member',
+          target: expression,
+          name: member.value,
+          siteId: this.allocateSiteId(),
+        }
+        continue
+      }
+
+      if (this.peek().type === 'leftParen') {
+        const args = this.callArguments()
+
+        if (expression.kind === 'variable') {
+          expression = {
+            kind: 'call',
+            name: expression.name,
+            arguments: args,
+            siteId: this.allocateSiteId(),
+          }
+          continue
+        }
+
+        if (expression.kind === 'member') {
+          expression = {
+            kind: 'methodCall',
+            target: expression.target,
+            name: expression.name,
+            arguments: args,
+            siteId: expression.siteId,
+          }
+          continue
+        }
+
+        throw new Error('Only named functions and object methods can be called')
+      }
+
+      break
     }
 
     return expression
@@ -417,10 +503,6 @@ class Parser {
 
       if (token.value === 'False') {
         return { kind: 'literal', value: false }
-      }
-
-      if (this.peek().type === 'leftParen') {
-        return this.call(token.value)
       }
 
       return { kind: 'variable', name: token.value }
@@ -447,7 +529,13 @@ class Parser {
     )
   }
 
-  private call(name: string): Expression {
+  private allocateSiteId(): number {
+    const siteId = this.nextSiteId
+    this.nextSiteId += 1
+    return siteId
+  }
+
+  private callArguments(): Expression[] {
     this.consume('leftParen', 'Expected "("')
     const args: Expression[] = []
 
@@ -464,7 +552,7 @@ class Parser {
     }
 
     this.consume('rightParen', 'Expected ")"')
-    return { kind: 'call', name, arguments: args }
+    return args
   }
 
   private listItems(): Expression[] {
@@ -581,8 +669,17 @@ function collectCallNames(expression: Expression, names: Set<string>): void {
       collectCallNames(expression.target, names)
       collectCallNames(expression.index, names)
       return
+    case 'member':
+      collectCallNames(expression.target, names)
+      return
     case 'call':
       names.add(expression.name)
+      for (const argument of expression.arguments) {
+        collectCallNames(argument, names)
+      }
+      return
+    case 'methodCall':
+      collectCallNames(expression.target, names)
       for (const argument of expression.arguments) {
         collectCallNames(argument, names)
       }
@@ -623,8 +720,12 @@ function evaluate(
       )
     case 'index':
       return evaluateIndex(expression, environment, context)
+    case 'member':
+      return evaluateMember(expression, environment, context)
     case 'call':
       return evaluateCall(expression, environment, context)
+    case 'methodCall':
+      return evaluateMethodCall(expression, environment, context)
     case 'unary':
       if (expression.operator === 'not') {
         return !toBoolean(evaluate(expression.right, environment, context))
@@ -633,6 +734,48 @@ function evaluate(
     case 'binary':
       return evaluateBinary(expression, environment, context)
   }
+}
+
+function evaluateMember(
+  expression: Extract<Expression, { kind: 'member' }>,
+  environment: Environment,
+  context: ExpressionEvaluationContext,
+): RuntimeValue {
+  const target = evaluate(expression.target, environment, context)
+
+  if (!isRuntimeObject(target)) {
+    throw new Error('Member access requires an object')
+  }
+
+  if (!context.getMember) {
+    throw new Error(
+      `Cannot read member "${expression.name}" without an object context`,
+    )
+  }
+
+  return context.getMember(target, expression.name, expression.siteId)
+}
+
+function evaluateMethodCall(
+  expression: Extract<Expression, { kind: 'methodCall' }>,
+  environment: Environment,
+  context: ExpressionEvaluationContext,
+): RuntimeValue {
+  const target = evaluate(expression.target, environment, context)
+
+  if (!isRuntimeObject(target)) {
+    throw new Error('Method call requires an object')
+  }
+
+  const args = expression.arguments.map((argument) =>
+    evaluate(argument, environment, context),
+  )
+
+  if (!context.callMethod) {
+    throw new Error(`Unknown method "${target.className}.${expression.name}"`)
+  }
+
+  return context.callMethod(target, expression.name, args, expression.siteId)
 }
 
 function evaluateCall(
@@ -659,11 +802,11 @@ function evaluateCall(
       throw new Error('rand requires no arguments')
     }
 
-    return Math.random()
+    return context.random?.(expression.siteId) ?? Math.random()
   }
 
   if (context.callFunction) {
-    return context.callFunction(expression.name, args)
+    return context.callFunction(expression.name, args, expression.siteId)
   }
 
   throw new Error(`Unknown function "${expression.name}"`)

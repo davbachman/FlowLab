@@ -1,4 +1,9 @@
-import type { DictionaryKey, RuntimeDictionary, RuntimeValue } from './types'
+import type {
+  DictionaryKey,
+  RuntimeDictionary,
+  RuntimeObject,
+  RuntimeValue,
+} from './types'
 
 export function isRuntimeDictionary(
   value: RuntimeValue,
@@ -8,6 +13,15 @@ export function isRuntimeDictionary(
     value !== null &&
     !Array.isArray(value) &&
     value.kind === 'dictionary'
+  )
+}
+
+export function isRuntimeObject(value: RuntimeValue): value is RuntimeObject {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    value.kind === 'object'
   )
 }
 
@@ -83,6 +97,10 @@ export function toBoolean(value: RuntimeValue): boolean {
     return value.length > 0
   }
 
+  if (isRuntimeObject(value)) {
+    return true
+  }
+
   return value.entries.length > 0
 }
 
@@ -98,6 +116,10 @@ export function stringifyValue(value: RuntimeValue): string {
           `${stringifyDictionaryKey(entry.key)}: ${stringifyNestedValue(entry.value)}`,
       )
       .join(', ')}}`
+  }
+
+  if (isRuntimeObject(value)) {
+    return `${value.className} #${value.id}`
   }
 
   if (typeof value === 'boolean') {
@@ -133,6 +155,14 @@ export function valuesEqual(left: RuntimeValue, right: RuntimeValue): boolean {
           valuesEqual(leftEntry.value, right.entries[rightIndex].value)
         )
       })
+    )
+  }
+
+  if (isRuntimeObject(left) || isRuntimeObject(right)) {
+    return (
+      isRuntimeObject(left) &&
+      isRuntimeObject(right) &&
+      left.id === right.id
     )
   }
 

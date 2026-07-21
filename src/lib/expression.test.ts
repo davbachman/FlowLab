@@ -1,9 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateExpression, stringifyValue } from './expression'
-import type { RuntimeDictionary } from './types'
+import {
+  evaluateExpression,
+  findExpressionCallNames,
+  parseCallExpression,
+  stringifyValue,
+} from './expression'
+import {
+  isRuntimeObject,
+  toBoolean,
+  valuesEqual,
+} from './runtimeValues'
+import {
+  parseAssignment,
+  parseClassDeclaration,
+  parseMethodDeclaration,
+} from './statements'
+import type { RuntimeDictionary, RuntimeObject } from './types'
 
 function dictionary(entries: RuntimeDictionary['entries']): RuntimeDictionary {
   return { kind: 'dictionary', entries }
+}
+
+function object(className: string, id: number): RuntimeObject {
+  return { kind: 'object', className, id }
 }
 
 describe('evaluateExpression', () => {
@@ -24,6 +43,20 @@ describe('evaluateExpression', () => {
     expect(typeof value).toBe('number')
     expect(value as number).toBeGreaterThanOrEqual(0)
     expect(value as number).toBeLessThan(1)
+  })
+
+  it('lets the runtime preserve rand values by expression site', () => {
+    const visitedSites: number[] = []
+
+    expect(
+      evaluateExpression('rand()', {}, {
+        random: (siteId) => {
+          visitedSites.push(siteId)
+          return 0.25
+        },
+      }),
+    ).toBe(0.25)
+    expect(visitedSites).toEqual([0])
   })
 
   it('supports string literals and concatenation', () => {
@@ -158,6 +191,80 @@ describe('evaluateExpression', () => {
     expect(result).toBe(15)
   })
 
+  it('reads object members through the evaluation context', () => {
+    const point = object('Point', 1)
+
+    expect(
+      evaluateExpression('p.x + p.y', { p: point }, {
+        getMember: (target, member) => {
+          expect(target).toBe(point)
+          return member === 'x' ? 4 : 7
+        },
+      }),
+    ).toBe(11)
+  })
+
+  it('supports chained member access and member access on method results', () => {
+    const wrapper = object('Wrapper', 1)
+    const point = object('Point', 2)
+    const getMember = (target: RuntimeObject, member: string) => {
+      if (target.id === wrapper.id && member === 'point') {
+        return point
+      }
+
+      if (target.id === point.id && member === 'x') {
+        return 9
+      }
+
+      throw new Error('Unexpected member')
+    }
+
+    expect(
+      evaluateExpression('wrapper.point.x', { wrapper }, { getMember }),
+    ).toBe(9)
+    expect(
+      evaluateExpression('wrapper.getPoint().x', { wrapper }, {
+        getMember,
+        callMethod: (target, method, args) => {
+          expect(target).toBe(wrapper)
+          expect(method).toBe('getPoint')
+          expect(args).toEqual([])
+          return point
+        },
+      }),
+    ).toBe(9)
+  })
+
+  it('calls object methods with an evaluated receiver and arguments', () => {
+    const point = object('Point', 3)
+
+    expect(
+      evaluateExpression('p.move(dx + 1, -2)', { p: point, dx: 4 }, {
+        callMethod: (target, method, args) => {
+          expect(target).toBe(point)
+          expect(method).toBe('move')
+          expect(args).toEqual([5, -2])
+          return target
+        },
+      }),
+    ).toBe(point)
+  })
+
+  it('reports member access and method calls on non-objects clearly', () => {
+    expect(() => evaluateExpression('n.x', { n: 1 })).toThrow(
+      /Member access requires an object/,
+    )
+    expect(() => evaluateExpression('n.move()', { n: 1 })).toThrow(
+      /Method call requires an object/,
+    )
+  })
+
+  it('rejects language keywords in Class fields and Method names', () => {
+    expect(() => parseClassDeclaration('and(value)')).toThrow(/non-reserved/i)
+    expect(() => parseClassDeclaration('Point(or)')).toThrow(/valid name/i)
+    expect(() => parseMethodDeclaration('Point.not')).toThrow(/non-reserved/i)
+  })
+
   it('supports zero-based string indexing', () => {
     expect(evaluateExpression('S[1]', { S: 'cat' })).toBe('a')
     expect(evaluateExpression('S[2] = "t"', { S: 'cat' })).toBe(true)
@@ -204,5 +311,97 @@ describe('evaluateExpression', () => {
     expect(() => evaluateExpression('rand(1)', {})).toThrow(
       /rand requires no arguments/,
     )
+  })
+})
+
+describe('object expression discovery', () => {
+  it('accepts bare and method calls in Call nodes', () => {
+    expect(parseCallExpression('helper(1)').name).toBe('helper')
+    expect(parseCallExpression('p.move(1, 2)').name).toBe('move')
+  })
+
+  it('reports bare calls and constructors, but not method names', () => {
+    expect(
+      findExpressionCallNames('Point(helper()).move(other())'),
+    ).toEqual(['Point', 'helper', 'other'])
+  })
+})
+
+describe('class and method declarations', () => {
+  it('parses classes with fields and zero-field classes', () => {
+    expect(parseClassDeclaration(' Point ( x, y ) ')).toEqual({
+      name: 'Point',
+      fields: ['x', 'y'],
+    })
+    expect(parseClassDeclaration('Marker()')).toEqual({
+      name: 'Marker',
+      fields: [],
+    })
+  })
+
+  it('requires valid, unique class fields', () => {
+    expect(() => parseClassDeclaration('Point(x, 2y)')).toThrow(
+      /field "2y" must be a valid name/,
+    )
+    expect(() => parseClassDeclaration('Point(x, x)')).toThrow(
+      /duplicate field "x"/,
+    )
+    expect(() => parseClassDeclaration('Point')).toThrow(
+      /Class must use the form/,
+    )
+  })
+
+  it('parses qualified method declarations and rejects malformed ones', () => {
+    expect(parseMethodDeclaration(' Point . move ')).toEqual({
+      className: 'Point',
+      methodName: 'move',
+    })
+    expect(() => parseMethodDeclaration('Point')).toThrow(
+      /Method must use the form/,
+    )
+    expect(() => parseMethodDeclaration('Point.move.again')).toThrow(
+      /Method must use the form/,
+    )
+  })
+})
+
+describe('member assignments', () => {
+  it('parses object and self member targets', () => {
+    expect(parseAssignment('p.x <- value + 1')).toEqual({
+      target: { kind: 'member', variable: 'p', member: 'x' },
+      expression: 'value + 1',
+    })
+    expect(parseAssignment('self.y <- 4')).toEqual({
+      target: { kind: 'member', variable: 'self', member: 'y' },
+      expression: '4',
+    })
+  })
+
+  it('rejects chained member assignment targets clearly', () => {
+    expect(() => parseAssignment('p.position.x <- 1')).toThrow(
+      /single object member/,
+    )
+  })
+})
+
+describe('runtime object references', () => {
+  it('uses stable identity for equality and always treats objects as true', () => {
+    const point = object('Point', 1)
+    const alias = object('Point', 1)
+    const other = object('Point', 2)
+
+    expect(valuesEqual(point, alias)).toBe(true)
+    expect(valuesEqual(point, other)).toBe(false)
+    expect(toBoolean(point)).toBe(true)
+    expect(evaluateExpression('p = alias', { p: point, alias })).toBe(true)
+  })
+
+  it('guards and stringifies object references safely', () => {
+    const point = object('Point', 17)
+
+    expect(isRuntimeObject(point)).toBe(true)
+    expect(isRuntimeObject(dictionary([]))).toBe(false)
+    expect(stringifyValue(point)).toBe('Point #17')
+    expect(stringifyValue([point])).toBe('[Point #17]')
   })
 })

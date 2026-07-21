@@ -219,6 +219,19 @@ button:disabled {
   font-weight: 700;
 }
 
+.palette-group + .palette-group {
+  margin-top: 14px;
+}
+
+.palette-group h3 {
+  margin: 0 0 7px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .palette-buttons {
   flex-direction: column;
 }
@@ -315,8 +328,47 @@ button:disabled {
 }
 
 .flow-node-function,
+.flow-node-method,
 .flow-node-return {
   border-radius: 999px;
+}
+
+.flow-node-method {
+  border-color: #7c3aed;
+  background: #fbf8ff;
+}
+
+.flow-node-class {
+  width: 200px;
+  border-color: #7c3aed;
+  background: #f4f0ff;
+  box-shadow: 0 8px 18px rgba(76, 29, 149, 0.1);
+}
+
+.flow-node-class .node-label {
+  color: #6941c6;
+}
+
+.flow-node-class .node-input {
+  border-color: #c3b5fd;
+  background: #ffffff;
+}
+
+.class-fields {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.class-field {
+  border: 1px solid #c3b5fd;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #5925dc;
+  font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  padding: 3px 7px;
 }
 
 .flow-node-if,
@@ -407,6 +459,7 @@ button:disabled {
 }
 
 .flow-node-assignment {
+  width: 190px;
   border-color: #667085;
 }
 
@@ -513,7 +566,7 @@ textarea {
 
 .status-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin: 14px 0;
 }
@@ -532,6 +585,7 @@ textarea {
 .status-grid dd {
   margin: 2px 0 0;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .notice,
@@ -638,11 +692,69 @@ textarea {
 
 .variable-row dd {
   color: #17202f;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
+
+.variable-value-preview {
   display: -webkit-box;
   overflow: hidden;
   white-space: pre-wrap;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
+}
+
+.object-reference {
+  color: #5925dc;
+  font-weight: 700;
+}
+
+.object-value {
+  min-width: 0;
+}
+
+.object-value summary {
+  color: #5925dc;
+  cursor: pointer;
+  font-weight: 700;
+  list-style-position: inside;
+}
+
+.object-field-list {
+  margin: 7px 0 0;
+  overflow: hidden;
+  border: 1px solid #d8d0f7;
+  border-radius: 5px;
+  background: #fbfaff;
+}
+
+.object-field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+}
+
+.object-field-row + .object-field-row {
+  border-top: 1px solid #e5e0fa;
+}
+
+.variable-row .object-field-row dt,
+.variable-row .object-field-row dd {
+  margin: 0;
+  padding: 5px 6px;
+  background: transparent;
+  color: #344054;
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.variable-row .object-field-row dt {
+  background: #f5f3ff;
+  font-weight: 700;
+}
+
+.empty-object-fields {
+  margin: 7px 0 0;
+  color: #667085;
+  font-size: 11px;
 }
 
 .console-line,
@@ -694,7 +806,7 @@ textarea {
 
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(360px, 60vh) minmax(320px, 50vh);
+    grid-template-rows: max-content minmax(360px, 60vh) minmax(320px, 50vh);
   }
 
   .palette,
@@ -702,6 +814,11 @@ textarea {
     border: 0;
     border-bottom: 1px solid #d8dde6;
     width: auto !important;
+  }
+
+  .palette {
+    min-height: max-content;
+    overflow: visible;
   }
 
   .sidebar-resize-handle {

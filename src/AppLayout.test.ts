@@ -116,6 +116,21 @@ describe('app layout scrolling', () => {
     })
   })
 
+  it('distinguishes class declarations while keeping method roots pill-shaped', () => {
+    expect(declarationsFor('.flow-node-class')).toMatchObject({
+      width: '200px',
+      'border-color': '#7c3aed',
+      background: '#f4f0ff',
+    })
+    expect(
+      declarationsFor(
+        '.flow-node-function,\n.flow-node-method,\n.flow-node-return',
+      ),
+    ).toMatchObject({
+      'border-radius': '999px',
+    })
+  })
+
   it('keeps the three-column editor layout at zoomed desktop widths', () => {
     const zoomedDesktop = mediaBlockFor('(max-width: 980px) and (min-width: 721px)')
 
@@ -132,7 +147,12 @@ describe('app layout scrolling', () => {
 
     expect(declarationsFor('.workspace', mobile)).toMatchObject({
       'grid-template-columns': '1fr',
-      'grid-template-rows': 'auto minmax(360px, 60vh) minmax(320px, 50vh)',
+      'grid-template-rows':
+        'max-content minmax(360px, 60vh) minmax(320px, 50vh)',
+    })
+    expect(declarationsFor('.palette', mobile)).toMatchObject({
+      'min-height': 'max-content',
+      overflow: 'visible',
     })
   })
 })

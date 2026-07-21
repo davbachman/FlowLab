@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   answerAskExecution,
   completeTextLoadExecution,
@@ -103,6 +103,61 @@ const importedHelperProgram: Program = {
       source: 'import-helper-input',
       target: 'import-helper-return',
     },
+  ],
+}
+
+const pointProgram: Program = {
+  version: 1,
+  nodes: [
+    { id: 'point', type: 'class', text: 'Point(x, y)', position: { x: 500, y: 0 } },
+    { id: 'move', type: 'method', text: 'Point.move', position: { x: 750, y: 0 } },
+    { id: 'dx', type: 'input', text: 'dx', position: { x: 750, y: 100 } },
+    { id: 'dy', type: 'input', text: 'dy', position: { x: 750, y: 200 } },
+    {
+      id: 'set-x',
+      type: 'assignment',
+      text: 'self.x <- self.x + dx',
+      position: { x: 750, y: 300 },
+    },
+    {
+      id: 'set-y',
+      type: 'assignment',
+      text: 'self.y <- self.y + dy',
+      position: { x: 750, y: 400 },
+    },
+    { id: 'move-return', type: 'return', text: 'self', position: { x: 750, y: 500 } },
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'make',
+      type: 'assignment',
+      text: 'p <- Point(2, 3)',
+      position: { x: 0, y: 100 },
+    },
+    {
+      id: 'alias',
+      type: 'assignment',
+      text: 'same <- p',
+      position: { x: 0, y: 200 },
+    },
+    { id: 'call-move', type: 'call', text: 'p.move(5, -1)', position: { x: 0, y: 300 } },
+    { id: 'show-object', type: 'output', text: 'p', position: { x: 0, y: 400 } },
+    { id: 'show-x', type: 'output', text: 'same.x', position: { x: 0, y: 500 } },
+    { id: 'show-y', type: 'output', text: 'p.y', position: { x: 0, y: 600 } },
+    { id: 'end', type: 'return', text: 'p', position: { x: 0, y: 700 } },
+  ],
+  edges: [
+    { id: 'm1', source: 'move', target: 'dx' },
+    { id: 'm2', source: 'dx', target: 'dy' },
+    { id: 'm3', source: 'dy', target: 'set-x' },
+    { id: 'm4', source: 'set-x', target: 'set-y' },
+    { id: 'm5', source: 'set-y', target: 'move-return' },
+    { id: 'e1', source: 'main', target: 'make' },
+    { id: 'e2', source: 'make', target: 'alias' },
+    { id: 'e3', source: 'alias', target: 'call-move' },
+    { id: 'e4', source: 'call-move', target: 'show-object' },
+    { id: 'e5', source: 'show-object', target: 'show-x' },
+    { id: 'e6', source: 'show-x', target: 'show-y' },
+    { id: 'e7', source: 'show-y', target: 'end' },
   ],
 }
 
@@ -1135,5 +1190,336 @@ describe('interpreter', () => {
 
     expect(finalState.status).toBe('error')
     expect(finalState.error).toMatch(/Maximum step count/)
+  })
+
+  it('constructs objects, dispatches methods, preserves aliases, and formats output', () => {
+    const state = runExecution(createExecution(pointProgram, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.environment.p).toEqual({ kind: 'object', id: 1, className: 'Point' })
+    expect(state.environment.same).toBe(state.environment.p)
+    expect(state.objectHeap[1]).toEqual({
+      id: 1,
+      className: 'Point',
+      fields: { x: 7, y: 2 },
+    })
+    expect(state.output).toEqual(['Point #1 {x: 7, y: 2}', '7', '2'])
+    expect(state.returnValue).toEqual(state.environment.p)
+    expect(state.nextObjectId).toBe(2)
+  })
+
+  it('compares objects by identity', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'make-a', type: 'assignment', text: 'a <- Box(1)', position: { x: 0, y: 100 } },
+        { id: 'alias', type: 'assignment', text: 'b <- a', position: { x: 0, y: 200 } },
+        { id: 'make-c', type: 'assignment', text: 'c <- Box(1)', position: { x: 0, y: 300 } },
+        { id: 'same', type: 'output', text: 'a = b', position: { x: 0, y: 400 } },
+        { id: 'different', type: 'output', text: 'a = c', position: { x: 0, y: 500 } },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 600 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'make-a' },
+        { id: 'e2', source: 'make-a', target: 'alias' },
+        { id: 'e3', source: 'alias', target: 'make-c' },
+        { id: 'e4', source: 'make-c', target: 'same' },
+        { id: 'e5', source: 'same', target: 'different' },
+        { id: 'e6', source: 'different', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(createExecution(program, []))
+    expect(state.output).toEqual(['True', 'False'])
+    expect(Object.keys(state.objectHeap)).toEqual(['1', '2'])
+  })
+
+  it('reports constructor arity and missing fields clearly', () => {
+    const badArity: Program = {
+      ...pointProgram,
+      nodes: pointProgram.nodes.map((node) =>
+        node.id === 'make' ? { ...node, text: 'p <- Point(2)' } : node,
+      ),
+    }
+    const missingField: Program = {
+      ...pointProgram,
+      nodes: pointProgram.nodes.map((node) =>
+        node.id === 'show-x' ? { ...node, text: 'p.z' } : node,
+      ),
+    }
+
+    expect(runExecution(createExecution(badArity, [])).error).toMatch(
+      /Point.*exactly 2 constructor arguments.*received 1/i,
+    )
+    expect(runExecution(createExecution(missingField, [])).error).toMatch(
+      /Point.*no field "z"/i,
+    )
+  })
+
+  it('reports a missing method dynamically', () => {
+    const program: Program = {
+      ...pointProgram,
+      nodes: pointProgram.nodes.map((node) =>
+        node.id === 'call-move' ? { ...node, text: 'p.missing()' } : node,
+      ),
+    }
+
+    expect(runExecution(createExecution(program, [])).error).toMatch(
+      /Method "Point\.missing" does not exist/i,
+    )
+  })
+
+  it('preserves member reads that occur before a mutating nested Method call', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'counter', type: 'class', text: 'Counter(value)', position: { x: 400, y: 0 } },
+        { id: 'choose', type: 'method', text: 'Counter.choose', position: { x: 650, y: 0 } },
+        { id: 'first', type: 'input', text: 'first', position: { x: 650, y: 100 } },
+        { id: 'ignored', type: 'input', text: 'ignored', position: { x: 650, y: 200 } },
+        { id: 'choose-end', type: 'return', text: 'first', position: { x: 650, y: 300 } },
+        { id: 'bump', type: 'method', text: 'Counter.bump', position: { x: 900, y: 0 } },
+        {
+          id: 'increment',
+          type: 'assignment',
+          text: 'self.value <- self.value + 1',
+          position: { x: 900, y: 100 },
+        },
+        { id: 'bump-end', type: 'return', text: 'self.value', position: { x: 900, y: 200 } },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'make',
+          type: 'assignment',
+          text: 'p <- Counter(1)',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'show',
+          type: 'output',
+          text: 'p.choose(p.value, p.bump())',
+          position: { x: 0, y: 200 },
+        },
+        { id: 'end', type: 'return', text: 'p', position: { x: 0, y: 300 } },
+      ],
+      edges: [
+        { id: 'choose-1', source: 'choose', target: 'first' },
+        { id: 'choose-2', source: 'first', target: 'ignored' },
+        { id: 'choose-3', source: 'ignored', target: 'choose-end' },
+        { id: 'bump-1', source: 'bump', target: 'increment' },
+        { id: 'bump-2', source: 'increment', target: 'bump-end' },
+        { id: 'main-1', source: 'main', target: 'make' },
+        { id: 'main-2', source: 'make', target: 'show' },
+        { id: 'main-3', source: 'show', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual(['1'])
+    expect(state.objectHeap[1]?.fields.value).toBe(2)
+  })
+
+  it('keeps short-circuit Method call sites distinct while replaying', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'gate', type: 'class', text: 'Gate(flag, hits)', position: { x: 400, y: 0 } },
+        { id: 'a', type: 'method', text: 'Gate.a', position: { x: 650, y: 0 } },
+        {
+          id: 'clear-flag',
+          type: 'assignment',
+          text: 'self.flag <- False',
+          position: { x: 650, y: 100 },
+        },
+        { id: 'a-end', type: 'return', text: 'False', position: { x: 650, y: 200 } },
+        { id: 'b', type: 'method', text: 'Gate.b', position: { x: 900, y: 0 } },
+        {
+          id: 'count-hit',
+          type: 'assignment',
+          text: 'self.hits <- self.hits + 1',
+          position: { x: 900, y: 100 },
+        },
+        { id: 'b-end', type: 'return', text: 'True', position: { x: 900, y: 200 } },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'make',
+          type: 'assignment',
+          text: 'p <- Gate(True, 0)',
+          position: { x: 0, y: 100 },
+        },
+        {
+          id: 'show-result',
+          type: 'output',
+          text: 'p.flag and p.a() or p.b()',
+          position: { x: 0, y: 200 },
+        },
+        { id: 'show-hits', type: 'output', text: 'p.hits', position: { x: 0, y: 300 } },
+        { id: 'end', type: 'return', text: 'p', position: { x: 0, y: 400 } },
+      ],
+      edges: [
+        { id: 'a-1', source: 'a', target: 'clear-flag' },
+        { id: 'a-2', source: 'clear-flag', target: 'a-end' },
+        { id: 'b-1', source: 'b', target: 'count-hit' },
+        { id: 'b-2', source: 'count-hit', target: 'b-end' },
+        { id: 'main-1', source: 'main', target: 'make' },
+        { id: 'main-2', source: 'make', target: 'show-result' },
+        { id: 'main-3', source: 'show-result', target: 'show-hits' },
+        { id: 'main-4', source: 'show-hits', target: 'end' },
+      ],
+    }
+
+    const state = runExecution(createExecution(program, []))
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual(['True', '1'])
+    expect(state.objectHeap[1]?.fields).toEqual({ flag: false, hits: 1 })
+  })
+
+  it('preserves one rand value while replaying around nested calls', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'set-value',
+          type: 'assignment',
+          text: 'value <- keep_first(rand(), helper())',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'show', type: 'output', text: 'value', position: { x: 0, y: 200 } },
+        { id: 'main-end', type: 'return', text: 'value', position: { x: 0, y: 300 } },
+        { id: 'helper', type: 'function', text: 'helper', position: { x: 350, y: 0 } },
+        { id: 'helper-end', type: 'return', text: '0', position: { x: 350, y: 100 } },
+        {
+          id: 'keep-first',
+          type: 'function',
+          text: 'keep_first',
+          position: { x: 650, y: 0 },
+        },
+        { id: 'first-input', type: 'input', text: 'first', position: { x: 650, y: 100 } },
+        { id: 'second-input', type: 'input', text: 'second', position: { x: 650, y: 200 } },
+        { id: 'keep-end', type: 'return', text: 'first', position: { x: 650, y: 300 } },
+      ],
+      edges: [
+        { id: 'main-1', source: 'main', target: 'set-value' },
+        { id: 'main-2', source: 'set-value', target: 'show' },
+        { id: 'main-3', source: 'show', target: 'main-end' },
+        { id: 'helper-1', source: 'helper', target: 'helper-end' },
+        { id: 'keep-1', source: 'keep-first', target: 'first-input' },
+        { id: 'keep-2', source: 'first-input', target: 'second-input' },
+        { id: 'keep-3', source: 'second-input', target: 'keep-end' },
+      ],
+    }
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.25)
+
+    const state = runExecution(createExecution(program, []))
+    const randomCalls = random.mock.calls.length
+    random.mockRestore()
+
+    expect(state.status).toBe('halted')
+    expect(state.output).toEqual(['0.25'])
+    expect(randomCalls).toBe(1)
+  })
+
+  it('does not attach Methods from an imported Class that lost precedence', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'make', type: 'assignment', text: 'b <- Box(1)', position: { x: 0, y: 100 } },
+        {
+          id: 'call',
+          type: 'assignment',
+          text: 'result <- try_get(b)',
+          position: { x: 0, y: 200 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 300 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'make' },
+        { id: 'e2', source: 'make', target: 'call' },
+        { id: 'e3', source: 'call', target: 'end' },
+      ],
+    }
+    const importedProgram: Program = {
+      version: 1,
+      nodes: [
+        { id: 'import-box', type: 'class', text: 'Box(value, other)', position: { x: 400, y: 0 } },
+        { id: 'import-method', type: 'method', text: 'Box.getOther', position: { x: 650, y: 0 } },
+        { id: 'import-method-end', type: 'return', text: 'self.other', position: { x: 650, y: 100 } },
+        { id: 'import-main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'import-main-end', type: 'return', text: '0', position: { x: 0, y: 100 } },
+        {
+          id: 'try-get',
+          type: 'function',
+          text: 'try_get',
+          position: { x: 900, y: 0 },
+        },
+        { id: 'box-input', type: 'input', text: 'box', position: { x: 900, y: 100 } },
+        {
+          id: 'try-get-end',
+          type: 'return',
+          text: 'box.getOther()',
+          position: { x: 900, y: 200 },
+        },
+      ],
+      edges: [
+        { id: 'm1', source: 'import-method', target: 'import-method-end' },
+        { id: 'e1', source: 'import-main', target: 'import-main-end' },
+        { id: 'f1', source: 'try-get', target: 'box-input' },
+        { id: 'f2', source: 'box-input', target: 'try-get-end' },
+      ],
+    }
+
+    const initialState = createExecution(program, [], {
+      importedPrograms: [importedProgram],
+    })
+    const finalState = runExecution(initialState)
+
+    expect(initialState.importedMethods).toEqual([])
+    expect(finalState.error).toMatch(/Method "Box\.getOther" does not exist/i)
+  })
+
+  it('constructs imported Classes and dispatches their winning Methods', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'make', type: 'assignment', text: 'b <- Box(7)', position: { x: 0, y: 100 } },
+        { id: 'show', type: 'output', text: 'b.get()', position: { x: 0, y: 200 } },
+        { id: 'end', type: 'return', text: 'b', position: { x: 0, y: 300 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'make' },
+        { id: 'e2', source: 'make', target: 'show' },
+        { id: 'e3', source: 'show', target: 'end' },
+      ],
+    }
+    const importedProgram: Program = {
+      version: 1,
+      nodes: [
+        { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
+        { id: 'get', type: 'method', text: 'Box.get', position: { x: 650, y: 0 } },
+        { id: 'get-end', type: 'return', text: 'self.value', position: { x: 650, y: 100 } },
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'main-end', type: 'return', text: '0', position: { x: 0, y: 100 } },
+      ],
+      edges: [
+        { id: 'm1', source: 'get', target: 'get-end' },
+        { id: 'e1', source: 'main', target: 'main-end' },
+      ],
+    }
+
+    const finalState = runExecution(
+      createExecution(program, [], { importedPrograms: [importedProgram] }),
+    )
+
+    expect(finalState.status).toBe('halted')
+    expect(finalState.output).toEqual(['7'])
+    expect(finalState.objectHeap[1]?.fields).toEqual({ value: 7 })
   })
 })

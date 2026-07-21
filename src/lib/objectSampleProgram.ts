@@ -1,0 +1,111 @@
+import type { Program } from './types'
+
+export const objectSampleProgram: Program = {
+  version: 1,
+  nodes: [
+    {
+      id: 'point-class',
+      type: 'class',
+      text: 'Point(x, y)',
+      position: { x: 20, y: 20 },
+    },
+    {
+      id: 'point-move',
+      type: 'method',
+      text: 'Point.move',
+      position: { x: 20, y: 150 },
+    },
+    {
+      id: 'move-dx',
+      type: 'input',
+      text: 'dx',
+      position: { x: 20, y: 260 },
+    },
+    {
+      id: 'move-dy',
+      type: 'input',
+      text: 'dy',
+      position: { x: 20, y: 370 },
+    },
+    {
+      id: 'move-x',
+      type: 'assignment',
+      text: 'self.x <- self.x + dx',
+      position: { x: 20, y: 480 },
+    },
+    {
+      id: 'move-y',
+      type: 'assignment',
+      text: 'self.y <- self.y + dy',
+      position: { x: 20, y: 590 },
+    },
+    {
+      id: 'move-return',
+      type: 'return',
+      text: 'self',
+      position: { x: 20, y: 700 },
+    },
+    {
+      id: 'object-main',
+      type: 'function',
+      text: 'main',
+      position: { x: 360, y: 20 },
+    },
+    {
+      id: 'make-point',
+      type: 'assignment',
+      text: 'p <- Point(2, 3)',
+      position: { x: 360, y: 130 },
+    },
+    {
+      id: 'alias-point',
+      type: 'assignment',
+      text: 'same_point <- p',
+      position: { x: 360, y: 240 },
+    },
+    {
+      id: 'move-point',
+      type: 'call',
+      text: 'p.move(5, -1)',
+      position: { x: 360, y: 350 },
+    },
+    {
+      id: 'show-point',
+      type: 'output',
+      text: 'p',
+      position: { x: 360, y: 460 },
+    },
+    {
+      id: 'show-x',
+      type: 'output',
+      text: 'p.x',
+      position: { x: 360, y: 570 },
+    },
+    {
+      id: 'show-y',
+      type: 'output',
+      text: 'p.y',
+      position: { x: 360, y: 680 },
+    },
+    {
+      id: 'object-return',
+      type: 'return',
+      text: 'p',
+      position: { x: 360, y: 790 },
+    },
+  ],
+  edges: [
+    { id: 'edge-move-dx', source: 'point-move', target: 'move-dx' },
+    { id: 'edge-dx-dy', source: 'move-dx', target: 'move-dy' },
+    { id: 'edge-dy-x', source: 'move-dy', target: 'move-x' },
+    { id: 'edge-x-y', source: 'move-x', target: 'move-y' },
+    { id: 'edge-y-return', source: 'move-y', target: 'move-return' },
+    { id: 'edge-main-make', source: 'object-main', target: 'make-point' },
+    { id: 'edge-make-alias', source: 'make-point', target: 'alias-point' },
+    { id: 'edge-alias-move', source: 'alias-point', target: 'move-point' },
+    { id: 'edge-move-show', source: 'move-point', target: 'show-point' },
+    { id: 'edge-show-x', source: 'show-point', target: 'show-x' },
+    { id: 'edge-x-y-output', source: 'show-x', target: 'show-y' },
+    { id: 'edge-output-return', source: 'show-y', target: 'object-return' },
+  ],
+}

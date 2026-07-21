@@ -86,6 +86,28 @@ const validForProgram: Program = {
   ],
 }
 
+const validObjectProgram: Program = {
+  version: 1,
+  nodes: [
+    { id: 'point', type: 'class', text: 'Point(x, y)', position: { x: 400, y: 0 } },
+    { id: 'move', type: 'method', text: 'Point.move', position: { x: 650, y: 0 } },
+    { id: 'move-end', type: 'return', text: 'self', position: { x: 650, y: 120 } },
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'make',
+      type: 'assignment',
+      text: 'p <- Point(1, 2)',
+      position: { x: 0, y: 120 },
+    },
+    { id: 'end', type: 'return', text: 'p', position: { x: 0, y: 240 } },
+  ],
+  edges: [
+    { id: 'm1', source: 'move', target: 'move-end' },
+    { id: 'e1', source: 'main', target: 'make' },
+    { id: 'e2', source: 'make', target: 'end' },
+  ],
+}
+
 describe('validateProgram', () => {
   it('accepts valid linear and branch programs', () => {
     expect(validateProgram(validLinearProgram).valid).toBe(true)
@@ -534,5 +556,153 @@ describe('validateProgram', () => {
     expect(validateProgram(program).errors.join('\n')).toMatch(
       /reachable from more than one Function/i,
     )
+  })
+
+  it('accepts Class declarations, constructor calls, and Method flowcharts', () => {
+    expect(validateProgram(validObjectProgram).errors).toEqual([])
+  })
+
+  it('requires Classes to remain disconnected and Methods to be root nodes', () => {
+    const program: Program = {
+      ...validObjectProgram,
+      edges: [
+        ...validObjectProgram.edges,
+        { id: 'bad-class-edge', source: 'point', target: 'move' },
+      ],
+    }
+
+    const errors = validateProgram(program).errors.join('\n')
+    expect(errors).toMatch(/Class node "point" cannot have incoming or outgoing edges/i)
+    expect(errors).toMatch(/Method node "move" cannot have incoming edges/i)
+  })
+
+  it('rejects duplicate Classes, fields, and qualified Methods', () => {
+    const duplicateClass: Program = {
+      ...validObjectProgram,
+      nodes: [
+        ...validObjectProgram.nodes,
+        { id: 'point-2', type: 'class', text: 'Point(z)', position: { x: 900, y: 0 } },
+      ],
+    }
+    const duplicateField: Program = {
+      ...validObjectProgram,
+      nodes: validObjectProgram.nodes.map((node) =>
+        node.id === 'point' ? { ...node, text: 'Point(x, x)' } : node,
+      ),
+    }
+    const duplicateMethod: Program = {
+      ...validObjectProgram,
+      nodes: [
+        ...validObjectProgram.nodes,
+        { id: 'move-2', type: 'method', text: 'Point.move', position: { x: 900, y: 0 } },
+        { id: 'move-2-end', type: 'return', text: 'self', position: { x: 900, y: 120 } },
+      ],
+      edges: [
+        ...validObjectProgram.edges,
+        { id: 'm2', source: 'move-2', target: 'move-2-end' },
+      ],
+    }
+
+    expect(validateProgram(duplicateClass).errors.join('\n')).toMatch(
+      /Duplicate Class name "Point"/i,
+    )
+    expect(validateProgram(duplicateField).errors.join('\n')).toMatch(
+      /duplicate field "x"/i,
+    )
+    expect(validateProgram(duplicateMethod).errors.join('\n')).toMatch(
+      /Duplicate Method name "Point\.move"/i,
+    )
+  })
+
+  it('rejects Methods for missing Classes and Function/Class name conflicts', () => {
+    const missingClass: Program = {
+      ...validObjectProgram,
+      nodes: validObjectProgram.nodes.map((node) =>
+        node.id === 'move' ? { ...node, text: 'Missing.move' } : node,
+      ),
+    }
+    const conflictingName: Program = {
+      ...validObjectProgram,
+      nodes: validObjectProgram.nodes.map((node) =>
+        node.id === 'point' ? { ...node, text: 'main(x, y)' } : node,
+      ),
+    }
+
+    expect(validateProgram(missingClass).errors.join('\n')).toMatch(
+      /Method "Missing\.move" references missing Class "Missing"/i,
+    )
+    expect(validateProgram(conflictingName).errors.join('\n')).toMatch(
+      /Function and Class cannot both use the name "main"/i,
+    )
+  })
+
+  it('reserves built-in call names for the language runtime', () => {
+    const builtInFunction: Program = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'main' ? { ...node, text: 'sqrt' } : node,
+      ),
+    }
+    const builtInClass: Program = {
+      ...validObjectProgram,
+      nodes: validObjectProgram.nodes.map((node) =>
+        node.id === 'point' ? { ...node, text: 'rand(x, y)' } : node,
+      ),
+    }
+
+    expect(validateProgram(builtInFunction).errors.join('\n')).toMatch(
+      /Function name "sqrt" is reserved for a built-in/i,
+    )
+    expect(validateProgram(builtInClass).errors.join('\n')).toMatch(
+      /Class name "rand" is reserved for a built-in/i,
+    )
+  })
+
+  it('does not let Method flows replace their implicit self receiver', () => {
+    const binders = [
+      { id: 'bind-input', type: 'input', text: 'self' },
+      { id: 'bind-assignment', type: 'assignment', text: 'self <- 0' },
+      { id: 'bind-for', type: 'for', text: 'self in []' },
+    ] as const
+
+    for (const binder of binders) {
+      const program: Program = {
+        ...validObjectProgram,
+        nodes: [
+          ...validObjectProgram.nodes,
+          { ...binder, position: { x: 650, y: 60 } },
+        ],
+        edges: [
+          ...validObjectProgram.edges.filter((edge) => edge.id !== 'm1'),
+          { id: `${binder.id}-start`, source: 'move', target: binder.id },
+          ...(binder.type === 'for'
+            ? [
+                {
+                  id: `${binder.id}-true`,
+                  source: binder.id,
+                  target: 'move-end',
+                  label: 'true' as const,
+                },
+                {
+                  id: `${binder.id}-false`,
+                  source: binder.id,
+                  target: 'move-end',
+                  label: 'false' as const,
+                },
+              ]
+            : [
+                {
+                  id: `${binder.id}-end`,
+                  source: binder.id,
+                  target: 'move-end',
+                },
+              ]),
+        ],
+      }
+
+      expect(validateProgram(program).errors.join('\n')).toMatch(
+        new RegExp(`${binder.id}.*reserved receiver name "self"`, 'i'),
+      )
+    }
   })
 })

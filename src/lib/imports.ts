@@ -1,4 +1,5 @@
 import type { Program } from './types'
+import { parseClassDeclaration, parseMethodDeclaration } from './statements'
 import { TEXT_FUNCTION_NAMES, TEXT_LIBRARY_NAME } from './text'
 import { TURTLE_COMMAND_NAMES, TURTLE_LIBRARY_NAME } from './turtle'
 import { normalizeImportedProgram, validateProgram } from './validation'
@@ -17,6 +18,12 @@ export interface ImportResolution {
   files: ImportedProgramFile[]
   nativeLibraries: NativeLibraryImport[]
   errors: string[]
+}
+
+interface ImportedCallableWinner {
+  fileIndex: number
+  fileName: string
+  node: Program['nodes'][number]
 }
 
 export interface FlowLabFileHandle {
@@ -118,7 +125,7 @@ export function callableImportedFunctionNames(
   currentProgram: Program,
   nativeLibraries: NativeLibraryImport[] = [],
 ): string[] {
-  const currentFunctionNames = currentProgramFunctionNames(currentProgram)
+  const currentFunctionNames = currentProgramCallableNames(currentProgram)
   const importedFunctionNames = new Set<string>()
 
   for (const library of nativeLibraries) {
@@ -136,10 +143,10 @@ export function callableImportedFunctionNames(
 
   for (const file of files) {
     for (const node of file.program.nodes) {
-      const functionName = node.text.trim()
+      const functionName = callableNameForNode(node)
 
       if (
-        node.type !== 'function' ||
+        !functionName ||
         functionName === 'main' ||
         currentFunctionNames.has(functionName) ||
         importedFunctionNames.has(functionName)
@@ -154,6 +161,16 @@ export function callableImportedFunctionNames(
   return [...importedFunctionNames].sort((left, right) =>
     left.localeCompare(right),
   )
+}
+
+export function callableImportedClassNames(
+  files: ImportedProgramFile[],
+  currentProgram: Program,
+): string[] {
+  return [...importedCallableWinners(files, currentProgram)]
+    .filter(([, winner]) => winner.node.type === 'class')
+    .map(([name]) => name)
+    .sort((left, right) => left.localeCompare(right))
 }
 
 function isNativeLibraryImport(name: string): boolean {
@@ -188,34 +205,74 @@ export function importWarnings(
   files: ImportedProgramFile[],
   currentProgram: Program,
 ): string[] {
-  const currentFunctionNames = currentProgramFunctionNames(currentProgram)
-  const importedFunctionOwners = new Map<string, string>()
+  const currentCallableNames = currentProgramCallableNames(currentProgram)
+  const currentMethodNames = currentProgramMethodNames(currentProgram)
+  const callableWinners = importedCallableWinners(files, currentProgram)
+  const importedMethodOwners = new Map<string, string>()
   const warnings: string[] = []
 
-  for (const file of files) {
+  for (const [fileIndex, file] of files.entries()) {
     for (const node of file.program.nodes) {
-      const functionName = node.text.trim()
+      if (node.type === 'function' || node.type === 'class') {
+        const callableName = callableNameForNode(node)
+        if (!callableName || callableName === 'main') {
+          continue
+        }
 
-      if (node.type !== 'function' || functionName === 'main') {
+        const label = node.type === 'function' ? 'Function' : 'Class'
+        if (currentCallableNames.has(callableName)) {
+          warnings.push(
+            `${label} "${callableName}" from "${file.name}" is ignored because the current canvas defines that name.`,
+          )
+          continue
+        }
+
+        const winner = callableWinners.get(callableName)
+        if (
+          !winner ||
+          winner.fileIndex !== fileIndex ||
+          winner.node !== node
+        ) {
+          warnings.push(
+            `${label} "${callableName}" from "${file.name}" is ignored because "${winner?.fileName}" already imports that name.`,
+          )
+          continue
+        }
+
         continue
       }
 
-      if (currentFunctionNames.has(functionName)) {
-        warnings.push(
-          `Function "${functionName}" from "${file.name}" is ignored because the current canvas defines it.`,
-        )
-        continue
-      }
+      if (node.type === 'method') {
+        const method = methodDetailsForNode(node)
+        if (!method) {
+          continue
+        }
 
-      const firstOwner = importedFunctionOwners.get(functionName)
-      if (firstOwner) {
-        warnings.push(
-          `Function "${functionName}" from "${file.name}" is ignored because "${firstOwner}" already imports it.`,
-        )
-        continue
-      }
+        const classWinner = callableWinners.get(method.className)
+        if (
+          classWinner?.node.type !== 'class' ||
+          classWinner.fileIndex !== fileIndex
+        ) {
+          continue
+        }
 
-      importedFunctionOwners.set(functionName, file.name)
+        if (currentMethodNames.has(method.qualifiedName)) {
+          warnings.push(
+            `Method "${method.qualifiedName}" from "${file.name}" is ignored because the current canvas defines it.`,
+          )
+          continue
+        }
+
+        const firstOwner = importedMethodOwners.get(method.qualifiedName)
+        if (firstOwner) {
+          warnings.push(
+            `Method "${method.qualifiedName}" from "${file.name}" is ignored because "${firstOwner}" already imports it.`,
+          )
+          continue
+        }
+
+        importedMethodOwners.set(method.qualifiedName, file.name)
+      }
     }
   }
 
@@ -357,12 +414,73 @@ function isFileNotFoundError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'NotFoundError'
 }
 
-function currentProgramFunctionNames(program: Program): Set<string> {
-  return new Set(
-    program.nodes
-      .filter((node) => node.type === 'function')
-      .map((node) => node.text.trim()),
-  )
+function currentProgramCallableNames(program: Program): Set<string> {
+  return new Set(program.nodes.map(callableNameForNode).filter(Boolean) as string[])
+}
+
+function currentProgramMethodNames(program: Program): Set<string> {
+  return new Set(program.nodes.map(methodNameForNode).filter(Boolean) as string[])
+}
+
+function importedCallableWinners(
+  files: ImportedProgramFile[],
+  currentProgram: Program,
+): Map<string, ImportedCallableWinner> {
+  const claimedNames = currentProgramCallableNames(currentProgram)
+  const winners = new Map<string, ImportedCallableWinner>()
+
+  for (const [fileIndex, file] of files.entries()) {
+    for (const node of file.program.nodes) {
+      const name = callableNameForNode(node)
+
+      if (!name || name === 'main' || claimedNames.has(name)) {
+        continue
+      }
+
+      claimedNames.add(name)
+      winners.set(name, { fileIndex, fileName: file.name, node })
+    }
+  }
+
+  return winners
+}
+
+function callableNameForNode(node: Program['nodes'][number]): string | undefined {
+  if (node.type === 'function') {
+    return node.text.trim()
+  }
+
+  return node.type === 'class' ? classNameForNode(node) : undefined
+}
+
+function classNameForNode(node: Program['nodes'][number]): string | undefined {
+  try {
+    return parseClassDeclaration(node.text).name
+  } catch {
+    return undefined
+  }
+}
+
+function methodNameForNode(node: Program['nodes'][number]): string | undefined {
+  return methodDetailsForNode(node)?.qualifiedName
+}
+
+function methodDetailsForNode(
+  node: Program['nodes'][number],
+): { className: string; qualifiedName: string } | undefined {
+  if (node.type !== 'method') {
+    return undefined
+  }
+
+  try {
+    const method = parseMethodDeclaration(node.text)
+    return {
+      className: method.className,
+      qualifiedName: `${method.className}.${method.methodName}`,
+    }
+  } catch {
+    return undefined
+  }
 }
 
 function browserStorage(): Storage | null {

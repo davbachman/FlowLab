@@ -1,8 +1,10 @@
 export const VARIABLE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/
+const RESERVED_LANGUAGE_NAMES = new Set(['and', 'or', 'not', 'True', 'False'])
 
 export type AssignmentTarget =
   | { kind: 'variable'; variable: string }
   | { kind: 'index'; variable: string; indexExpression: string }
+  | { kind: 'member'; variable: string; member: string }
 
 export type AssignmentStatement =
   | {
@@ -13,11 +15,30 @@ export type AssignmentStatement =
       target: Extract<AssignmentTarget, { kind: 'index' }>
       expression: string
     }
+  | {
+      target: Extract<AssignmentTarget, { kind: 'member' }>
+      expression: string
+    }
 
 export type IndexedAssignmentStatement = Extract<
   AssignmentStatement,
   { target: { kind: 'index' } }
 >
+
+export type MemberAssignmentStatement = Extract<
+  AssignmentStatement,
+  { target: { kind: 'member' } }
+>
+
+export interface ClassDeclaration {
+  name: string
+  fields: string[]
+}
+
+export interface MethodDeclaration {
+  className: string
+  methodName: string
+}
 
 export interface ForStatement {
   variable: string
@@ -25,7 +46,58 @@ export interface ForStatement {
 }
 
 export function isVariableName(value: string): boolean {
-  return VARIABLE_NAME_PATTERN.test(value.trim())
+  const name = value.trim()
+  return VARIABLE_NAME_PATTERN.test(name) && !RESERVED_LANGUAGE_NAMES.has(name)
+}
+
+export function parseClassDeclaration(text: string): ClassDeclaration {
+  const match = text.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*$/)
+
+  if (!match) {
+    throw new Error('Class must use the form: ClassName(field, ...)')
+  }
+
+  if (!isVariableName(match[1])) {
+    throw new Error(`Class name "${match[1]}" must be a valid, non-reserved name`)
+  }
+
+  const fieldsText = match[2].trim()
+  if (fieldsText === '') {
+    return { name: match[1], fields: [] }
+  }
+
+  const fields = fieldsText.split(',').map((field) => field.trim())
+
+  for (const field of fields) {
+    if (!isVariableName(field)) {
+      throw new Error(`Class field "${field}" must be a valid name`)
+    }
+  }
+
+  const duplicate = fields.find(
+    (field, index) => fields.indexOf(field) !== index,
+  )
+  if (duplicate !== undefined) {
+    throw new Error(`Class has duplicate field "${duplicate}"`)
+  }
+
+  return { name: match[1], fields }
+}
+
+export function parseMethodDeclaration(text: string): MethodDeclaration {
+  const match = text.match(
+    /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/,
+  )
+
+  if (!match) {
+    throw new Error('Method must use the form: ClassName.methodName')
+  }
+
+  if (!isVariableName(match[1]) || !isVariableName(match[2])) {
+    throw new Error('Method class and method names must be valid, non-reserved names')
+  }
+
+  return { className: match[1], methodName: match[2] }
 }
 
 export function parseAssignment(text: string): AssignmentStatement {
@@ -44,13 +116,28 @@ export function parseAssignment(text: string): AssignmentStatement {
     }
   }
 
+  const memberTarget = targetText.match(
+    /^([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)$/,
+  )
+
+  if (memberTarget) {
+    return {
+      target: {
+        kind: 'member',
+        variable: memberTarget[1],
+        member: memberTarget[2],
+      },
+      expression: match[2],
+    }
+  }
+
   const indexTarget = targetText.match(
     /^([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(.+?)\s*\]$/,
   )
 
   if (!indexTarget) {
     throw new Error(
-      'Assignment must use the form: name <- expression or name[index] <- expression',
+      'Assignment target must be a variable, a single object member (object.field), or an indexed value (name[index])',
     )
   }
 

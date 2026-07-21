@@ -1,5 +1,7 @@
 export type FlowNodeType =
   | 'function'
+  | 'class'
+  | 'method'
   | 'return'
   | 'assignment'
   | 'call'
@@ -17,7 +19,19 @@ export interface RuntimeDictionary {
   entries: Array<{ key: DictionaryKey; value: RuntimeValue }>
 }
 
-export type RuntimeValue = number | string | boolean | RuntimeValue[] | RuntimeDictionary
+export interface RuntimeObject {
+  kind: 'object'
+  id: number
+  className: string
+}
+
+export type RuntimeValue =
+  | number
+  | string
+  | boolean
+  | RuntimeValue[]
+  | RuntimeDictionary
+  | RuntimeObject
 export type Environment = Record<string, RuntimeValue>
 
 export interface ProgramPosition {
@@ -55,6 +69,8 @@ export interface ValidationResult {
 
 export const FLOW_NODE_TYPES: readonly FlowNodeType[] = [
   'function',
+  'class',
+  'method',
   'return',
   'assignment',
   'call',
@@ -67,6 +83,8 @@ export const FLOW_NODE_TYPES: readonly FlowNodeType[] = [
 
 export const NODE_TYPE_LABELS: Record<FlowNodeType, string> = {
   function: 'Function',
+  class: 'Class',
+  method: 'Method',
   return: 'Return',
   assignment: 'Assignment',
   call: 'Call',

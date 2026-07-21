@@ -42,6 +42,7 @@ import {
   type ExecutionState,
 } from './lib/interpreter'
 import {
+  callableImportedClassNames,
   callableImportedFunctionNames,
   displayFlowLabFileName,
   importWarnings,
@@ -68,6 +69,12 @@ import {
   sourceHandleForBranchConnection,
 } from './lib/flowRouting'
 import { sampleProgram } from './lib/sampleProgram'
+import { objectSampleProgram } from './lib/objectSampleProgram'
+import { isRuntimeObject } from './lib/runtimeValues'
+import {
+  parseClassDeclaration,
+  type ClassDeclaration,
+} from './lib/statements'
 import {
   isBranchLabel,
   isBranchNodeType,
@@ -196,6 +203,8 @@ const edgeTypes = {
 
 const DEFAULT_NODE_TEXT: Record<FlowNodeType, string> = {
   function: 'main',
+  class: 'Point(x, y)',
+  method: 'Point.move',
   return: '0',
   assignment: 'x <- x + 1',
   call: 'forward(50)',
@@ -206,8 +215,12 @@ const DEFAULT_NODE_TEXT: Record<FlowNodeType, string> = {
   for: 'item in L',
 }
 
-const NODE_PALETTE: FlowNodeType[] = [
+const DEFINITION_NODE_PALETTE: FlowNodeType[] = [
   'function',
+  'class',
+  'method',
+]
+const STEP_NODE_PALETTE: FlowNodeType[] = [
   'return',
   'assignment',
   'call',
@@ -487,6 +500,14 @@ function App() {
       ),
     [importResolution.files, importResolution.nativeLibraries, program],
   )
+  const importedClassNames = useMemo(
+    () => callableImportedClassNames(importResolution.files, program),
+    [importResolution.files, program],
+  )
+  const importedPlainFunctionNames = useMemo(() => {
+    const classNames = new Set(importedClassNames)
+    return importedFunctionNames.filter((name) => !classNames.has(name))
+  }, [importedClassNames, importedFunctionNames])
   const importedPrograms = useMemo(
     () => importResolution.files.map((file) => file.program),
     [importResolution.files],
@@ -502,13 +523,20 @@ function App() {
     ]
     const result = validateProgram(program, {
       externalFunctionNames: new Set(importedFunctionNames),
+      externalClassNames: new Set(importedClassNames),
     })
 
     return {
       valid: result.valid && importErrors.length === 0,
       errors: [...result.errors, ...importErrors],
     }
-  }, [importResolution.errors, importedFunctionNames, importsLoading, program])
+  }, [
+    importResolution.errors,
+    importedClassNames,
+    importedFunctionNames,
+    importsLoading,
+    program,
+  ])
   const currentNodeId = execution?.currentNodeId ?? null
   const executionIsBusy =
     execution?.status === 'asking' || execution?.status === 'loading'
@@ -644,7 +672,7 @@ function App() {
       position: centerNodePosition(nodeType, position),
       data: {
         nodeType,
-        text: DEFAULT_NODE_TEXT[nodeType],
+        text: defaultNodeText(nodeType, nodes),
       },
     }
 
@@ -676,6 +704,17 @@ function App() {
     setExecution(null)
     setPendingNodeType(null)
     setMessage('Sample program loaded.')
+  }
+
+  function resetObjectSample(): void {
+    pushHistorySnapshot()
+    setNodes(programToNodes(objectSampleProgram))
+    setEdges(programToEdges(objectSampleProgram))
+    setInputQueueText('')
+    setDocumentName(DEFAULT_DOCUMENT_NAME)
+    setExecution(null)
+    setPendingNodeType(null)
+    setMessage('Object sample loaded.')
   }
 
   function clearCanvas(): void {
@@ -1120,6 +1159,7 @@ function App() {
       const savedInputQueueText =
         typeof parsed.inputQueue === 'string' ? parsed.inputQueue : null
       let validationFunctionNames = importedFunctionNames
+      let validationClassNames = importedClassNames
       let nextImportResolution: ImportResolution | null = null
 
       if (savedImportsText !== null) {
@@ -1133,10 +1173,15 @@ function App() {
           parsed,
           nextImportResolution.nativeLibraries,
         )
+        validationClassNames = callableImportedClassNames(
+          nextImportResolution.files,
+          parsed,
+        )
       }
 
       const result = validateProgram(parsed, {
         externalFunctionNames: new Set(validationFunctionNames),
+        externalClassNames: new Set(validationClassNames),
       })
       const importErrors = nextImportResolution?.errors ?? []
 
@@ -1191,6 +1236,9 @@ function App() {
           <button type="button" onClick={resetSample}>
             Load Sample
           </button>
+          <button type="button" onClick={resetObjectSample}>
+            Object Sample
+          </button>
           <button type="button" onClick={clearCanvas}>
             Clear
           </button>
@@ -1227,21 +1275,42 @@ function App() {
       >
         <aside className="palette" aria-label="Node palette">
           <h2>Nodes</h2>
-          <div className="palette-buttons">
-            {NODE_PALETTE.map((nodeType) => (
-              <button
-                key={nodeType}
-                type="button"
-                className={
-                  pendingNodeType === nodeType ? 'palette-button-active' : ''
-                }
-                aria-pressed={pendingNodeType === nodeType}
-                onClick={() => selectNodeType(nodeType)}
-              >
-                {NODE_TYPE_LABELS[nodeType]}
-              </button>
-            ))}
-          </div>
+          <section className="palette-group" aria-labelledby="definitions-heading">
+            <h3 id="definitions-heading">Definitions</h3>
+            <div className="palette-buttons">
+              {DEFINITION_NODE_PALETTE.map((nodeType) => (
+                <button
+                  key={nodeType}
+                  type="button"
+                  className={
+                    pendingNodeType === nodeType ? 'palette-button-active' : ''
+                  }
+                  aria-pressed={pendingNodeType === nodeType}
+                  onClick={() => selectNodeType(nodeType)}
+                >
+                  {NODE_TYPE_LABELS[nodeType]}
+                </button>
+              ))}
+            </div>
+          </section>
+          <section className="palette-group" aria-labelledby="steps-heading">
+            <h3 id="steps-heading">Steps</h3>
+            <div className="palette-buttons">
+              {STEP_NODE_PALETTE.map((nodeType) => (
+                <button
+                  key={nodeType}
+                  type="button"
+                  className={
+                    pendingNodeType === nodeType ? 'palette-button-active' : ''
+                  }
+                  aria-pressed={pendingNodeType === nodeType}
+                  onClick={() => selectNodeType(nodeType)}
+                >
+                  {NODE_TYPE_LABELS[nodeType]}
+                </button>
+              ))}
+            </div>
+          </section>
 
           <section className="validation-panel" aria-label="Graph validation">
             <h2>Validation</h2>
@@ -1289,13 +1358,20 @@ function App() {
                       .join(', ')}
                   </p>
                 ) : null}
-                {importedFunctionNames.length ? (
+                {importedClassNames.length ? (
                   <p className="import-status">
-                    Callable: {importedFunctionNames.join(', ')}
+                    Classes: {importedClassNames.join(', ')}
                   </p>
-                ) : (
-                  <p className="import-status">No imported functions</p>
-                )}
+                ) : null}
+                {importedPlainFunctionNames.length ? (
+                  <p className="import-status">
+                    Functions: {importedPlainFunctionNames.join(', ')}
+                  </p>
+                ) : null}
+                {!importedClassNames.length &&
+                !importedPlainFunctionNames.length ? (
+                  <p className="import-status">No imported callables</p>
+                ) : null}
               </>
             )}
             {importWarningMessages.length ? (
@@ -1414,6 +1490,10 @@ function App() {
               <dt>Steps</dt>
               <dd>{execution?.steps ?? 0}</dd>
             </div>
+            <div>
+              <dt>Flow</dt>
+              <dd>{execution?.functionName ?? '—'}</dd>
+            </div>
           </dl>
 
           {message ? <p className="notice">{message}</p> : null}
@@ -1430,7 +1510,12 @@ function App() {
                 {variableEntries.map(([name, value]) => (
                   <div className="variable-row" key={name}>
                     <dt>{name}</dt>
-                    <dd>{formatVariableValue(value)}</dd>
+                    <dd>
+                      <VariableValue
+                        value={value}
+                        objectHeap={execution?.objectHeap ?? {}}
+                      />
+                    </dd>
                   </div>
                 ))}
               </dl>
@@ -1546,6 +1631,8 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
   const label = NODE_TYPE_LABELS[data.nodeType]
   const editable =
     data.nodeType === 'function' ||
+    data.nodeType === 'class' ||
+    data.nodeType === 'method' ||
     data.nodeType === 'return' ||
     data.nodeType === 'assignment' ||
     data.nodeType === 'call' ||
@@ -1560,16 +1647,27 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
     data.trueBranchHandle === undefined || data.trueBranchHandle === trueLeftHandle
   const showTrueRightHandle =
     data.trueBranchHandle === undefined || data.trueBranchHandle === trueRightHandle
+  const isDeclaration = data.nodeType === 'class'
+  const isFlowRoot = data.nodeType === 'function' || data.nodeType === 'method'
+  const classSignature = isDeclaration
+    ? tryParseClassDeclaration(data.text)
+    : null
 
   return (
     <div
       className={`flow-node flow-node-${data.nodeType}`}
       data-testid={`flow-node-${id}`}
       data-current={data.isCurrent ? 'true' : 'false'}
-      data-shape={isBranchNodeType(data.nodeType) ? 'diamond' : 'block'}
+      data-shape={
+        isBranchNodeType(data.nodeType)
+          ? 'diamond'
+          : isDeclaration
+            ? 'declaration'
+            : 'block'
+      }
       aria-current={data.isCurrent ? 'step' : undefined}
     >
-      {data.nodeType !== 'function' ? (
+      {!isFlowRoot && !isDeclaration ? (
         <Handle className="node-handle" type="target" position={Position.Top} />
       ) : null}
       <div className="node-content">
@@ -1587,6 +1685,15 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
               onChange={(event) => data.onTextChange?.(id, event.target.value)}
               spellCheck={false}
             />
+            {classSignature?.fields.length ? (
+              <div className="class-fields" aria-label="Declared fields">
+                {classSignature.fields.map((field) => (
+                  <span className="class-field" key={field}>
+                    {field}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </>
         ) : (
           <div className="fixed-node-text">{label}</div>
@@ -1625,7 +1732,7 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
             position={Position.Bottom}
           />
         </>
-      ) : data.nodeType !== 'return' ? (
+      ) : data.nodeType !== 'return' && !isDeclaration ? (
         <Handle
           className="node-handle"
           type="source"
@@ -1633,6 +1740,67 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
         />
       ) : null}
     </div>
+  )
+}
+
+function VariableValue({
+  value,
+  objectHeap,
+  seenObjectIds = new Set<number>(),
+}: {
+  value: RuntimeValue
+  objectHeap: ExecutionState['objectHeap']
+  seenObjectIds?: Set<number>
+}) {
+  if (!isRuntimeObject(value)) {
+    return (
+      <span className="variable-value-preview">
+        {formatVariableValue(value)}
+      </span>
+    )
+  }
+
+  const object = objectHeap[value.id]
+  const objectLabel = formatVariableValue(value)
+
+  if (seenObjectIds.has(value.id)) {
+    return (
+      <span className="object-reference">
+        {objectLabel} (already shown)
+      </span>
+    )
+  }
+
+  if (!object) {
+    return <span className="object-reference">{objectLabel}</span>
+  }
+
+  const fields = Object.entries(object.fields)
+  const nextSeenObjectIds = new Set(seenObjectIds)
+  nextSeenObjectIds.add(value.id)
+
+  return (
+    <details className="object-value" data-object-id={value.id}>
+      <summary>{objectLabel}</summary>
+      {fields.length ? (
+        <dl className="object-field-list">
+          {fields.map(([name, fieldValue]) => (
+            <div className="object-field-row" key={name}>
+              <dt>{name}</dt>
+              <dd>
+                <VariableValue
+                  value={fieldValue}
+                  objectHeap={objectHeap}
+                  seenObjectIds={nextSeenObjectIds}
+                />
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className="empty-object-fields">No fields</p>
+      )}
+    </details>
   )
 }
 
@@ -2169,6 +2337,32 @@ function nextNodeId(nodeType: FlowNodeType, nodes: EditorNode[]): string {
   return id
 }
 
+function tryParseClassDeclaration(text: string): ClassDeclaration | null {
+  try {
+    return parseClassDeclaration(text)
+  } catch {
+    return null
+  }
+}
+
+function defaultNodeText(
+  nodeType: FlowNodeType,
+  nodes: EditorNode[],
+): string {
+  if (nodeType !== 'method') {
+    return DEFAULT_NODE_TEXT[nodeType]
+  }
+
+  const classDeclarations = nodes
+    .filter((node) => node.data.nodeType === 'class')
+    .map((node) => tryParseClassDeclaration(node.data.text))
+    .filter((declaration): declaration is ClassDeclaration => declaration !== null)
+
+  return classDeclarations.length === 1
+    ? `${classDeclarations[0].name}.move`
+    : DEFAULT_NODE_TEXT.method
+}
+
 function nextEdgeId(connection: Connection, edges: EditorEdge[]): string {
   const baseId = `edge-${connection.source}-${connection.target}`
   let suffix = 1
@@ -2186,8 +2380,14 @@ function centerNodePosition(
   nodeType: FlowNodeType,
   position: { x: number; y: number },
 ): { x: number; y: number } {
-  const width = isBranchNodeType(nodeType) ? 188 : 170
-  const height = isBranchNodeType(nodeType) ? 142 : 82
+  const width = isBranchNodeType(nodeType)
+    ? 188
+    : nodeType === 'class'
+      ? 200
+      : nodeType === 'assignment'
+        ? 190
+        : 170
+  const height = isBranchNodeType(nodeType) ? 142 : nodeType === 'class' ? 104 : 82
 
   return {
     x: position.x - width / 2,

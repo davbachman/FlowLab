@@ -1,16 +1,18 @@
 import {
   evaluateExpression,
-  stringifyValue,
   toBoolean,
 } from './expression'
 import {
   isDictionaryKey,
   isRuntimeDictionary,
+  isRuntimeObject,
   setDictionaryValue,
 } from './runtimeValues'
 import {
   parseAssignment,
+  parseClassDeclaration,
   parseForLoop,
+  parseMethodDeclaration,
   type AssignmentTarget,
 } from './statements'
 import {
@@ -20,6 +22,8 @@ import {
   type Program,
   type ProgramEdge,
   type ProgramNode,
+  type RuntimeDictionary,
+  type RuntimeObject,
   type RuntimeValue,
 } from './types'
 import {
@@ -59,6 +63,35 @@ interface ImportedFunctionDefinition {
   node: ProgramNode
 }
 
+interface ImportedClassDefinition {
+  name: string
+  fields: string[]
+  program: Program
+  node: ProgramNode
+}
+
+interface ImportedMethodDefinition {
+  name: string
+  className: string
+  methodName: string
+  program: Program
+  node: ProgramNode
+}
+
+interface ImportedDefinitions {
+  functions: ImportedFunctionDefinition[]
+  classes: ImportedClassDefinition[]
+  methods: ImportedMethodDefinition[]
+}
+
+export interface RuntimeObjectInstance {
+  id: number
+  className: string
+  fields: Record<string, RuntimeValue>
+}
+
+export type ObjectHeap = Record<number, RuntimeObjectInstance>
+
 interface ForLoopFrame {
   variable: string
   values: RuntimeValue[]
@@ -70,24 +103,32 @@ interface CompletedExpressionResult {
   value: RuntimeValue
   output: string[]
   turtle?: TurtleState
+  objectHeap: ObjectHeap
+  nextObjectId: number
 }
 
 interface SuspendedExpressionResult {
   status: 'suspended'
   call: FunctionCallRequest
   turtle?: TurtleState
+  objectHeap: ObjectHeap
+  nextObjectId: number
 }
 
 interface AskingExpressionResult {
   status: 'asking'
   ask: AskCallRequest
   turtle?: TurtleState
+  objectHeap: ObjectHeap
+  nextObjectId: number
 }
 
 interface LoadingExpressionResult {
   status: 'loading'
   textLoad: TextLoadCallRequest
   turtle?: TurtleState
+  objectHeap: ObjectHeap
+  nextObjectId: number
 }
 
 type ProgramExpressionResult =
@@ -102,29 +143,39 @@ type AssignIndexedElementResult =
       environment: Environment
       output: string[]
       turtle?: TurtleState
+      objectHeap: ObjectHeap
+      nextObjectId: number
     }
   | {
       status: 'suspended'
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
       call: FunctionCallRequest
       turtle?: TurtleState
+      objectHeap: ObjectHeap
+      nextObjectId: number
     }
   | {
       status: 'asking'
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
       ask: AskCallRequest
       turtle?: TurtleState
+      objectHeap: ObjectHeap
+      nextObjectId: number
     }
   | {
       status: 'loading'
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
       textLoad: TextLoadCallRequest
       turtle?: TurtleState
+      objectHeap: ObjectHeap
+      nextObjectId: number
     }
 
 interface ExpressionProgress {
   source: string
-  completedCalls: RuntimeValue[]
+  completedCalls: Record<number, RuntimeValue>
+  completedMemberReads: Record<number, RuntimeValue>
+  completedRandomValues: Record<number, number>
 }
 
 type PendingExpressionKey = 'expression' | 'valueExpression' | 'indexExpression'
@@ -169,6 +220,7 @@ interface FunctionCallRequest {
   name: string
   args: RuntimeValue[]
   callIndex: number
+  receiver?: RuntimeObject
 }
 
 interface AskCallRequest {
@@ -209,9 +261,13 @@ export interface ExecutionState {
   rootProgram: Program
   program: Program
   importedFunctions: ImportedFunctionDefinition[]
+  importedClasses: ImportedClassDefinition[]
+  importedMethods: ImportedMethodDefinition[]
   nativeLibraries: string[]
   currentNodeId: string | null
   environment: Environment
+  objectHeap: ObjectHeap
+  nextObjectId: number
   forLoops: Record<string, ForLoopFrame>
   callStack: SuspendedFrame[]
   inputQueue: RuntimeValue[]
@@ -263,16 +319,23 @@ export function createExecution(
   options: ExecutionOptions = {},
 ): ExecutionState {
   const nativeLibraries = normalizeNativeLibraries(options.nativeLibraries ?? [])
-  const importedFunctions = buildImportedFunctionDefinitions(
+  const importedDefinitions = buildImportedDefinitions(
     program,
     options.importedPrograms ?? [],
   )
+  const importedFunctions = importedDefinitions.functions
+  const importedClasses = importedDefinitions.classes
+  const importedMethods = importedDefinitions.methods
   const validation = validateProgram(program, {
     externalFunctionNames: new Set(
       [
         ...importedFunctions.map((definition) => definition.name),
+        ...importedClasses.map((definition) => definition.name),
         ...nativeFunctionNamesForLibraries(nativeLibraries),
       ],
+    ),
+    externalClassNames: new Set(
+      importedClasses.map((definition) => definition.name),
     ),
   })
   const mainFunction = program.nodes.find(
@@ -287,9 +350,13 @@ export function createExecution(
       rootProgram: program,
       program,
       importedFunctions,
+      importedClasses,
+      importedMethods,
       nativeLibraries,
       currentNodeId: null,
       environment: {},
+      objectHeap: {},
+      nextObjectId: 1,
       forLoops: {},
       callStack: [],
       inputQueue: inputQueue.map(parseInputValue),
@@ -307,9 +374,13 @@ export function createExecution(
     rootProgram: program,
     program,
     importedFunctions,
+    importedClasses,
+    importedMethods,
     nativeLibraries,
     currentNodeId: mainFunction.id,
     environment: {},
+    objectHeap: {},
+    nextObjectId: 1,
     forLoops: {},
     callStack: [],
     inputQueue: inputQueue.map(parseInputValue),
@@ -448,8 +519,12 @@ function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
     })
   }
 
-  if (node.type === 'function') {
+  if (node.type === 'function' || node.type === 'method') {
     return advance(state, node)
+  }
+
+  if (node.type === 'class') {
+    return fail(state, `Class node "${node.id}" cannot be executed.`)
   }
 
   if (node.type === 'assignment') {
@@ -550,7 +625,12 @@ function findNextEdge(
 }
 
 function createExpressionProgress(source: string): ExpressionProgress {
-  return { source, completedCalls: [] }
+  return {
+    source,
+    completedCalls: {},
+    completedMemberReads: {},
+    completedRandomValues: {},
+  }
 }
 
 function executePendingNode(
@@ -591,7 +671,7 @@ function executeAssignmentNode(
 
     if (result.status === 'suspended') {
       return startFunctionCall(
-        { ...nextState, turtle: result.turtle },
+        withExpressionRuntime(nextState, result),
         pending,
         'valueExpression',
         result.call,
@@ -600,7 +680,7 @@ function executeAssignmentNode(
 
     if (result.status === 'asking') {
       return startAsk(
-        { ...nextState, turtle: result.turtle },
+        withExpressionRuntime(nextState, result),
         pending,
         'valueExpression',
         result.ask,
@@ -609,14 +689,17 @@ function executeAssignmentNode(
 
     if (result.status === 'loading') {
       return startTextLoad(
-        { ...nextState, turtle: result.turtle },
+        withExpressionRuntime(nextState, result),
         pending,
         'valueExpression',
         result.textLoad,
       )
     }
 
-    nextState = { ...nextState, output: result.output, turtle: result.turtle }
+    nextState = {
+      ...withExpressionRuntime(nextState, result),
+      output: result.output,
+    }
     value = result.value
     pending = { ...pending, value }
   }
@@ -637,7 +720,7 @@ function executeAssignmentNode(
 
     if (assignmentResult.status === 'suspended') {
       return startFunctionCall(
-        { ...nextState, turtle: assignmentResult.turtle },
+        withExpressionRuntime(nextState, assignmentResult),
         assignmentResult.pendingNode,
         'indexExpression',
         assignmentResult.call,
@@ -646,7 +729,7 @@ function executeAssignmentNode(
 
     if (assignmentResult.status === 'asking') {
       return startAsk(
-        { ...nextState, turtle: assignmentResult.turtle },
+        withExpressionRuntime(nextState, assignmentResult),
         assignmentResult.pendingNode,
         'indexExpression',
         assignmentResult.ask,
@@ -655,7 +738,7 @@ function executeAssignmentNode(
 
     if (assignmentResult.status === 'loading') {
       return startTextLoad(
-        { ...nextState, turtle: assignmentResult.turtle },
+        withExpressionRuntime(nextState, assignmentResult),
         assignmentResult.pendingNode,
         'indexExpression',
         assignmentResult.textLoad,
@@ -667,8 +750,22 @@ function executeAssignmentNode(
         ...nextState,
         output: assignmentResult.output,
         turtle: assignmentResult.turtle,
+        objectHeap: assignmentResult.objectHeap,
+        nextObjectId: assignmentResult.nextObjectId,
         environment: assignmentResult.environment,
       },
+      pending.node,
+    )
+  }
+
+  if (pending.assignment.target.kind === 'member') {
+    return advance(
+      assignObjectMember(
+        nextState,
+        pending.assignment.target.variable,
+        pending.assignment.target.member,
+        value,
+      ),
       pending.node,
     )
   }
@@ -693,7 +790,7 @@ function executeCallNode(
 
   if (result.status === 'suspended') {
     return startFunctionCall(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.call,
@@ -702,7 +799,7 @@ function executeCallNode(
 
   if (result.status === 'asking') {
     return startAsk(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.ask,
@@ -711,7 +808,7 @@ function executeCallNode(
 
   if (result.status === 'loading') {
     return startTextLoad(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.textLoad,
@@ -719,7 +816,7 @@ function executeCallNode(
   }
 
   return advance(
-    { ...state, output: result.output, turtle: result.turtle },
+    { ...withExpressionRuntime(state, result), output: result.output },
     pendingNode.node,
   )
 }
@@ -732,7 +829,7 @@ function executeOutputNode(
 
   if (result.status === 'suspended') {
     return startFunctionCall(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.call,
@@ -741,7 +838,7 @@ function executeOutputNode(
 
   if (result.status === 'asking') {
     return startAsk(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.ask,
@@ -750,7 +847,7 @@ function executeOutputNode(
 
   if (result.status === 'loading') {
     return startTextLoad(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.textLoad,
@@ -759,9 +856,11 @@ function executeOutputNode(
 
   return advance(
     {
-      ...state,
-      output: [...result.output, stringifyValue(result.value)],
-      turtle: result.turtle,
+      ...withExpressionRuntime(state, result),
+      output: [
+        ...result.output,
+        stringifyHeapValue(result.value, result.objectHeap),
+      ],
     },
     pendingNode.node,
   )
@@ -775,7 +874,7 @@ function executeBranchNode(
 
   if (result.status === 'suspended') {
     return startFunctionCall(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.call,
@@ -784,7 +883,7 @@ function executeBranchNode(
 
   if (result.status === 'asking') {
     return startAsk(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.ask,
@@ -793,7 +892,7 @@ function executeBranchNode(
 
   if (result.status === 'loading') {
     return startTextLoad(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.textLoad,
@@ -801,7 +900,7 @@ function executeBranchNode(
   }
 
   return advance(
-    { ...state, output: result.output, turtle: result.turtle },
+    { ...withExpressionRuntime(state, result), output: result.output },
     pendingNode.node,
     toBoolean(result.value) ? 'true' : 'false',
   )
@@ -815,7 +914,7 @@ function executeReturnNode(
 
   if (result.status === 'suspended') {
     return startFunctionCall(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.call,
@@ -824,7 +923,7 @@ function executeReturnNode(
 
   if (result.status === 'asking') {
     return startAsk(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.ask,
@@ -833,7 +932,7 @@ function executeReturnNode(
 
   if (result.status === 'loading') {
     return startTextLoad(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.textLoad,
@@ -841,7 +940,7 @@ function executeReturnNode(
   }
 
   return completeReturn(
-    state,
+    withExpressionRuntime(state, result),
     pendingNode.node,
     result.value,
     result.output,
@@ -899,14 +998,14 @@ function evaluateProgramExpression(
   progress: ExpressionProgress,
   environment: Environment = state.environment,
 ): ProgramExpressionResult {
-  let callIndex = 0
   let turtle = state.turtle
+  let objectHeap = state.objectHeap
+  let nextObjectId = state.nextObjectId
 
   try {
     const value = evaluateExpression(progress.source, environment, {
-      callFunction: (name, args) => {
-        const currentCallIndex = callIndex
-        callIndex += 1
+      callFunction: (name, args, siteId) => {
+        const currentCallIndex = siteId
 
         if (
           Object.prototype.hasOwnProperty.call(
@@ -915,6 +1014,34 @@ function evaluateProgramExpression(
           )
         ) {
           return progress.completedCalls[currentCallIndex]
+        }
+
+        const classDefinition = findClassDefinition(state, name)
+        if (classDefinition) {
+          if (args.length !== classDefinition.fields.length) {
+            throw new Error(
+              `Class "${name}" expects exactly ${classDefinition.fields.length} constructor arguments, but received ${args.length}.`,
+            )
+          }
+
+          const object: RuntimeObject = {
+            kind: 'object',
+            id: nextObjectId,
+            className: name,
+          }
+          objectHeap = {
+            ...objectHeap,
+            [object.id]: {
+              id: object.id,
+              className: name,
+              fields: Object.fromEntries(
+                classDefinition.fields.map((field, index) => [field, args[index]]),
+              ),
+            },
+          }
+          nextObjectId += 1
+          progress.completedCalls[currentCallIndex] = object
+          return object
         }
 
         if (isNativeFunctionAvailable(state, name)) {
@@ -950,23 +1077,118 @@ function evaluateProgramExpression(
           callIndex: currentCallIndex,
         })
       },
+      getMember: (object, member, siteId) => {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            progress.completedMemberReads,
+            siteId,
+          )
+        ) {
+          return progress.completedMemberReads[siteId]
+        }
+
+        const instance = requireObjectInstance(objectHeap, object)
+
+        if (!Object.prototype.hasOwnProperty.call(instance.fields, member)) {
+          throw new Error(`Class "${instance.className}" has no field "${member}".`)
+        }
+
+        const value = instance.fields[member]
+        progress.completedMemberReads[siteId] = value
+        return value
+      },
+      callMethod: (object, method, args, siteId) => {
+        const currentCallIndex = siteId
+
+        if (
+          Object.prototype.hasOwnProperty.call(
+            progress.completedCalls,
+            currentCallIndex,
+          )
+        ) {
+          return progress.completedCalls[currentCallIndex]
+        }
+
+        const instance = requireObjectInstance(objectHeap, object)
+        throw new FunctionCallSuspension({
+          name: `${instance.className}.${method}`,
+          args,
+          callIndex: currentCallIndex,
+          receiver: object,
+        })
+      },
+      random: (siteId) => {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            progress.completedRandomValues,
+            siteId,
+          )
+        ) {
+          return progress.completedRandomValues[siteId]
+        }
+
+        const value = Math.random()
+        progress.completedRandomValues[siteId] = value
+        return value
+      },
     })
 
-    return { status: 'complete', value, output: state.output, turtle }
+    return {
+      status: 'complete',
+      value,
+      output: state.output,
+      turtle,
+      objectHeap,
+      nextObjectId,
+    }
   } catch (error) {
     if (error instanceof FunctionCallSuspension) {
-      return { status: 'suspended', call: error.call, turtle }
+      return {
+        status: 'suspended',
+        call: error.call,
+        turtle,
+        objectHeap,
+        nextObjectId,
+      }
     }
 
     if (error instanceof AskSuspension) {
-      return { status: 'asking', ask: error.ask, turtle }
+      return {
+        status: 'asking',
+        ask: error.ask,
+        turtle,
+        objectHeap,
+        nextObjectId,
+      }
     }
 
     if (error instanceof TextLoadSuspension) {
-      return { status: 'loading', textLoad: error.textLoad, turtle }
+      return {
+        status: 'loading',
+        textLoad: error.textLoad,
+        turtle,
+        objectHeap,
+        nextObjectId,
+      }
     }
 
     throw error
+  }
+}
+
+function withExpressionRuntime(
+  state: ExecutionState,
+  result: {
+    turtle?: TurtleState
+    objectHeap: ObjectHeap
+    nextObjectId: number
+  },
+): ExecutionState {
+  return {
+    ...state,
+    turtle: result.turtle,
+    objectHeap: result.objectHeap,
+    nextObjectId: result.nextObjectId,
   }
 }
 
@@ -1019,33 +1241,60 @@ function startFunctionCall(
     )
   }
 
-  const functionNode = state.program.nodes.find(
-    (candidate) =>
-      candidate.type === 'function' && candidate.text.trim() === call.name,
-  )
-  const rootFunctionNode =
-    state.program === state.rootProgram
-      ? functionNode
-      : findFunctionNode(state.rootProgram, call.name)
-  const activeFunctionNode = rootFunctionNode ?? functionNode
-  const importedFunction =
-    activeFunctionNode ? undefined : findImportedFunction(state, call.name)
-  const targetProgram = rootFunctionNode
-    ? state.rootProgram
-    : activeFunctionNode
-      ? state.program
-      : importedFunction?.program
-  const targetFunctionNode = activeFunctionNode ?? importedFunction?.node
+  let targetProgram: Program | undefined
+  let targetFunctionNode: ProgramNode | undefined
+  let environment: Environment = {}
 
-  if (!targetProgram || !targetFunctionNode) {
-    throw new Error(`Function "${call.name}" does not exist.`)
+  if (call.receiver) {
+    const instance = requireObjectInstance(state.objectHeap, call.receiver)
+    const expectedPrefix = `${instance.className}.`
+    if (!call.name.startsWith(expectedPrefix)) {
+      throw new Error(
+        `Object ${instance.className} #${instance.id} cannot call Method "${call.name}".`,
+      )
+    }
+
+    const rootMethodNode = findMethodNode(state.rootProgram, call.name)
+    const importedMethod = rootMethodNode
+      ? undefined
+      : findImportedMethod(state, call.name)
+
+    targetProgram = rootMethodNode
+      ? state.rootProgram
+      : importedMethod?.program
+    targetFunctionNode = rootMethodNode ?? importedMethod?.node
+    environment = { self: call.receiver }
+
+    if (!targetProgram || !targetFunctionNode) {
+      throw new Error(`Method "${call.name}" does not exist.`)
+    }
+  } else {
+    const functionNode = findFunctionNode(state.program, call.name)
+    const rootFunctionNode =
+      state.program === state.rootProgram
+        ? functionNode
+        : findFunctionNode(state.rootProgram, call.name)
+    const activeFunctionNode = rootFunctionNode ?? functionNode
+    const importedFunction =
+      activeFunctionNode ? undefined : findImportedFunction(state, call.name)
+
+    targetProgram = rootFunctionNode
+      ? state.rootProgram
+      : activeFunctionNode
+        ? state.program
+        : importedFunction?.program
+    targetFunctionNode = activeFunctionNode ?? importedFunction?.node
+
+    if (!targetProgram || !targetFunctionNode) {
+      throw new Error(`Function "${call.name}" does not exist.`)
+    }
   }
 
   return {
     ...state,
     program: targetProgram,
     currentNodeId: targetFunctionNode.id,
-    environment: {},
+    environment,
     forLoops: {},
     inputQueue: [...call.args],
     functionName: call.name,
@@ -1074,8 +1323,10 @@ function addCompletedCallResult(
   value: RuntimeValue,
 ): PendingNode {
   const progress = expressionProgressForKey(pendingNode, key)
-  const completedCalls = [...progress.completedCalls]
-  completedCalls[callIndex] = value
+  const completedCalls = {
+    ...progress.completedCalls,
+    [callIndex]: value,
+  }
   const nextProgress = { ...progress, completedCalls }
 
   switch (key) {
@@ -1145,7 +1396,7 @@ function executeForPendingNode(
 
   if (result.status === 'suspended') {
     return startFunctionCall(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.call,
@@ -1154,7 +1405,7 @@ function executeForPendingNode(
 
   if (result.status === 'asking') {
     return startAsk(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.ask,
@@ -1163,7 +1414,7 @@ function executeForPendingNode(
 
   if (result.status === 'loading') {
     return startTextLoad(
-      { ...state, turtle: result.turtle },
+      withExpressionRuntime(state, result),
       pendingNode,
       'expression',
       result.textLoad,
@@ -1171,7 +1422,7 @@ function executeForPendingNode(
   }
 
   return advanceForLoop(
-    { ...state, turtle: result.turtle },
+    withExpressionRuntime(state, result),
     pendingNode.node,
     createForLoopFrame(pendingNode.forLoop, result.value),
     result.output,
@@ -1281,6 +1532,8 @@ function assignIndexedElement(
       pendingNode,
       call: indexResult.call,
       turtle: indexResult.turtle,
+      objectHeap: indexResult.objectHeap,
+      nextObjectId: indexResult.nextObjectId,
     }
   }
 
@@ -1290,6 +1543,8 @@ function assignIndexedElement(
       pendingNode,
       ask: indexResult.ask,
       turtle: indexResult.turtle,
+      objectHeap: indexResult.objectHeap,
+      nextObjectId: indexResult.nextObjectId,
     }
   }
 
@@ -1299,6 +1554,8 @@ function assignIndexedElement(
       pendingNode,
       textLoad: indexResult.textLoad,
       turtle: indexResult.turtle,
+      objectHeap: indexResult.objectHeap,
+      nextObjectId: indexResult.nextObjectId,
     }
   }
 
@@ -1322,6 +1579,8 @@ function assignIndexedElement(
       },
       output,
       turtle: indexResult.turtle,
+      objectHeap: indexResult.objectHeap,
+      nextObjectId: indexResult.nextObjectId,
     }
   }
 
@@ -1337,7 +1596,143 @@ function assignIndexedElement(
     },
     output,
     turtle: indexResult.turtle,
+    objectHeap: indexResult.objectHeap,
+    nextObjectId: indexResult.nextObjectId,
   }
+}
+
+function assignObjectMember(
+  state: ExecutionState,
+  variable: string,
+  member: string,
+  value: RuntimeValue,
+): ExecutionState {
+  if (!Object.prototype.hasOwnProperty.call(state.environment, variable)) {
+    throw new Error(`Undefined variable "${variable}"`)
+  }
+
+  const object = state.environment[variable]
+  if (!isRuntimeObject(object)) {
+    throw new Error(`Member assignment target "${variable}" must be an object.`)
+  }
+
+  const instance = requireObjectInstance(state.objectHeap, object)
+  if (!Object.prototype.hasOwnProperty.call(instance.fields, member)) {
+    throw new Error(`Class "${instance.className}" has no field "${member}".`)
+  }
+
+  return {
+    ...state,
+    objectHeap: {
+      ...state.objectHeap,
+      [instance.id]: {
+        ...instance,
+        fields: {
+          ...instance.fields,
+          [member]: value,
+        },
+      },
+    },
+  }
+}
+
+function requireObjectInstance(
+  objectHeap: ObjectHeap,
+  object: RuntimeObject,
+): RuntimeObjectInstance {
+  const instance = objectHeap[object.id]
+
+  if (!instance) {
+    throw new Error(
+      `Object ${object.className} #${object.id} does not exist in the object heap.`,
+    )
+  }
+
+  if (instance.className !== object.className) {
+    throw new Error(
+      `Object #${object.id} belongs to Class "${instance.className}", not "${object.className}".`,
+    )
+  }
+
+  return instance
+}
+
+function stringifyHeapValue(
+  value: RuntimeValue,
+  objectHeap: ObjectHeap,
+  seenObjectIds: Set<number> = new Set<number>(),
+  nested = false,
+): string {
+  if (isRuntimeObject(value)) {
+    const instance = objectHeap[value.id]
+    if (!instance) {
+      return `${value.className} #${value.id} <missing>`
+    }
+
+    if (seenObjectIds.has(instance.id)) {
+      return `${instance.className} #${instance.id} {...}`
+    }
+
+    const nextSeen = new Set(seenObjectIds)
+    nextSeen.add(instance.id)
+    const fields = Object.entries(instance.fields)
+      .map(
+        ([name, fieldValue]) =>
+          `${name}: ${stringifyHeapValue(fieldValue, objectHeap, nextSeen, true)}`,
+      )
+      .join(', ')
+    return `${instance.className} #${instance.id} {${fields}}`
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value
+      .map((item) => stringifyHeapValue(item, objectHeap, seenObjectIds, true))
+      .join(', ')}]`
+  }
+
+  if (isRuntimeDictionary(value)) {
+    return stringifyHeapDictionary(value, objectHeap, seenObjectIds)
+  }
+
+  if (typeof value === 'string') {
+    return nested ? JSON.stringify(value) : value
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'True' : 'False'
+  }
+
+  return String(value)
+}
+
+function stringifyHeapDictionary(
+  dictionary: RuntimeDictionary,
+  objectHeap: ObjectHeap,
+  seenObjectIds: Set<number>,
+): string {
+  return `{${dictionary.entries
+    .map(
+      (entry) =>
+        `${stringifyDictionaryKey(entry.key)}: ${stringifyHeapValue(
+          entry.value,
+          objectHeap,
+          seenObjectIds,
+          true,
+        )}`,
+    )
+    .join(', ')}}`
+}
+
+function stringifyDictionaryKey(key: RuntimeDictionary['entries'][number]['key']): string {
+  if (typeof key === 'string') {
+    return JSON.stringify(key)
+  }
+
+  if (typeof key === 'boolean') {
+    return key ? 'True' : 'False'
+  }
+
+  return String(key)
 }
 
 function requireListIndex(value: RuntimeValue): number {
@@ -1348,37 +1743,105 @@ function requireListIndex(value: RuntimeValue): number {
   return value
 }
 
-function buildImportedFunctionDefinitions(
+function buildImportedDefinitions(
   program: Program,
   importedPrograms: Program[],
-): ImportedFunctionDefinition[] {
-  const currentFunctionNames = new Set(
-    program.nodes
-      .filter((node) => node.type === 'function')
-      .map((node) => node.text.trim()),
-  )
-  const importedFunctionNames = new Set<string>()
-  const definitions: ImportedFunctionDefinition[] = []
+): ImportedDefinitions {
+  const claimedCallableNames = new Set<string>()
+  const claimedMethodNames = new Set<string>()
+  const classOwnerIndexes = new Map<string, number>()
+  const functions: ImportedFunctionDefinition[] = []
+  const classes: ImportedClassDefinition[] = []
+  const methods: ImportedMethodDefinition[] = []
 
-  for (const importedProgram of importedPrograms) {
-    for (const node of importedProgram.nodes) {
-      const name = node.text.trim()
-
-      if (
-        node.type !== 'function' ||
-        name === 'main' ||
-        currentFunctionNames.has(name) ||
-        importedFunctionNames.has(name)
-      ) {
-        continue
+  for (const node of program.nodes) {
+    if (node.type === 'function') {
+      claimedCallableNames.add(node.text.trim())
+    } else if (node.type === 'class') {
+      try {
+        const name = parseClassDeclaration(node.text).name
+        claimedCallableNames.add(name)
+        classOwnerIndexes.set(name, -1)
+      } catch {
+        // The current program's validation reports malformed declarations.
       }
-
-      importedFunctionNames.add(name)
-      definitions.push({ name, program: importedProgram, node })
+    } else if (node.type === 'method') {
+      try {
+        const method = parseMethodDeclaration(node.text)
+        claimedMethodNames.add(`${method.className}.${method.methodName}`)
+      } catch {
+        // The current program's validation reports malformed declarations.
+      }
     }
   }
 
-  return definitions
+  for (const [programIndex, importedProgram] of importedPrograms.entries()) {
+    for (const node of importedProgram.nodes) {
+      if (node.type === 'function') {
+        const name = node.text.trim()
+        if (name === 'main' || claimedCallableNames.has(name)) {
+          continue
+        }
+
+        claimedCallableNames.add(name)
+        functions.push({ name, program: importedProgram, node })
+        continue
+      }
+
+      if (node.type === 'class') {
+        try {
+          const declaration = parseClassDeclaration(node.text)
+          if (claimedCallableNames.has(declaration.name)) {
+            continue
+          }
+
+          claimedCallableNames.add(declaration.name)
+          classOwnerIndexes.set(declaration.name, programIndex)
+          classes.push({
+            name: declaration.name,
+            fields: declaration.fields,
+            program: importedProgram,
+            node,
+          })
+        } catch {
+          // Imported programs are validated before execution.
+        }
+        continue
+      }
+    }
+  }
+
+  for (const [programIndex, importedProgram] of importedPrograms.entries()) {
+    for (const node of importedProgram.nodes) {
+      if (node.type !== 'method') {
+        continue
+      }
+
+      try {
+        const declaration = parseMethodDeclaration(node.text)
+        const name = `${declaration.className}.${declaration.methodName}`
+        if (
+          classOwnerIndexes.get(declaration.className) !== programIndex ||
+          claimedMethodNames.has(name)
+        ) {
+          continue
+        }
+
+        claimedMethodNames.add(name)
+        methods.push({
+          name,
+          className: declaration.className,
+          methodName: declaration.methodName,
+          program: importedProgram,
+          node,
+        })
+      } catch {
+        // Imported programs are validated before execution.
+      }
+    }
+  }
+
+  return { functions, classes, methods }
 }
 
 function findFunctionNode(
@@ -1391,11 +1854,76 @@ function findFunctionNode(
   )
 }
 
+function findMethodNode(program: Program, name: string): ProgramNode | undefined {
+  return program.nodes.find((candidate) => {
+    if (candidate.type !== 'method') {
+      return false
+    }
+
+    try {
+      const method = parseMethodDeclaration(candidate.text)
+      return `${method.className}.${method.methodName}` === name
+    } catch {
+      return false
+    }
+  })
+}
+
+function findClassDefinition(
+  state: ExecutionState,
+  name: string,
+): ImportedClassDefinition | undefined {
+  const rootClass = findClassDefinitionInProgram(state.rootProgram, name)
+  if (rootClass) {
+    return rootClass
+  }
+
+  if (findFunctionNode(state.rootProgram, name)) {
+    return undefined
+  }
+
+  return state.importedClasses.find((definition) => definition.name === name)
+}
+
+function findClassDefinitionInProgram(
+  program: Program,
+  name: string,
+): ImportedClassDefinition | undefined {
+  for (const node of program.nodes) {
+    if (node.type !== 'class') {
+      continue
+    }
+
+    try {
+      const declaration = parseClassDeclaration(node.text)
+      if (declaration.name === name) {
+        return {
+          name,
+          fields: declaration.fields,
+          program,
+          node,
+        }
+      }
+    } catch {
+      // Invalid declarations are reported before execution starts.
+    }
+  }
+
+  return undefined
+}
+
 function findImportedFunction(
   state: ExecutionState,
   name: string,
 ): ImportedFunctionDefinition | undefined {
   return state.importedFunctions.find((definition) => definition.name === name)
+}
+
+function findImportedMethod(
+  state: ExecutionState,
+  name: string,
+): ImportedMethodDefinition | undefined {
+  return state.importedMethods.find((definition) => definition.name === name)
 }
 
 function normalizeNativeLibraries(nativeLibraries: string[]): string[] {

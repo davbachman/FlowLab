@@ -6,20 +6,22 @@ Created by David Bachman with GPT 5.5. To learn more about David see https://pza
 
 ## Brief description
 
-FlowLab is a browser-based flowchart programming environment for building, validating, stepping through, and running visual programs with functions, loops, input queues, and output.
+FlowLab is a browser-based flowchart programming environment for building, validating, stepping through, and running visual programs with functions, classes, objects, loops, input queues, and output.
 
 ## Features
 
-- Flowchart blocks for Function, Return, Assignment, Input, Output, If, While, and For.
+- Flowchart blocks for Function, Class, Method, Return, Assignment, Call, Input, Output, If, While, and For.
 - Editable Function names. Execution starts at the `main` Function.
 - Multiple disjoint function flowcharts on the same canvas.
+- Class declarations with ordered fields, positional object construction, field access, field assignment, and methods.
+- Expandable object values in the Variables panel, including stable class-and-identity labels such as `Point #1`.
 - Function calls inside block expressions, such as `x <- helper(5)`.
 - Function calls pass their arguments as the called function's local input queue.
 - Interactive input with `ask()`, such as `x <- ask()`.
 - Native text loading and word splitting with the `text` import.
 - Random numbers with `rand()`, which returns a number from 0 up to but not including 1.
-- Step-through execution enters called function flowcharts and shows the active function input queue.
-- Imports panel for listing FlowLab JSON files and calling non-`main` functions from those files.
+- Step-through execution enters called function and method flowcharts and shows the active flow's input queue.
+- Imports panel for listing FlowLab JSON files and using their non-`main` functions, Classes, and Methods.
 - Import conflict handling: functions in the current canvas override imported functions with the same name.
 - Validation for graph shape, function names, call targets, branch labels, function body ownership, and malformed block text.
 - Input queue editor for queued runtime input.
@@ -37,6 +39,7 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 | Boolean | `True` and `False` | Logical `and`, `or`, `not`; equality and inequality; assignment, output, Return values, If conditions, and While conditions |
 | List | Bracket literals, such as `[1, 2, 3]`, `["a", True]`, and nested lists | Concatenation with `+` when both operands are lists; indexing like `L[0]`; indexed assignment like `L[i] <- value`; deep equality and inequality; truth tests where non-empty lists are true; For iteration over elements |
 | Dictionary | Brace literals with primitive keys, such as `{"name": "Ada"}`, `{1: "one", "1": "string"}`, and `{True: [2, 3]}` | Lookup like `D["name"]`; indexed assignment like `D[key] <- value` creates or overwrites keys; deep equality and inequality; truth tests where non-empty dictionaries are true; For iteration over keys |
+| Object | Construct an instance from a Class declaration, such as `p <- Point(2, 3)` for `Point(x, y)` | Field access such as `p.x`; field assignment such as `p.x <- 10`; method calls such as `p.move(5, -1)`; reference-identity equality and inequality |
 | Function result | Any single value returned by a Return block | Use returned values in expressions, assignments, output, branch conditions, loops, list elements, and other function call arguments |
 
 ## Expression and statement syntax
@@ -45,7 +48,7 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 - Input blocks name one variable that receives the next queued value.
 - Output, If, While, and Return blocks contain expressions.
 - For blocks use `item in iterable`, where the iterable is a string, list, or dictionary.
-- Variable and function names must start with a letter or underscore and may contain letters, digits, and underscores.
+- Names must start with a letter or underscore and may contain letters, digits, and underscores. The language words `and`, `or`, `not`, `True`, and `False` cannot be used as names; built-in call names cannot be redefined as Functions or Classes.
 - Built-in function calls are `sqrt(x)`, `rand()`, and `ask()`.
 - Interactive input uses `ask()` inside expressions. It prompts for one value and parses the response like input queue values.
 - Import `text` to use `text_from_url(url)`, which loads a URL as a string, and `split_words(text)`, which splits a string on whitespace and returns a list of words. URLs must be readable by the browser, including any required cross-origin permissions.
@@ -53,6 +56,19 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 - Dictionary keys may be strings, numbers, or booleans. `D[key]` reads a value, and `D[key] <- value` creates or overwrites a key.
 - For blocks over dictionaries iterate keys, so `item in D` assigns each key to `item`; use `D[item]` to read the value.
 
+## Classes and objects
+
+- A Class block declares a class name and its ordered fields with `ClassName(field1, field2)`, for example `Point(x, y)`. Class blocks are declarations, so they remain disconnected and have no flow handles.
+- Calling the class name constructs an object and initializes the fields positionally. For example, `p <- Point(2, 3)` creates a `Point` whose `x` is `2` and `y` is `3`.
+- A Method block starts a separate method flow with `ClassName.methodName`, for example `Point.move`. Connect its outgoing handle to the first step of the method just as you would for a Function.
+- Inside a method, `self` is the object that received the call and cannot be replaced by an Input, Assignment, or For block. Method arguments are read by Input blocks in order; a `Point.move` flow can read `dx` and `dy`, then use `self.x <- self.x + dx` and `self.y <- self.y + dy`.
+- Call methods with dot notation in expressions or Call blocks, such as `moved <- p.move(5, -1)` or `p.move(5, -1)`.
+- Assigning an object to another variable creates an alias, not a copy: after `q <- p`, both variables display the same identity, such as `Point #1`, and changes through either name are shared.
+- Object equality is based on identity. `p == q` is true when both variables refer to the same instance; two separately constructed objects are unequal even when all of their fields contain equal values.
+- The Variables panel shows each object as an expandable read-only value with its class, identity number, and current fields. Use the Flow status while stepping to see whether execution is in `main`, a function, or a qualified method such as `Point.move`.
+
+The first class release intentionally omits inheritance, access modifiers and private members, static members, method overloading, custom constructors, and fields that were not declared in the Class block.
+
 ## Instructions for use
 
-Add Function, Return, Assignment, Input, Output, If, While, and For blocks to the canvas, connect them with arrows, and edit each block's text directly. Use the input queue panel for queued input values, then press Reset, Step, or Run to execute from the `main` Function and inspect variables and output.
+Add definition and step blocks to the canvas, connect executable flows with arrows, and edit each block's text directly. Leave Class declarations disconnected. Use the input queue panel for queued input values, then press Reset, Step, or Run to execute from the `main` Function and inspect variables and output. Choose **Object Sample** to load a complete `Point` class and method example.

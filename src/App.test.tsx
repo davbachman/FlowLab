@@ -6,6 +6,7 @@ import App from './App'
 import { LoopbackEdge } from './components/LoopbackEdge'
 import { DELETE_KEY_CODES, programToEdges } from './lib/editorEdges'
 import { registerFlowLabProgram } from './lib/imports'
+import { objectSampleProgram } from './lib/objectSampleProgram'
 import {
   DECISION_LOOPBACK_TARGET_HANDLE,
   edgeTypeForProgramEdge,
@@ -358,6 +359,18 @@ describe('App', () => {
       screen.getByRole('button', { name: /^Function$/i }),
     ).toBeInTheDocument()
     expect(
+      screen.getByRole('button', { name: /^Class$/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^Method$/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /^Definitions$/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: /^Steps$/i }),
+    ).toBeInTheDocument()
+    expect(
       screen.getByRole('button', { name: /^Return$/i }),
     ).toBeInTheDocument()
     expect(
@@ -379,6 +392,9 @@ describe('App', () => {
     expect(screen.getByLabelText(/^Import$/i)).toBeInTheDocument()
     expect(screen.queryByText(/Import JSON/i)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Clear/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Object Sample/i }),
+    ).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /Imports/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Imports list/i)).toBeInTheDocument()
@@ -419,7 +435,19 @@ describe('App', () => {
     await user.type(screen.getByLabelText(/Imports list/i), 'helpers.json')
 
     expect(await screen.findByText(/Imported files: helpers/i)).toBeInTheDocument()
-    expect(await screen.findByText(/Callable: helper/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Functions: helper/i)).toBeInTheDocument()
+  })
+
+  it('lists imported Classes separately from imported Functions', async () => {
+    const user = userEvent.setup()
+    registerFlowLabProgram('objects.json', objectSampleProgram)
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'objects')
+
+    expect(await screen.findByText('Classes: Point')).toBeInTheDocument()
+    expect(screen.queryByText(/^Functions:/)).not.toBeInTheDocument()
+    expect(screen.queryByText('No imported callables')).not.toBeInTheDocument()
   })
 
   it('loads turtle as a native library from the imports panel', async () => {
@@ -434,7 +462,7 @@ describe('App', () => {
     expect(
       screen.getByText(
         (_, element) =>
-          element?.textContent?.startsWith('Callable:') === true &&
+          element?.textContent?.startsWith('Functions:') === true &&
           element.textContent.includes('forward') &&
           element.textContent.includes('right') &&
           !element.textContent.includes('fd') &&
@@ -450,7 +478,7 @@ describe('App', () => {
     render(<App />)
 
     await user.type(screen.getByLabelText(/Imports list/i), 'helpers')
-    await screen.findByText(/Callable: helper/i)
+    await screen.findByText(/Functions: helper/i)
     await user.click(screen.getByRole('button', { name: /Load Sample/i }))
 
     const initialTotal = screen.getByDisplayValue('total <- 0')
@@ -479,6 +507,76 @@ describe('App', () => {
     expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
     expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toHaveValue('3')
+  })
+
+  it('loads and runs the object sample with shared object identities and fields', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /Object Sample/i }))
+
+    const classNode = screen.getByTestId('flow-node-point-class')
+    const methodNode = screen.getByTestId('flow-node-point-move')
+
+    expect(classNode).toHaveAttribute('data-shape', 'declaration')
+    expect(classNode.querySelector('[data-handlepos]')).not.toBeInTheDocument()
+    expect(methodNode.querySelector('[data-handlepos="top"]')).not.toBeInTheDocument()
+    expect(methodNode.querySelector('[data-handlepos="bottom"]')).toBeInTheDocument()
+    expect(within(classNode).getByLabelText(/Declared fields/i)).toHaveTextContent(
+      'xy',
+    )
+
+    await user.click(screen.getByRole('button', { name: /^Run$/i }))
+
+    const output = screen.getByRole('region', { name: /Output/i })
+    expect(
+      within(output).getByText(/Point #1 \{x: 7, y: 2\}/),
+    ).toBeInTheDocument()
+    expect(within(output).getByText('7')).toBeInTheDocument()
+    expect(within(output).getByText('2')).toBeInTheDocument()
+
+    const variables = screen.getByRole('region', { name: /Variables/i })
+    const pRow = within(variables).getByText('p').closest('.variable-row')
+    const aliasRow = within(variables)
+      .getByText('same_point')
+      .closest('.variable-row')
+
+    expect(pRow).not.toBeNull()
+    expect(aliasRow).not.toBeNull()
+    expect(
+      within(pRow as HTMLElement).getByText('Point #1'),
+    ).toBeInTheDocument()
+    expect(
+      within(aliasRow as HTMLElement).getByText('Point #1'),
+    ).toBeInTheDocument()
+
+    await user.click(within(pRow as HTMLElement).getByText('Point #1'))
+
+    expect(within(pRow as HTMLElement).getByText('x')).toBeInTheDocument()
+    expect(within(pRow as HTMLElement).getByText('7')).toBeInTheDocument()
+    expect(within(pRow as HTMLElement).getByText('y')).toBeInTheDocument()
+    expect(within(pRow as HTMLElement).getByText('2')).toBeInTheDocument()
+  })
+
+  it('shows the active method flow and highlights its root while stepping', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /Object Sample/i }))
+    await user.click(screen.getByRole('button', { name: /^Reset$/i }))
+
+    const flowStatus = screen.getByText('Flow').closest('div')
+    const methodNode = screen.getByTestId('flow-node-point-move')
+
+    expect(flowStatus).toHaveTextContent('main')
+
+    for (let step = 0; step < 4; step += 1) {
+      await user.click(screen.getByRole('button', { name: /^Step$/i }))
+    }
+
+    expect(flowStatus).toHaveTextContent('Point.move')
+    expect(methodNode).toHaveAttribute('data-current', 'true')
+    expect(methodNode).toHaveAttribute('aria-current', 'step')
   })
 
   it('clears all flowchart nodes from the top toolbar', async () => {
@@ -696,8 +794,8 @@ describe('App', () => {
     await user.type(screen.getByLabelText(/Imports list/i), 'helpers')
 
     expect(await screen.findByText('Imported files: helpers')).toBeInTheDocument()
-    expect(screen.getByText('Callable: folderHelper')).toBeInTheDocument()
-    expect(screen.queryByText('Callable: helper')).not.toBeInTheDocument()
+    expect(screen.getByText('Functions: folderHelper')).toBeInTheDocument()
+    expect(screen.queryByText('Functions: helper')).not.toBeInTheDocument()
   })
 
   it('reuses the export folder on later exports and only asks for a filename', async () => {
@@ -1409,6 +1507,35 @@ describe('App', () => {
       'block',
     )
     expect(screen.getAllByDisplayValue('main')).toHaveLength(1)
+  })
+
+  it('places disconnected Class declarations and prefills Methods from one valid class', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    const pane = container.querySelector('.react-flow__pane')
+
+    expect(pane).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Class$/i }))
+    placePendingNodeOnPane(pane as Element, 360, 220)
+
+    const classNode = screen.getByTestId('flow-node-class-1')
+    const classInput = screen.getByDisplayValue('Point(x, y)')
+
+    expect(classNode).toHaveAttribute('data-shape', 'declaration')
+    expect(classNode.querySelector('[data-handlepos]')).not.toBeInTheDocument()
+    expect(within(classNode).getByText('x')).toHaveClass('class-field')
+    expect(within(classNode).getByText('y')).toHaveClass('class-field')
+
+    await user.clear(classInput)
+    await user.type(classInput, 'Vector(dx, dy)')
+    await user.click(screen.getByRole('button', { name: /^Method$/i }))
+    placePendingNodeOnPane(pane as Element, 640, 220)
+
+    const methodNode = screen.getByTestId('flow-node-method-1')
+
+    expect(screen.getByDisplayValue('Vector.move')).toBeInTheDocument()
+    expect(methodNode.querySelector('[data-handlepos="top"]')).not.toBeInTheDocument()
+    expect(methodNode.querySelector('[data-handlepos="bottom"]')).toBeInTheDocument()
   })
 
   it('opens a right-click comment dialog and shows comments inside blocks', async () => {
