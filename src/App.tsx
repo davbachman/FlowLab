@@ -1502,7 +1502,7 @@ function App() {
               role="menuitem"
               onClick={openImportPicker}
             >
-              Import
+              Load
             </button>
           </ToolbarMenu>
 

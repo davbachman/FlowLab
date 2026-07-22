@@ -79,7 +79,7 @@ async function chooseToolbarAction(
 function importProgramFromFileMenu(file: File): void {
   fireEvent.click(screen.getByRole('button', { name: /^File$/i }))
   fireEvent.click(
-    within(toolbarMenu('File')).getByRole('menuitem', { name: /^Import$/i }),
+    within(toolbarMenu('File')).getByRole('menuitem', { name: /^Load$/i }),
   )
   fireEvent.change(screen.getByLabelText(/^Import$/i), {
     target: { files: [file] },
@@ -514,7 +514,7 @@ describe('App', () => {
       within(toolbarMenu('File'))
         .getAllByRole('menuitem')
         .map((button) => button.textContent),
-    ).toEqual(['New', 'Save', 'Import'])
+    ).toEqual(['New', 'Save', 'Load'])
 
     await user.click(examplesTrigger)
     expect(
@@ -627,7 +627,7 @@ describe('App', () => {
     expect(examplesTrigger).toHaveFocus()
 
     const fileTrigger = screen.getByRole('button', { name: /^File$/i })
-    await chooseToolbarAction(user, 'File', 'Import')
+    await chooseToolbarAction(user, 'File', 'Load')
     expect(fileTrigger).toHaveFocus()
   })
 
