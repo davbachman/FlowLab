@@ -143,6 +143,15 @@ describe('app layout scrolling', () => {
     })
     expect(
       declarationsFor(
+        '.flow-node-input .node-input,\n.flow-node-output .node-input',
+      ),
+    ).toMatchObject({
+      width: 'calc(100% - 16px)',
+      display: 'block',
+      'margin-inline': 'auto',
+    })
+    expect(
+      declarationsFor(
         ".flow-node-input[data-current='true']::before,\n.flow-node-output[data-current='true']::before,\n.react-flow__node.selected .flow-node-input[data-current='true']::before,\n.react-flow__node.selected .flow-node-output[data-current='true']::before",
       ),
     ).toMatchObject({

@@ -668,6 +668,13 @@ button:disabled {
   z-index: 1;
 }
 
+.flow-node-input .node-input,
+.flow-node-output .node-input {
+  width: calc(100% - 16px);
+  display: block;
+  margin-inline: auto;
+}
+
 .flow-node-input[data-current='true'],
 .flow-node-output[data-current='true'],
 .react-flow__node.selected .flow-node-input,
