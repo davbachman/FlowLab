@@ -51,6 +51,41 @@ interface TestWindowWithFilePickers extends Window {
 const BLOCK_NODE_RENDERED_WIDTH = 194
 const DECISION_NODE_RENDERED_WIDTH = 188
 
+type TestUser = ReturnType<typeof userEvent.setup>
+
+function toolbarMenu(name: string): HTMLElement {
+  return screen.getByRole('menu', {
+    name: new RegExp(`^${name}$`, 'i'),
+  })
+}
+
+async function chooseToolbarAction(
+  user: TestUser,
+  menuName: string,
+  actionName: string,
+): Promise<void> {
+  await user.click(
+    screen.getByRole('button', {
+      name: new RegExp(`^${menuName}$`, 'i'),
+    }),
+  )
+  await user.click(
+    within(toolbarMenu(menuName)).getByRole('menuitem', {
+      name: new RegExp(`^${actionName}$`, 'i'),
+    }),
+  )
+}
+
+function importProgramFromFileMenu(file: File): void {
+  fireEvent.click(screen.getByRole('button', { name: /^File$/i }))
+  fireEvent.click(
+    within(toolbarMenu('File')).getByRole('menuitem', { name: /^Import$/i }),
+  )
+  fireEvent.change(screen.getByLabelText(/^Import$/i), {
+    target: { files: [file] },
+  })
+}
+
 function viewportElement(container: HTMLElement): HTMLElement {
   const viewport = container.querySelector('.react-flow__viewport')
 
@@ -421,18 +456,199 @@ describe('App', () => {
       screen.getByLabelText(/Current document/i),
     ).toHaveTextContent('untitled')
     expect(
-      screen.getByRole('button', { name: /^Export$/i }),
+      screen.getByRole('navigation', { name: /Application menus/i }),
     ).toBeInTheDocument()
-    expect(screen.queryByText(/Export JSON/i)).not.toBeInTheDocument()
-    expect(screen.getByLabelText(/^Import$/i)).toBeInTheDocument()
-    expect(screen.queryByText(/Import JSON/i)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Clear/i })).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /Object Sample/i }),
+      screen.getByRole('button', { name: /^FlowLab$/i }),
     ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^File$/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^Examples$/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Import$/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /Imports/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/Imports list/i)).toBeInTheDocument()
+  })
+
+  it('shows the exact FlowLab, File, and Examples disclosure menus exclusively', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const menuBar = screen.getByRole('navigation', {
+      name: /Application menus/i,
+    })
+    const flowLabTrigger = within(menuBar).getByRole('button', {
+      name: /^FlowLab$/i,
+    })
+    const fileTrigger = within(menuBar).getByRole('button', {
+      name: /^File$/i,
+    })
+    const examplesTrigger = within(menuBar).getByRole('button', {
+      name: /^Examples$/i,
+    })
+
+    expect(within(flowLabTrigger).getByText('FlowLab').tagName).toBe('STRONG')
+    expect(flowLabTrigger).toHaveAttribute('aria-haspopup', 'menu')
+    expect(flowLabTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(fileTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(examplesTrigger).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(flowLabTrigger)
+    const flowLabMenu = toolbarMenu('FlowLab')
+    expect(
+      within(flowLabMenu).getByRole('menuitem', { name: /^About$/i }),
+    ).toBeInTheDocument()
+    expect(
+      within(flowLabMenu).getByRole('menuitem', { name: /^Instructions$/i }),
+    ).toBeInTheDocument()
+    expect(flowLabTrigger).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(fileTrigger)
+    expect(
+      screen.queryByRole('menu', { name: /^FlowLab$/i }),
+    ).not.toBeInTheDocument()
+    expect(flowLabTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(fileTrigger).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      within(toolbarMenu('File'))
+        .getAllByRole('menuitem')
+        .map((button) => button.textContent),
+    ).toEqual(['New', 'Save', 'Import'])
+
+    await user.click(examplesTrigger)
+    expect(
+      screen.queryByRole('menu', { name: /^File$/i }),
+    ).not.toBeInTheDocument()
+    expect(fileTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(examplesTrigger).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      within(toolbarMenu('Examples'))
+        .getAllByRole('menuitem')
+        .map((button) => button.textContent),
+    ).toEqual(['Basic', 'Object'])
+  })
+
+  it('shows the exact About copy, links, and emphasis and restores focus when closed', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const flowLabTrigger = screen.getByRole('button', { name: /^FlowLab$/i })
+    await chooseToolbarAction(user, 'FlowLab', 'About')
+
+    const dialog = screen.getByRole('dialog', { name: /^About FlowLab$/i })
+    const description = dialog.querySelector('#about-flowlab-description')
+
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(description?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Created by David Bachman with GPT 5.5 and GPT 5.6 sol. To learn more about David see https://pzacad.pitzer.edu/~dbachman/, and subscribe to his AI podcast Entropy Bonus at https://profbachman.substack.com/.',
+    )
+    const davidLink = within(dialog).getByRole('link', {
+      name: 'https://pzacad.pitzer.edu/~dbachman/',
+    })
+    const podcastLink = within(dialog).getByRole('link', {
+      name: 'https://profbachman.substack.com/',
+    })
+    expect(davidLink).toHaveAttribute(
+      'href',
+      'https://pzacad.pitzer.edu/~dbachman/',
+    )
+    expect(podcastLink).toHaveAttribute(
+      'href',
+      'https://profbachman.substack.com/',
+    )
+    expect(within(dialog).getByText('Entropy Bonus').tagName).toBe('EM')
+
+    await user.click(within(dialog).getByRole('button', { name: /^Close$/i }))
+    expect(
+      screen.queryByRole('dialog', { name: /^About FlowLab$/i }),
+    ).not.toBeInTheDocument()
+    await waitFor(() => expect(flowLabTrigger).toHaveFocus())
+
+    await chooseToolbarAction(user, 'FlowLab', 'About')
+    await user.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('dialog', { name: /^About FlowLab$/i }),
+    ).not.toBeInTheDocument()
+    await waitFor(() => expect(flowLabTrigger).toHaveFocus())
+  })
+
+  it('links Instructions directly to the GitHub README in a separate tab', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /^FlowLab$/i }))
+    const instructions = within(toolbarMenu('FlowLab')).getByRole('menuitem', {
+      name: /^Instructions$/i,
+    })
+
+    expect(instructions).toHaveAttribute(
+      'href',
+      'https://github.com/davbachman/FlowLab/blob/main/README.md',
+    )
+    expect(instructions).toHaveAttribute('target', '_blank')
+    expect(instructions).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+
+  it('closes toolbar menus with Escape or an outside pointer press', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const fileTrigger = screen.getByRole('button', { name: /^File$/i })
+    await user.click(fileTrigger)
+    expect(toolbarMenu('File')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('menu', { name: /^File$/i }),
+    ).not.toBeInTheDocument()
+    expect(fileTrigger).toHaveFocus()
+
+    const examplesTrigger = screen.getByRole('button', { name: /^Examples$/i })
+    await user.click(examplesTrigger)
+    expect(toolbarMenu('Examples')).toBeInTheDocument()
+
+    fireEvent.pointerDown(
+      screen.getByRole('region', { name: /Flowchart workspace/i }),
+    )
+    expect(
+      screen.queryByRole('menu', { name: /^Examples$/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('returns focus to a menu trigger after an action closes its menu', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const examplesTrigger = screen.getByRole('button', {
+      name: /^Examples$/i,
+    })
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    expect(examplesTrigger).toHaveFocus()
+
+    const fileTrigger = screen.getByRole('button', { name: /^File$/i })
+    await chooseToolbarAction(user, 'File', 'Import')
+    expect(fileTrigger).toHaveFocus()
+  })
+
+  it('does not run canvas shortcuts behind the About dialog', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    expect(screen.getByLabelText(/^Function text$/i)).toHaveValue('main')
+
+    await chooseToolbarAction(user, 'FlowLab', 'About')
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    expect(screen.getByLabelText(/^Function text$/i)).toHaveValue('main')
+
+    await user.click(screen.getByRole('button', { name: /^Close$/i }))
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true })
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText(/^Function text$/i),
+      ).not.toBeInTheDocument(),
+    )
   })
 
   it('sizes the shell from the browser visual viewport', () => {
@@ -514,7 +730,7 @@ describe('App', () => {
 
     await user.type(screen.getByLabelText(/Imports list/i), 'helpers')
     await screen.findByText(/Functions: helper/i)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     const initialTotal = screen.getByDisplayValue('total <- 0')
     await user.clear(initialTotal)
@@ -537,7 +753,7 @@ describe('App', () => {
     expect(screen.queryByDisplayValue('total <- 0')).not.toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toHaveValue('')
 
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
     expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
@@ -558,7 +774,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: /Object Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Object')
 
     const classNode = screen.getByTestId('flow-node-point-class')
     const methodNode = screen.getByTestId('flow-node-point-move')
@@ -629,17 +845,13 @@ describe('App', () => {
   it('expands a Class connector row for every attached Method plus one open slot', async () => {
     render(<App />)
 
-    fireEvent.change(screen.getByLabelText(/^Import$/i), {
-      target: {
-        files: [
-          new File(
-            [JSON.stringify(objectProgramWithTwoMethods)],
-            'two-methods.json',
-            { type: 'application/json' },
-          ),
-        ],
-      },
-    })
+    importProgramFromFileMenu(
+      new File(
+        [JSON.stringify(objectProgramWithTwoMethods)],
+        'two-methods.json',
+        { type: 'application/json' },
+      ),
+    )
 
     await screen.findByDisplayValue('reset')
     const classNode = screen.getByTestId('flow-node-point-class')
@@ -676,7 +888,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: /Object Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Object')
     await user.click(screen.getByRole('button', { name: /^Reset$/i }))
 
     const flowStatus = screen.getByText('Flow').closest('div')
@@ -693,15 +905,15 @@ describe('App', () => {
     expect(methodNode).toHaveAttribute('aria-current', 'step')
   })
 
-  it('clears all flowchart nodes from the top toolbar', async () => {
+  it('starts a new blank program from File > New', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
     expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /Clear/i }))
+    await chooseToolbarAction(user, 'File', 'New')
 
     expect(screen.queryByTestId('flow-node-main')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('total <- 0')).not.toBeInTheDocument()
@@ -712,7 +924,7 @@ describe('App', () => {
   it('lets students edit flowchart node text', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     const assignment = screen.getByDisplayValue('total <- 0')
     await user.clear(assignment)
@@ -724,7 +936,7 @@ describe('App', () => {
   it('lets students edit function names', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     const mainFunction = screen.getByDisplayValue('main')
     await user.clear(mainFunction)
@@ -746,7 +958,7 @@ describe('App', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+    await chooseToolbarAction(user, 'File', 'Save')
 
     await waitFor(() => expect(showSaveFilePicker).toHaveBeenCalledTimes(1))
     expect(showSaveFilePicker).toHaveBeenCalledWith({
@@ -792,7 +1004,7 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText(/Input queue/i), {
       target: { value: '5\n6' },
     })
-    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+    await chooseToolbarAction(user, 'File', 'Save')
 
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
     const exportedBlob = write.mock.calls[0]?.[0]
@@ -807,23 +1019,19 @@ describe('App', () => {
   it('imports the saved imports list and input queue before validating the program', async () => {
     render(<App />)
 
-    fireEvent.change(screen.getByLabelText(/^Import$/i), {
-      target: {
-        files: [
-          new File(
-            [
-              JSON.stringify({
-                ...turtleDrawingProgram,
-                imports: 'turtle',
-                inputQueue: '9\n10',
-              }),
-            ],
-            'saved-turtle.json',
-            { type: 'application/json' },
-          ),
+    importProgramFromFileMenu(
+      new File(
+        [
+          JSON.stringify({
+            ...turtleDrawingProgram,
+            imports: 'turtle',
+            inputQueue: '9\n10',
+          }),
         ],
-      },
-    })
+        'saved-turtle.json',
+        { type: 'application/json' },
+      ),
+    )
 
     await screen.findByDisplayValue('forward(100)')
     expect(screen.getByLabelText(/Imports list/i)).toHaveValue('turtle')
@@ -880,7 +1088,7 @@ describe('App', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+    await chooseToolbarAction(user, 'File', 'Save')
 
     await waitFor(() => expect(showDirectoryPicker).toHaveBeenCalledTimes(1))
     expect(showDirectoryPicker).toHaveBeenCalledWith({
@@ -933,7 +1141,7 @@ describe('App', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+    await chooseToolbarAction(user, 'File', 'Save')
     await user.clear(
       await screen.findByRole('textbox', { name: /^Filename$/i }),
     )
@@ -944,7 +1152,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: /^Save$/i }))
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
 
-    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+    await chooseToolbarAction(user, 'File', 'Save')
 
     expect(showDirectoryPicker).toHaveBeenCalledTimes(1)
     expect(
@@ -981,7 +1189,7 @@ describe('App', () => {
 
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: /^Export$/i }))
+    await chooseToolbarAction(user, 'File', 'Save')
 
     expect(
       screen.queryByRole('textbox', { name: /^Filename$/i }),
@@ -997,7 +1205,7 @@ describe('App', () => {
   it('runs the sample program with queued input and shows output', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     await user.clear(screen.getByLabelText(/Input queue/i))
     await user.type(screen.getByLabelText(/Input queue/i), '3')
@@ -1015,15 +1223,11 @@ describe('App', () => {
 
     await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
     await screen.findByText(/Native libraries: turtle/i)
-    fireEvent.change(screen.getByLabelText(/^Import$/i), {
-      target: {
-        files: [
-          new File([JSON.stringify(turtleDrawingProgram)], 'turtle.json', {
-            type: 'application/json',
-          }),
-        ],
-      },
-    })
+    importProgramFromFileMenu(
+      new File([JSON.stringify(turtleDrawingProgram)], 'turtle.json', {
+        type: 'application/json',
+      }),
+    )
 
     await screen.findByDisplayValue('forward(100)')
     await user.click(screen.getByRole('button', { name: /Run/i }))
@@ -1048,15 +1252,11 @@ describe('App', () => {
 
     render(<App />)
 
-    fireEvent.change(screen.getByLabelText(/^Import$/i), {
-      target: {
-        files: [
-          new File([JSON.stringify(textFromUrlProgram)], 'url-text.json', {
-            type: 'application/json',
-          }),
-        ],
-      },
-    })
+    importProgramFromFileMenu(
+      new File([JSON.stringify(textFromUrlProgram)], 'url-text.json', {
+        type: 'application/json',
+      }),
+    )
 
     await screen.findByDisplayValue(
       'page <- text_from_url("https://example.edu/page.txt")',
@@ -1221,15 +1421,11 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    fireEvent.change(screen.getByLabelText(/^Import$/i), {
-      target: {
-        files: [
-          new File([JSON.stringify(newlineOutputProgram)], 'newline.json', {
-            type: 'application/json',
-          }),
-        ],
-      },
-    })
+    importProgramFromFileMenu(
+      new File([JSON.stringify(newlineOutputProgram)], 'newline.json', {
+        type: 'application/json',
+      }),
+    )
 
     await screen.findByDisplayValue('"hello\\ngoodbye"')
     await user.click(screen.getByRole('button', { name: /Run/i }))
@@ -1246,15 +1442,11 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    fireEvent.change(screen.getByLabelText(/^Import$/i), {
-      target: {
-        files: [
-          new File([JSON.stringify(askProgram)], 'ask.json', {
-            type: 'application/json',
-          }),
-        ],
-      },
-    })
+    importProgramFromFileMenu(
+      new File([JSON.stringify(askProgram)], 'ask.json', {
+        type: 'application/json',
+      }),
+    )
 
     await screen.findByDisplayValue('x <- ask() + 1')
     await user.click(screen.getByRole('button', { name: /Run/i }))
@@ -1278,7 +1470,7 @@ describe('App', () => {
   it('shows current variable values in the right sidebar', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     await user.clear(screen.getByLabelText(/Input queue/i))
     await user.type(screen.getByLabelText(/Input queue/i), '3')
@@ -1296,17 +1488,13 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    fireEvent.change(screen.getByLabelText(/^Import$/i), {
-      target: {
-        files: [
-          new File(
-            [JSON.stringify(multilineVariableProgram)],
-            'multiline.json',
-            { type: 'application/json' },
-          ),
-        ],
-      },
-    })
+    importProgramFromFileMenu(
+      new File(
+        [JSON.stringify(multilineVariableProgram)],
+        'multiline.json',
+        { type: 'application/json' },
+      ),
+    )
 
     await screen.findByDisplayValue(/line one/)
     await user.click(screen.getByRole('button', { name: /Run/i }))
@@ -1326,7 +1514,7 @@ describe('App', () => {
   it('highlights the current node during step-through execution', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     await user.click(screen.getByRole('button', { name: /Reset/i }))
 
@@ -1339,7 +1527,7 @@ describe('App', () => {
   it('marks the current node semantically without a separate badge', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     await user.click(screen.getByRole('button', { name: /Reset/i }))
 
@@ -1357,9 +1545,7 @@ describe('App', () => {
       'helper-call.json',
       { type: 'application/json' },
     )
-    fireEvent.change(screen.getByLabelText(/^Import$/i), {
-      target: { files: [programFile] },
-    })
+    importProgramFromFileMenu(programFile)
 
     await screen.findByDisplayValue(`total <- helper([1, 2, 3], 'hello', 7)`)
     expect(screen.getByLabelText(/Current document/i)).toHaveTextContent(
@@ -1381,7 +1567,7 @@ describe('App', () => {
   it('renders While blocks as diamonds with the true branch from the side', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     expect(screen.getByTestId('flow-node-while-n')).toHaveAttribute(
       'data-shape',
@@ -1410,6 +1596,34 @@ describe('App', () => {
     expect(
       falseEdge && sourceHandleForProgramEdge(sampleProgram, falseEdge),
     ).toBe('while-false')
+  })
+
+  it('uses parallelograms only for Input and Output blocks', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    const inputNode = screen.getByTestId('flow-node-input-n')
+    const outputNode = screen.getByTestId('flow-node-show-total')
+
+    expect(inputNode).toHaveAttribute('data-shape', 'parallelogram')
+    expect(outputNode).toHaveAttribute('data-shape', 'parallelogram')
+    expect(inputNode.querySelector('[data-handlepos="top"]')).toBeInTheDocument()
+    expect(inputNode.querySelector('[data-handlepos="bottom"]')).toBeInTheDocument()
+    expect(outputNode.querySelector('[data-handlepos="top"]')).toBeInTheDocument()
+    expect(outputNode.querySelector('[data-handlepos="bottom"]')).toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-init-total')).toHaveAttribute(
+      'data-shape',
+      'block',
+    )
+    expect(screen.getByTestId('flow-node-return')).toHaveAttribute(
+      'data-shape',
+      'block',
+    )
+    expect(screen.getByTestId('flow-node-while-n')).toHaveAttribute(
+      'data-shape',
+      'diamond',
+    )
   })
 
   it('shows left and right true branch handles before a diamond branch is used', async () => {
@@ -1486,7 +1700,7 @@ describe('App', () => {
   it('uses the normal top node point for loop-back targets', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     expect(
       container.querySelector(`[data-handleid="${DECISION_LOOPBACK_TARGET_HANDLE}"]`),
@@ -1551,7 +1765,7 @@ describe('App', () => {
   it('selects a block on left click', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     const mainNode = screen.getByTestId('flow-node-main')
     fireEvent.click(mainNode)
@@ -1562,7 +1776,7 @@ describe('App', () => {
   it('copies, pastes, and undoes selected blocks with keyboard shortcuts', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     fireEvent.click(screen.getByTestId('flow-node-main'))
     fireEvent.keyDown(window, { key: 'c', metaKey: true })
@@ -1659,7 +1873,7 @@ describe('App', () => {
   it('opens a right-click comment dialog and shows comments inside blocks', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: /Load Sample/i }))
+    await chooseToolbarAction(user, 'Examples', 'Basic')
 
     fireEvent.contextMenu(screen.getByTestId('flow-node-main'))
 

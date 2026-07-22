@@ -7,8 +7,10 @@ import {
   useState,
   type CSSProperties,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from 'react'
 import {
   addEdge,
@@ -170,6 +172,18 @@ interface ViewportSize {
   height: number
 }
 
+type ToolbarMenuName = 'flowlab' | 'file' | 'examples'
+
+interface ToolbarMenuProps {
+  id: ToolbarMenuName
+  label: string
+  brand?: boolean
+  isOpen: boolean
+  onOpen: () => void
+  onClose: () => void
+  children: ReactNode
+}
+
 interface SaveFilePickerWritable {
   write: (value: Blob) => Promise<void> | void
   close: () => Promise<void> | void
@@ -244,6 +258,7 @@ const STEP_NODE_PALETTE: FlowNodeType[] = [
 const DECISION_SIDE_HANDLE_OFFSET = '15px'
 
 const DEFAULT_DOCUMENT_NAME = 'untitled'
+const README_URL = 'https://github.com/davbachman/FlowLab/blob/main/README.md'
 const FILE_PICKER_ID = 'flowlab-programs'
 const JSON_EXTENSION = '.json'
 const EXPORT_FILE_TYPES: SaveFilePickerOptions['types'] = [
@@ -335,6 +350,9 @@ function App() {
   const [sidebarResizeDrag, setSidebarResizeDrag] =
     useState<SidebarResizeDrag | null>(null)
   const [message, setMessage] = useState('')
+  const [openToolbarMenu, setOpenToolbarMenu] =
+    useState<ToolbarMenuName | null>(null)
+  const [aboutOpen, setAboutOpen] = useState(false)
   const [pendingNodeType, setPendingNodeType] = useState<FlowNodeType | null>(
     null,
   )
@@ -346,6 +364,51 @@ function App() {
   const historyRef = useRef<CanvasSnapshot[]>([])
   const askResumeModeRef = useRef<'step' | 'run'>('step')
   const fitViewAfterLoadRef = useRef(false)
+  const toolbarRef = useRef<HTMLElement | null>(null)
+  const importFileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const closeAboutDialog = useCallback(() => {
+    setAboutOpen(false)
+    window.requestAnimationFrame(() => {
+      document.getElementById('flowlab-menu-trigger')?.focus()
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!openToolbarMenu) {
+      return
+    }
+
+    function closeMenuOutsideToolbar(event: PointerEvent): void {
+      const target = event.target
+      if (
+        target instanceof globalThis.Node &&
+        !toolbarRef.current?.contains(target)
+      ) {
+        setOpenToolbarMenu(null)
+      }
+    }
+
+    document.addEventListener('pointerdown', closeMenuOutsideToolbar)
+    return () =>
+      document.removeEventListener('pointerdown', closeMenuOutsideToolbar)
+  }, [openToolbarMenu])
+
+  useEffect(() => {
+    if (!aboutOpen) {
+      return
+    }
+
+    function closeAboutOnEscape(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeAboutDialog()
+      }
+    }
+
+    document.addEventListener('keydown', closeAboutOnEscape)
+    return () => document.removeEventListener('keydown', closeAboutOnEscape)
+  }, [aboutOpen, closeAboutDialog])
 
   useEffect(() => {
     nodesRef.current = nodes
@@ -805,6 +868,33 @@ function App() {
     setPendingNodeType(null)
   }
 
+  function focusToolbarTrigger(menu: ToolbarMenuName): void {
+    document.getElementById(`${menu}-menu-trigger`)?.focus()
+  }
+
+  function closeToolbarMenuAndFocus(menu: ToolbarMenuName): void {
+    setOpenToolbarMenu(null)
+    focusToolbarTrigger(menu)
+  }
+
+  function runToolbarAction(
+    menu: ToolbarMenuName,
+    action: () => void,
+  ): void {
+    closeToolbarMenuAndFocus(menu)
+    action()
+  }
+
+  function openAboutDialog(): void {
+    setOpenToolbarMenu(null)
+    setAboutOpen(true)
+  }
+
+  function openImportPicker(): void {
+    closeToolbarMenuAndFocus('file')
+    importFileInputRef.current?.click()
+  }
+
   function resetSample(): void {
     pushHistorySnapshot()
     setNodes(programToNodes(sampleProgram))
@@ -1052,6 +1142,7 @@ function App() {
       const key = event.key.toLowerCase()
 
       if (
+        document.querySelector('[aria-modal="true"]') ||
         isEditableShortcutTarget(event.target) ||
         event.altKey ||
         !(event.metaKey || event.ctrlKey)
@@ -1202,11 +1293,13 @@ function App() {
 
   function submitFilenameRequest(event: FormEvent): void {
     event.preventDefault()
+    focusToolbarTrigger('file')
     filenameRequest?.resolve(fileNameForDocument(filenameInput))
     setFilenameRequest(null)
   }
 
   function cancelFilenameRequest(): void {
+    focusToolbarTrigger('file')
     filenameRequest?.resolve(null)
     setFilenameRequest(null)
   }
@@ -1337,42 +1430,124 @@ function App() {
       }
     >
       <header className="topbar">
-        <div>
-          <h1>FlowLab</h1>
-        </div>
-        <div className="toolbar" aria-label="Program actions">
-          <span className="document-name" aria-label="Current document">
-            {documentName}
-          </span>
-          <button type="button" onClick={resetSample}>
-            Load Sample
-          </button>
-          <button type="button" onClick={resetObjectSample}>
-            Object Sample
-          </button>
-          <button type="button" onClick={clearCanvas}>
-            Clear
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void exportJson()
-            }}
+        <h1 className="sr-only">FlowLab</h1>
+        <nav
+          ref={toolbarRef}
+          className="app-menu-bar"
+          aria-label="Application menus"
+        >
+          <ToolbarMenu
+            id="flowlab"
+            label="FlowLab"
+            brand
+            isOpen={openToolbarMenu === 'flowlab'}
+            onOpen={() => setOpenToolbarMenu('flowlab')}
+            onClose={() => setOpenToolbarMenu(null)}
           >
-            Export
-          </button>
-          <label className="file-button">
-            Import
-            <input
-              type="file"
-              accept="application/json,.json"
-              onChange={(event) => {
-                void importJson(event.target.files?.[0])
-                event.currentTarget.value = ''
-              }}
-            />
-          </label>
-        </div>
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              onClick={openAboutDialog}
+            >
+              About
+            </button>
+            <a
+              className="toolbar-menu-item"
+              data-menu-item
+              href={README_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              role="menuitem"
+              onClick={() => closeToolbarMenuAndFocus('flowlab')}
+            >
+              Instructions
+            </a>
+          </ToolbarMenu>
+
+          <ToolbarMenu
+            id="file"
+            label="File"
+            isOpen={openToolbarMenu === 'file'}
+            onOpen={() => setOpenToolbarMenu('file')}
+            onClose={() => setOpenToolbarMenu(null)}
+          >
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              onClick={() => runToolbarAction('file', clearCanvas)}
+            >
+              New
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              onClick={() =>
+                runToolbarAction('file', () => {
+                  void exportJson()
+                })
+              }
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              onClick={openImportPicker}
+            >
+              Import
+            </button>
+          </ToolbarMenu>
+
+          <ToolbarMenu
+            id="examples"
+            label="Examples"
+            isOpen={openToolbarMenu === 'examples'}
+            onOpen={() => setOpenToolbarMenu('examples')}
+            onClose={() => setOpenToolbarMenu(null)}
+          >
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              onClick={() => runToolbarAction('examples', resetSample)}
+            >
+              Basic
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              onClick={() => runToolbarAction('examples', resetObjectSample)}
+            >
+              Object
+            </button>
+          </ToolbarMenu>
+        </nav>
+
+        <span className="document-name" aria-label="Current document">
+          {documentName}
+        </span>
+        <input
+          ref={importFileInputRef}
+          className="toolbar-file-input"
+          type="file"
+          accept="application/json,.json"
+          aria-label="Import"
+          onChange={(event) => {
+            void importJson(event.target.files?.[0])
+            event.currentTarget.value = ''
+          }}
+        />
       </header>
 
       <section
@@ -1676,6 +1851,52 @@ function App() {
           </section>
         </aside>
       </section>
+      {aboutOpen ? (
+        <div
+          className="modal-backdrop"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeAboutDialog()
+            }
+          }}
+        >
+          <div
+            className="about-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="about-flowlab-title"
+            aria-describedby="about-flowlab-description"
+            onKeyDown={trapDialogFocus}
+          >
+            <h2 id="about-flowlab-title">About FlowLab</h2>
+            <p id="about-flowlab-description">
+              Created by David Bachman with GPT 5.5 and GPT 5.6 sol. To learn
+              more about David see{' '}
+              <a
+                href="https://pzacad.pitzer.edu/~dbachman/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                https://pzacad.pitzer.edu/~dbachman/
+              </a>
+              , and subscribe to his AI podcast <em>Entropy Bonus</em> at{' '}
+              <a
+                href="https://profbachman.substack.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                https://profbachman.substack.com/
+              </a>
+              .
+            </p>
+            <div className="modal-buttons">
+              <button type="button" autoFocus onClick={closeAboutDialog}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {filenameRequest ? (
         <div className="modal-backdrop">
           <form
@@ -1765,6 +1986,152 @@ function App() {
   )
 }
 
+function ToolbarMenu({
+  id,
+  label,
+  brand = false,
+  isOpen,
+  onOpen,
+  onClose,
+  children,
+}: ToolbarMenuProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const triggerId = `${id}-menu-trigger`
+  const panelId = `${id}-menu-panel`
+
+  function menuItems(): HTMLElement[] {
+    return Array.from(
+      containerRef.current?.querySelectorAll<HTMLElement>('[data-menu-item]') ??
+        [],
+    )
+  }
+
+  function focusMenuItem(index: number): void {
+    const items = menuItems()
+    if (!items.length) {
+      return
+    }
+
+    items[(index + items.length) % items.length].focus()
+  }
+
+  function openAndFocus(index: number): void {
+    onOpen()
+    window.requestAnimationFrame(() => focusMenuItem(index))
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key === 'Escape' && isOpen) {
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+      triggerRef.current?.focus()
+      return
+    }
+
+    if (event.target === triggerRef.current) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        openAndFocus(0)
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        openAndFocus(-1)
+      }
+      return
+    }
+
+    if (!isOpen || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      return
+    }
+
+    const items = menuItems()
+    if (!items.length) {
+      return
+    }
+
+    event.preventDefault()
+    const activeIndex = items.indexOf(document.activeElement as HTMLElement)
+    if (event.key === 'Home') {
+      focusMenuItem(0)
+    } else if (event.key === 'End') {
+      focusMenuItem(-1)
+    } else if (event.key === 'ArrowDown') {
+      focusMenuItem(activeIndex + 1)
+    } else {
+      focusMenuItem(activeIndex <= 0 ? -1 : activeIndex - 1)
+    }
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="toolbar-menu"
+      onKeyDown={handleKeyDown}
+      onBlur={(event) => {
+        if (
+          isOpen &&
+          (!(event.relatedTarget instanceof globalThis.Node) ||
+            !event.currentTarget.contains(event.relatedTarget))
+        ) {
+          onClose()
+        }
+      }}
+    >
+      <button
+        ref={triggerRef}
+        id={triggerId}
+        type="button"
+        className={`toolbar-menu-trigger${brand ? ' toolbar-menu-brand' : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        aria-controls={panelId}
+        onClick={() => (isOpen ? onClose() : onOpen())}
+      >
+        {brand ? <strong>{label}</strong> : label}
+        <span className="toolbar-menu-caret" aria-hidden="true">
+          ▾
+        </span>
+      </button>
+      {isOpen ? (
+        <div
+          id={panelId}
+          className="toolbar-menu-panel"
+          role="menu"
+          aria-labelledby={triggerId}
+        >
+          {children}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function trapDialogFocus(event: ReactKeyboardEvent<HTMLDivElement>): void {
+  if (event.key !== 'Tab') {
+    return
+  }
+
+  const focusable = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled])',
+    ),
+  )
+  const first = focusable[0]
+  const last = focusable.at(-1)
+  if (!first || !last) {
+    return
+  }
+
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault()
+    last.focus()
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault()
+    first.focus()
+  }
+}
+
 function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
   const updateNodeInternals = useUpdateNodeInternals()
   const label = NODE_TYPE_LABELS[data.nodeType]
@@ -1788,6 +2155,8 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
     data.trueBranchHandle === undefined || data.trueBranchHandle === trueRightHandle
   const isDeclaration = data.nodeType === 'class'
   const isFunctionRoot = data.nodeType === 'function'
+  const isInputOutput =
+    data.nodeType === 'input' || data.nodeType === 'output'
   const classSignature = isDeclaration
     ? tryParseClassDeclaration(data.text)
     : null
@@ -1813,7 +2182,9 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
           ? 'diamond'
           : isDeclaration
             ? 'declaration'
-            : 'block'
+            : isInputOutput
+              ? 'parallelogram'
+              : 'block'
       }
       aria-current={data.isCurrent ? 'step' : undefined}
       style={

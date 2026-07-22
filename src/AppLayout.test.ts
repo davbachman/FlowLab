@@ -116,6 +116,41 @@ describe('app layout scrolling', () => {
     })
   })
 
+  it('draws Input and Output as unskewed-content parallelograms', () => {
+    expect(
+      declarationsFor('.flow-node-input,\n.flow-node-output'),
+    ).toMatchObject({
+      isolation: 'isolate',
+      'border-color': 'transparent',
+      background: 'transparent',
+      'box-shadow': 'none',
+    })
+    expect(
+      declarationsFor('.flow-node-input::before,\n.flow-node-output::before'),
+    ).toMatchObject({
+      inset: '-2px 6px',
+      border: '2px solid var(--io-node-border)',
+      background: 'var(--io-node-background)',
+      transform: 'skewX(-11deg)',
+    })
+    expect(
+      declarationsFor(
+        '.flow-node-input .node-content,\n.flow-node-output .node-content',
+      ),
+    ).toMatchObject({
+      position: 'relative',
+      'z-index': '1',
+    })
+    expect(
+      declarationsFor(
+        ".flow-node-input[data-current='true']::before,\n.flow-node-output[data-current='true']::before,\n.react-flow__node.selected .flow-node-input[data-current='true']::before,\n.react-flow__node.selected .flow-node-output[data-current='true']::before",
+      ),
+    ).toMatchObject({
+      'border-color': '#d97706',
+      background: '#fffbeb',
+    })
+  })
+
   it('expands class method slots while keeping methods function-shaped', () => {
     expect(declarationsFor('.flow-node-class')).toMatchObject({
       width: 'var(--class-node-width, 200px)',
@@ -159,6 +194,51 @@ describe('app layout scrolling', () => {
     expect(declarationsFor('.palette', mobile)).toMatchObject({
       'min-height': 'max-content',
       overflow: 'visible',
+    })
+  })
+
+  it('keeps toolbar menus visible and compact across viewport sizes', () => {
+    expect(declarationsFor('.topbar')).toMatchObject({
+      position: 'relative',
+      'z-index': '10',
+      overflow: 'visible',
+    })
+    expect(
+      declarationsFor(
+        '.app-menu-bar,\n.execution-buttons,\n.palette-buttons',
+      ),
+    ).toMatchObject({
+      display: 'flex',
+    })
+    expect(declarationsFor('.app-menu-bar')).toMatchObject({
+      'flex-wrap': 'nowrap',
+    })
+    expect(declarationsFor('.toolbar-menu-panel')).toMatchObject({
+      position: 'absolute',
+      'z-index': '12',
+    })
+    expect(declarationsFor('.modal-backdrop')).toMatchObject({
+      'overflow-y': 'auto',
+    })
+    expect(declarationsFor('.filename-modal,\n.about-modal')).toMatchObject({
+      'box-sizing': 'border-box',
+      'max-height': '100%',
+      'overflow-y': 'auto',
+    })
+
+    const mobile = mediaBlockFor('(max-width: 720px)')
+    expect(declarationsFor('.topbar', mobile)).toMatchObject({
+      'flex-direction': 'row',
+      'flex-wrap': 'wrap',
+    })
+    expect(declarationsFor('.document-name', mobile)).toMatchObject({
+      'flex-basis': '100%',
+    })
+    expect(
+      declarationsFor('.toolbar-menu:last-child .toolbar-menu-panel', mobile),
+    ).toMatchObject({
+      right: '0',
+      left: 'auto',
     })
   })
 })

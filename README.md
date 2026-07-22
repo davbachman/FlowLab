@@ -2,7 +2,7 @@
 
 [Open the app](https://davbachman.github.io/FlowLab/)
 
-Created by David Bachman with GPT 5.5. To learn more about David see https://pzacad.pitzer.edu/~dbachman/, and subscribe to his AI podcast *Entropy Bonus* at https://profbachman.substack.com/.
+Created by David Bachman with GPT 5.5 and GPT 5.6 sol. To learn more about David see [https://pzacad.pitzer.edu/~dbachman/](https://pzacad.pitzer.edu/~dbachman/), and subscribe to his AI podcast *Entropy Bonus* at [https://profbachman.substack.com/](https://profbachman.substack.com/).
 
 ## Brief description
 
@@ -10,7 +10,7 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 
 ## Features
 
-- Flowchart blocks for Function, Class, Method, Return, Assignment, Call, Input, Output, If, While, and For.
+- Flowchart blocks for Function, Class, Method, Return, Assignment, Call, Input, Output, If, While, and For, with conventional parallelograms for Input and Output.
 - Editable Function names. Execution starts at the `main` Function.
 - Multiple disjoint function flowcharts on the same canvas.
 - Class declarations with ordered fields, expandable method handles, positional object construction, field access, field assignment, and methods.
@@ -32,17 +32,19 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 - Canvas editing with window selection, selected-block dragging, copy, paste, undo, delete, clear, pan, zoom, and fit view.
 - Right-click comments stored and displayed inside blocks.
 - Resizable runtime sidebar and a responsive layout that stacks on narrow screens.
+- A compact menu toolbar for app information, file actions, and examples.
 - JSON import and export for FlowLab programs.
 
 ## Editor workflow
 
+- The **FlowLab** menu contains **About** and **Instructions**; Instructions opens this GitHub README in a separate tab. The **File** menu contains **New**, **Save**, and **Import**. The **Examples** menu contains **Basic** and **Object**.
 - FlowLab starts with a blank canvas. Select a block in the left palette, then click the canvas to place it. Edit the text directly inside any block.
 - Drag between block handles to make wires. Function and Method roots begin executable flows. Class handles attach Methods. If, While, and For diamonds use either side for the `true` or loop-body branch and the bottom for the `false` or exit branch; FlowLab labels those wires and routes loop-back wires automatically.
 - Left-click selects one block. Shift-, Ctrl-, or Cmd-click extends the selection, and left-drag on empty canvas makes a selection window. Drag any selected block to move the selection.
 - Use Ctrl/Cmd+C to copy selected blocks and their internal wires, Ctrl/Cmd+V to paste, and Ctrl/Cmd+Z to undo. Backspace or Delete removes selected blocks or wires.
 - Right-click a block to add, edit, or remove a comment. Comments appear inside the block and are preserved when the program is exported.
 - Right-drag or scroll to pan the main canvas. Use the canvas controls or pinch gestures to zoom, and use **Fit View** to frame the whole program.
-- **Load Sample** loads the queued-input loop example and fills the input queue with `3`. **Object Sample** loads and auto-fits a `Point` Class with `move` and `__repr__` Methods. **Clear** removes all blocks and wires while leaving the Imports list and input queue intact.
+- **Examples > Basic** loads the queued-input loop example and fills the input queue with `3`. **Examples > Object** loads and auto-fits a `Point` Class with `move` and `__repr__` Methods. **File > New** removes all blocks and wires while leaving the Imports list and input queue intact.
 - The left palette and right runtime sidebar scroll independently. On desktop, drag the divider at the sidebar's left edge to resize it; on narrow screens the workspace stacks vertically.
 
 ## Running and inspecting programs
@@ -61,8 +63,8 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 - A JSON import contributes its non-`main` Functions and its Classes with the Methods attached to those Classes. The current canvas wins any shared Function-or-Class name. Among JSON imports, the first listed Function or Class to claim a name wins, and only a winning imported Class contributes its Methods. A current-canvas Method wins over an imported Method with the same qualified name.
 - FlowLab Functions and Classes also take priority over same-named native-library functions. This lets a program deliberately replace an imported command.
 - JSON names are resolved from the chosen programs folder first, then from programs previously imported or exported in this browser, and finally from a URL or relative path the browser can fetch. Import a file once if the browser cannot otherwise find it by name.
-- The top-bar **Import** button loads a complete FlowLab JSON program. Saved Imports text and input queue values are restored before the imported graph is validated.
-- **Export** saves block positions and text, wires, comments, the Imports list, and the input queue. Browsers with folder access ask for a programs folder and filename, then reuse that folder for later exports and imports. Other browsers use a save-file picker or a normal JSON download.
+- **File > Import** loads a complete FlowLab JSON program. Saved Imports text and input queue values are restored before the imported graph is validated.
+- **File > Save** exports block positions and text, wires, comments, the Imports list, and the input queue. Browsers with folder access ask for a programs folder and filename, then reuse that folder for later exports and imports. Other browsers use a save-file picker or a normal JSON download.
 
 ## Native libraries
 
@@ -168,7 +170,7 @@ The first class release intentionally omits inheritance, access modifiers and pr
 
 1. Add a Function block named `main`, executable step blocks, and at least one Return. Connect the flow and resolve every item shown under Validation.
 2. Add other Functions as separate flowcharts. For a Class, connect each Method from the Class block's `+ method` handle, then connect the Method's bottom handle to its executable flow.
-3. Enter any queued Input values and imports before starting. The two sample buttons provide complete working programs to explore.
+3. Enter any queued Input values and imports before starting. The **Examples** menu provides two complete working programs to explore.
 4. Press **Reset** and then **Step** to follow execution block by block, or press **Run** to restart and execute continuously.
 5. Inspect Status, Steps, Flow, Variables, Output, and the Turtle drawing when enabled. Correct any runtime error shown in the Console.
-6. Export the program to preserve its graph, comments, Imports list, and input queue, or use Import to reopen a saved JSON program.
+6. Use **File > Save** to preserve the graph, comments, Imports list, and input queue, or **File > Import** to reopen a saved JSON program.
