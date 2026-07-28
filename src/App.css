@@ -69,6 +69,7 @@ button:hover {
 button:focus-visible,
 .toolbar-menu-item:focus-visible,
 .node-input:focus-visible,
+.execution-speed-control input:focus-visible,
 textarea:focus-visible {
   outline: 2px solid #2f6fd6;
   outline-offset: 2px;
@@ -257,6 +258,39 @@ button:disabled {
 
 .execution-bar h2 {
   margin: 0 0 10px;
+}
+
+.execution-speed-control {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.execution-speed-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.execution-speed-header label {
+  color: inherit;
+}
+
+.execution-speed-control output {
+  color: #667085;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.execution-speed-control input {
+  width: 100%;
+  margin: 0;
+  accent-color: #2f6fd6;
+  cursor: pointer;
 }
 
 .sidebar-resize-handle {

@@ -50,7 +50,7 @@ FlowLab is a browser-based flowchart programming environment for building, valid
 ## Running and inspecting programs
 
 - A valid program has exactly one Function named `main` and at least one Return block. Every executable block must belong to exactly one Function or Method flow. Functions and Methods need one executable outgoing wire, Return has no outgoing wire, and each If, While, or For block needs one `true` and one `false` exit.
-- **Reset** creates a fresh execution at `main` without advancing it. **Step** executes one visible block at a time and continues the current execution. **Run** starts fresh and continues until the program returns, waits for input, pauses for a text load, or reports an error; text loads and `ask()` submissions resume Run automatically.
+- **Reset** creates a fresh execution at `main` without advancing it. **Step** executes one visible block at a time and continues the current execution. **Auto Step** repeatedly steps at the speed selected beneath the controls; use **Pause** to preserve the current position. **Run** starts fresh and continues immediately until the program returns, waits for input, pauses for a text load, or reports an error. Text loads and `ask()` submissions resume Run or Auto Step in the mode that started them.
 - The input queue contains one value per nonblank line. FlowLab parses numbers, `True`/`False`, quoted strings, lists, and dictionaries; other text is an unquoted String. Input blocks consume the active flow's queue in order and execution shows `Waiting` if the queue is empty.
 - Function and Method arguments form a local input queue for that call. Place Input blocks at the start of the called flow to bind those arguments in order. The sidebar switches to that active queue while stepping inside the call.
 - `ask()` opens an input dialog and parses the submitted value with the same rules as the input queue; unlike the queue, it can also submit an empty String. `text_from_url()` temporarily shows the loading state while the browser fetches the text.
@@ -171,6 +171,6 @@ The first class release intentionally omits inheritance, access modifiers and pr
 1. Add a Function block named `main`, executable step blocks, and at least one Return. Connect the flow and resolve every item shown under Validation.
 2. Add other Functions as separate flowcharts. For a Class, connect each Method from the Class block's `+ method` handle, then connect the Method's bottom handle to its executable flow.
 3. Enter any queued Input values and imports before starting. The **Examples** menu provides two complete working programs to explore.
-4. Press **Reset** and then **Step** to follow execution block by block, or press **Run** to restart and execute continuously.
+4. Press **Reset** and then **Step** to advance one block at a time, use **Auto Step** to watch the program at a selected speed, or press **Run** to restart and execute immediately.
 5. Inspect Status, Steps, Flow, Variables, Output, and the Turtle drawing when enabled. Correct any runtime error shown in the Console.
 6. Use **File > Save** to preserve the graph, comments, Imports list, and input queue, or **File > Load** to reopen a saved JSON program.

@@ -276,6 +276,9 @@ const NO_SELECTION_KEY = null satisfies KeyCode | null
 const DEFAULT_SIDEBAR_WIDTH = 420
 const MIN_SIDEBAR_WIDTH = 340
 const MAX_SIDEBAR_WIDTH = 720
+const DEFAULT_AUTO_STEP_SPEED = 2
+const MIN_AUTO_STEP_SPEED = 1
+const MAX_AUTO_STEP_SPEED = 10
 const VARIABLE_VALUE_PREVIEW_LINES = 4
 const DEFAULT_TURTLE_VIEW: TurtleViewState = { panX: 0, panY: 0, zoom: 1 }
 const MIN_TURTLE_ZOOM = 0.25
@@ -346,6 +349,8 @@ function App() {
   )
   const [importsLoading, setImportsLoading] = useState(false)
   const [execution, setExecution] = useState<ExecutionState | null>(null)
+  const [autoStepEnabled, setAutoStepEnabled] = useState(false)
+  const [autoStepSpeed, setAutoStepSpeed] = useState(DEFAULT_AUTO_STEP_SPEED)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [sidebarResizeDrag, setSidebarResizeDrag] =
     useState<SidebarResizeDrag | null>(null)
@@ -362,10 +367,15 @@ function App() {
   const edgesRef = useRef(edges)
   const clipboardRef = useRef<CanvasSnapshot | null>(null)
   const historyRef = useRef<CanvasSnapshot[]>([])
-  const askResumeModeRef = useRef<'step' | 'run'>('step')
+  const askResumeModeRef = useRef<'step' | 'auto-step' | 'run'>('step')
   const fitViewAfterLoadRef = useRef(false)
   const toolbarRef = useRef<HTMLElement | null>(null)
   const importFileInputRef = useRef<HTMLInputElement | null>(null)
+  const autoStepIsActive =
+    autoStepEnabled &&
+    (execution?.status === 'running' ||
+      execution?.status === 'asking' ||
+      execution?.status === 'loading')
 
   const closeAboutDialog = useCallback(() => {
     setAboutOpen(false)
@@ -560,6 +570,31 @@ function App() {
       cancelled = true
     }
   }, [execution])
+
+  useEffect(() => {
+    if (
+      !autoStepIsActive ||
+      execution?.status !== 'running' ||
+      !execution.currentNodeId
+    ) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      setExecution((currentExecution) => {
+        if (
+          currentExecution?.status !== 'running' ||
+          !currentExecution.currentNodeId
+        ) {
+          return currentExecution
+        }
+
+        return stepExecution(currentExecution)
+      })
+    }, 1000 / autoStepSpeed)
+
+    return () => window.clearTimeout(timeout)
+  }, [autoStepIsActive, autoStepSpeed, execution])
 
   const pushHistorySnapshot = useCallback(() => {
     const snapshot = cloneCanvasSnapshot({
@@ -930,6 +965,7 @@ function App() {
 
   function resetExecution(): void {
     setMessage('')
+    setAutoStepEnabled(false)
     askResumeModeRef.current = 'step'
     setExecution(
       createExecution(program, parseInputQueue(inputQueueText), {
@@ -941,6 +977,7 @@ function App() {
 
   function stepProgram(): void {
     setMessage('')
+    setAutoStepEnabled(false)
     askResumeModeRef.current = 'step'
     setExecution((currentExecution) => {
       const activeExecution =
@@ -955,6 +992,7 @@ function App() {
 
   function runProgram(): void {
     setMessage('')
+    setAutoStepEnabled(false)
     askResumeModeRef.current = 'run'
     const initialExecution = createExecution(
       program,
@@ -962,6 +1000,34 @@ function App() {
       { importedPrograms, nativeLibraries: nativeLibraryNames },
     )
     setExecution(runExecution(initialExecution))
+  }
+
+  function toggleAutoStepProgram(): void {
+    setMessage('')
+
+    if (autoStepIsActive) {
+      setAutoStepEnabled(false)
+      askResumeModeRef.current = 'step'
+      return
+    }
+
+    askResumeModeRef.current = 'auto-step'
+    setExecution((currentExecution) => {
+      if (
+        currentExecution &&
+        currentExecution.status !== 'halted' &&
+        currentExecution.status !== 'error' &&
+        currentExecution.status !== 'waiting'
+      ) {
+        return currentExecution
+      }
+
+      return createExecution(program, parseInputQueue(inputQueueText), {
+        importedPrograms,
+        nativeLibraries: nativeLibraryNames,
+      })
+    })
+    setAutoStepEnabled(true)
   }
 
   function startSidebarResize(event: ReactPointerEvent<HTMLDivElement>): void {
@@ -1764,17 +1830,55 @@ function App() {
               <button
                 type="button"
                 onClick={stepProgram}
-                disabled={!validation.valid || executionIsBusy}
+                disabled={
+                  !validation.valid || executionIsBusy || autoStepIsActive
+                }
               >
                 Step
               </button>
               <button
                 type="button"
+                onClick={toggleAutoStepProgram}
+                disabled={
+                  !validation.valid || (executionIsBusy && !autoStepIsActive)
+                }
+                title={
+                  autoStepIsActive
+                    ? 'Pause automatic stepping'
+                    : 'Automatically step through the program'
+                }
+              >
+                {autoStepIsActive ? 'Pause' : 'Auto Step'}
+              </button>
+              <button
+                type="button"
                 onClick={runProgram}
-                disabled={!validation.valid || executionIsBusy}
+                disabled={
+                  !validation.valid || executionIsBusy || autoStepIsActive
+                }
               >
                 Run
               </button>
+            </div>
+            <div className="execution-speed-control">
+              <div className="execution-speed-header">
+                <label htmlFor="auto-step-speed">Auto Step speed</label>
+                <output id="auto-step-speed-value" htmlFor="auto-step-speed">
+                  {autoStepSpeed} {autoStepSpeed === 1 ? 'step' : 'steps'}/s
+                </output>
+              </div>
+              <input
+                id="auto-step-speed"
+                type="range"
+                aria-describedby="auto-step-speed-value"
+                min={MIN_AUTO_STEP_SPEED}
+                max={MAX_AUTO_STEP_SPEED}
+                step={1}
+                value={autoStepSpeed}
+                onChange={(event) =>
+                  setAutoStepSpeed(Number(event.target.value))
+                }
+              />
             </div>
           </div>
 

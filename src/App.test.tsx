@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Position } from '@xyflow/react'
+import { act } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { LoopbackEdge } from './components/LoopbackEdge'
@@ -407,6 +408,7 @@ describe('App', () => {
     delete (window as TestWindowWithFilePickers).showSaveFilePicker
     delete (window as TestWindowWithFilePickers).showDirectoryPicker
     localStorage.clear()
+    vi.useRealTimers()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -1413,7 +1415,13 @@ describe('App', () => {
       screen.getByRole('button', { name: /^Step$/i }),
     )
     expect(executionBar).toContainElement(
+      screen.getByRole('button', { name: /^Auto Step$/i }),
+    )
+    expect(executionBar).toContainElement(
       screen.getByRole('button', { name: /^Run$/i }),
+    )
+    expect(executionBar).toContainElement(
+      screen.getByRole('slider', { name: /^Auto Step speed$/i }),
     )
   })
 
@@ -1536,6 +1544,104 @@ describe('App', () => {
     expect(screen.queryByTestId('current-node-marker')).not.toBeInTheDocument()
   })
 
+  it('automatically steps at the selected speed and can be paused', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    vi.useFakeTimers()
+
+    const stepsStatus = within(
+      screen.getByLabelText(/Runtime sidebar/i),
+    ).getByText(/^Steps$/i).closest('div')
+    const speed = screen.getByRole('slider', { name: /^Auto Step speed$/i })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Auto Step$/i }))
+
+    expect(screen.getByRole('button', { name: /^Pause$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Step$/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /^Run$/i })).toBeDisabled()
+    expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
+      'data-current',
+      'true',
+    )
+    expect(stepsStatus).toHaveTextContent('0')
+
+    act(() => vi.advanceTimersByTime(500))
+
+    expect(stepsStatus).toHaveTextContent('1')
+    expect(screen.getByTestId('flow-node-input-n')).toHaveAttribute(
+      'data-current',
+      'true',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^Pause$/i }))
+    act(() => vi.advanceTimersByTime(2_000))
+
+    expect(stepsStatus).toHaveTextContent('1')
+    expect(screen.getByRole('button', { name: /^Auto Step$/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^Step$/i })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /^Run$/i })).toBeEnabled()
+
+    fireEvent.change(speed, { target: { value: '4' } })
+    expect(screen.getByText('4 steps/s')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^Auto Step$/i }))
+
+    act(() => vi.advanceTimersByTime(249))
+    expect(stepsStatus).toHaveTextContent('1')
+
+    act(() => vi.advanceTimersByTime(1))
+    expect(stepsStatus).toHaveTextContent('2')
+
+    for (let step = 0; step < 20; step += 1) {
+      act(() => vi.advanceTimersByTime(250))
+    }
+
+    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Auto Step$/i })).toBeEnabled()
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      '6',
+    )
+  })
+
+  it('continues Auto Step slowly after an ask response', async () => {
+    render(<App />)
+
+    importProgramFromFileMenu(
+      new File([JSON.stringify(askProgram)], 'ask.json', {
+        type: 'application/json',
+      }),
+    )
+    await screen.findByDisplayValue('x <- ask() + 1')
+
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: /^Auto Step$/i }))
+
+    act(() => vi.advanceTimersByTime(500))
+    act(() => vi.advanceTimersByTime(500))
+
+    const dialog = screen.getByRole('dialog', {
+      name: /Input requested/i,
+    })
+    fireEvent.change(
+      within(dialog).getByRole('textbox', { name: /^Input$/i }),
+      { target: { value: '6' } },
+    )
+    fireEvent.submit(dialog)
+
+    expect(screen.queryByRole('dialog', { name: /Input requested/i })).toBeNull()
+    expect(screen.getByRole('button', { name: /^Pause$/i })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /Output/i })).not.toHaveTextContent(
+      '7',
+    )
+
+    act(() => vi.advanceTimersByTime(500))
+
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      '7',
+    )
+  })
+
   it('shows the active function input queue while stepping through a helper', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -1552,8 +1658,8 @@ describe('App', () => {
       'helper-call',
     )
     await user.click(screen.getByRole('button', { name: /Reset/i }))
-    await user.click(screen.getByRole('button', { name: /Step/i }))
-    await user.click(screen.getByRole('button', { name: /Step/i }))
+    await user.click(screen.getByRole('button', { name: /^Step$/i }))
+    await user.click(screen.getByRole('button', { name: /^Step$/i }))
 
     expect(screen.getByTestId('flow-node-helper')).toHaveAttribute(
       'data-current',
