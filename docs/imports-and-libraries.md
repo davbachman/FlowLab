@@ -8,6 +8,7 @@
 - [Resolve JSON imports](#resolve-json-imports)
 - [Handle name conflicts](#handle-name-conflicts)
 - [Text library](#text-library)
+- [Image library](#image-library)
 - [Turtle library](#turtle-library)
 
 ## Add imports
@@ -42,6 +43,37 @@ Enter `text` in Imports to enable:
 - `split_words(text)` splits a String on whitespace and returns a List of words.
 
 Calling `text_from_url()` temporarily shows the loading state while the browser fetches the text.
+
+## Image library
+
+Enter `image` in Imports to enable opaque Image values and the Image runtime panel.
+
+| Call | Result or effect |
+| --- | --- |
+| `imread(url)` | Loads a browser-readable image URL and returns a new Image. |
+| `imsave(image, filename)` | Downloads the current image pixels as a PNG. A missing `.png` suffix is added. |
+| `imshow(image)` | Displays the image in the Image panel and returns the same Image. |
+| `image_from_pixels(rows)` | Creates an Image from a rectangular list of pixel rows. |
+| `image_to_pixels(image)` | Returns the pixels as rows of `[red, green, blue, alpha]` lists. |
+| `imsize(image)` | Returns `[width, height]`. |
+| `get_pixel(image, x, y)` | Returns one `[red, green, blue, alpha]` pixel. |
+| `set_pixel(image, x, y, color)` | Changes one pixel and returns the same Image. |
+
+Pixel coordinates are zero-based: `(0, 0)` is the upper-left corner, `x` increases to the right, and `y` increases downward. Color channels must be integers from 0 through 255. `image_from_pixels` and `set_pixel` accept RGB lists such as `[255, 0, 0]` or RGBA lists such as `[255, 0, 0, 128]`; omitted alpha defaults to 255. `image_to_pixels` and `get_pixel` always return RGBA.
+
+Images have identity and are shown in Variables as labels such as `Image #1 (640 × 480)`. Assignment creates an alias, so after `copy <- photo`, calling `set_pixel(copy, ...)` also changes `photo`. Use `image_to_pixels` followed by `image_from_pixels` when a separate Image is needed.
+
+`imread` pauses execution while the browser downloads and decodes the file. The server must allow the browser request, including any required cross-origin permissions. An Image may contain at most 16,777,216 pixels. The Image panel remains empty until `imshow` is called.
+
+Example:
+
+```text
+photo <- imread("https://example.edu/photo.png")
+size <- imsize(photo)
+set_pixel(photo, 0, 0, [255, 0, 0])
+imshow(photo)
+imsave(photo, "edited-photo.png")
+```
 
 ## Turtle library
 

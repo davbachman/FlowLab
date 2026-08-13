@@ -5,6 +5,7 @@ import {
 import {
   isDictionaryKey,
   isRuntimeDictionary,
+  isRuntimeImage,
   isRuntimeObject,
   setDictionaryValue,
 } from './runtimeValues'
@@ -34,6 +35,17 @@ import {
   type RuntimeObject,
   type RuntimeValue,
 } from './types'
+import {
+  addLoadedImage,
+  IMAGE_FUNCTION_NAMES,
+  IMAGE_LIBRARY_NAME,
+  initialImageRuntimeState,
+  isImageFunctionName,
+  runImageFunction,
+  validateImreadArguments,
+  type ImageRuntimeState,
+  type LoadedImageData,
+} from './image'
 import {
   isTextFunctionName,
   splitWords,
@@ -111,6 +123,7 @@ interface CompletedExpressionResult {
   value: RuntimeValue
   output: string[]
   turtle?: TurtleState
+  image?: ImageRuntimeState
   objectHeap: ObjectHeap
   nextObjectId: number
 }
@@ -119,6 +132,7 @@ interface SuspendedExpressionResult {
   status: 'suspended'
   call: FunctionCallRequest
   turtle?: TurtleState
+  image?: ImageRuntimeState
   objectHeap: ObjectHeap
   nextObjectId: number
 }
@@ -127,14 +141,17 @@ interface AskingExpressionResult {
   status: 'asking'
   ask: AskCallRequest
   turtle?: TurtleState
+  image?: ImageRuntimeState
   objectHeap: ObjectHeap
   nextObjectId: number
 }
 
 interface LoadingExpressionResult {
   status: 'loading'
-  textLoad: TextLoadCallRequest
+  textLoad?: TextLoadCallRequest
+  imageLoad?: ImageLoadCallRequest
   turtle?: TurtleState
+  image?: ImageRuntimeState
   objectHeap: ObjectHeap
   nextObjectId: number
 }
@@ -151,6 +168,7 @@ type AssignIndexedElementResult =
       environment: Environment
       output: string[]
       turtle?: TurtleState
+      image?: ImageRuntimeState
       objectHeap: ObjectHeap
       nextObjectId: number
     }
@@ -159,6 +177,7 @@ type AssignIndexedElementResult =
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
       call: FunctionCallRequest
       turtle?: TurtleState
+      image?: ImageRuntimeState
       objectHeap: ObjectHeap
       nextObjectId: number
     }
@@ -167,14 +186,17 @@ type AssignIndexedElementResult =
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
       ask: AskCallRequest
       turtle?: TurtleState
+      image?: ImageRuntimeState
       objectHeap: ObjectHeap
       nextObjectId: number
     }
   | {
       status: 'loading'
       pendingNode: Extract<PendingNode, { kind: 'assignment' }>
-      textLoad: TextLoadCallRequest
+      textLoad?: TextLoadCallRequest
+      imageLoad?: ImageLoadCallRequest
       turtle?: TurtleState
+      image?: ImageRuntimeState
       objectHeap: ObjectHeap
       nextObjectId: number
     }
@@ -265,6 +287,11 @@ interface TextLoadCallRequest {
   callIndex: number
 }
 
+interface ImageLoadCallRequest {
+  url: string
+  callIndex: number
+}
+
 interface PendingAsk {
   pendingNode: PendingNode
   pendingExpressionKey: PendingExpressionKey
@@ -272,6 +299,13 @@ interface PendingAsk {
 }
 
 interface PendingTextLoad {
+  url: string
+  pendingNode: PendingNode
+  pendingExpressionKey: PendingExpressionKey
+  pendingCallIndex: number
+}
+
+interface PendingImageLoad {
   url: string
   pendingNode: PendingNode
   pendingExpressionKey: PendingExpressionKey
@@ -312,8 +346,10 @@ export interface ExecutionState {
   maxSteps: number
   functionName: string
   turtle?: TurtleState
+  image?: ImageRuntimeState
   askRequest?: PendingAsk
   textRequest?: PendingTextLoad
+  imageRequest?: PendingImageLoad
   returnValue?: RuntimeValue
   error?: string
 }
@@ -345,6 +381,15 @@ class TextLoadSuspension extends Error {
   constructor(textLoad: TextLoadCallRequest) {
     super(`Text URL load "${textLoad.url}" suspended.`)
     this.textLoad = textLoad
+  }
+}
+
+class ImageLoadSuspension extends Error {
+  readonly imageLoad: ImageLoadCallRequest
+
+  constructor(imageLoad: ImageLoadCallRequest) {
+    super(`Image URL load "${imageLoad.url}" suspended.`)
+    this.imageLoad = imageLoad
   }
 }
 
@@ -381,6 +426,9 @@ export function createExecution(
   const turtle = nativeLibraries.includes(TURTLE_LIBRARY_NAME)
     ? initialTurtleState()
     : undefined
+  const image = nativeLibraries.includes(IMAGE_LIBRARY_NAME)
+    ? initialImageRuntimeState()
+    : undefined
 
   if (!validation.valid || !mainFunction) {
     return {
@@ -403,6 +451,7 @@ export function createExecution(
       maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
       functionName: 'main',
       turtle,
+      image,
       error: validation.errors.join('\n') || 'Program cannot start.',
     }
   }
@@ -427,6 +476,7 @@ export function createExecution(
     maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
     functionName: 'main',
     turtle,
+    image,
   }
 }
 
@@ -534,7 +584,7 @@ export function failTextLoadExecution(
   state: ExecutionState,
   error: string,
 ): ExecutionState {
-  if (state.status !== 'loading') {
+  if (state.status !== 'loading' || !state.textRequest) {
     return state
   }
 
@@ -542,6 +592,60 @@ export function failTextLoadExecution(
     {
       ...state,
       textRequest: undefined,
+    },
+    error,
+  )
+}
+
+export function completeImageLoadExecution(
+  state: ExecutionState,
+  loaded: LoadedImageData,
+): ExecutionState {
+  if (state.status !== 'loading' || !state.imageRequest) {
+    return state
+  }
+
+  try {
+    const result = addLoadedImage(
+      state.image ?? initialImageRuntimeState(),
+      loaded,
+    )
+    const pendingNode = addCompletedCallResult(
+      state.imageRequest.pendingNode,
+      state.imageRequest.pendingExpressionKey,
+      state.imageRequest.pendingCallIndex,
+      result.value,
+    )
+
+    return resumePendingNode(
+      {
+        ...state,
+        image: result.state,
+        imageRequest: undefined,
+        status: 'running',
+      },
+      pendingNode,
+    )
+  } catch (error) {
+    return failImageLoadExecution(
+      state,
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+}
+
+export function failImageLoadExecution(
+  state: ExecutionState,
+  error: string,
+): ExecutionState {
+  if (state.status !== 'loading' || !state.imageRequest) {
+    return state
+  }
+
+  return fail(
+    {
+      ...state,
+      imageRequest: undefined,
     },
     error,
   )
@@ -833,11 +937,11 @@ function executeAssignmentNode(
     }
 
     if (result.status === 'loading') {
-      return startTextLoad(
+      return startNativeLoad(
         withExpressionRuntime(nextState, result),
         pending,
         'valueExpression',
-        result.textLoad,
+        result,
       )
     }
 
@@ -882,11 +986,11 @@ function executeAssignmentNode(
     }
 
     if (assignmentResult.status === 'loading') {
-      return startTextLoad(
+      return startNativeLoad(
         withExpressionRuntime(nextState, assignmentResult),
         assignmentResult.pendingNode,
         'indexExpression',
-        assignmentResult.textLoad,
+        assignmentResult,
       )
     }
 
@@ -895,6 +999,7 @@ function executeAssignmentNode(
         ...nextState,
         output: assignmentResult.output,
         turtle: assignmentResult.turtle,
+        image: assignmentResult.image,
         objectHeap: assignmentResult.objectHeap,
         nextObjectId: assignmentResult.nextObjectId,
         environment: assignmentResult.environment,
@@ -971,11 +1076,11 @@ function executeCallNode(
   }
 
   if (result.status === 'loading') {
-    return startTextLoad(
+    return startNativeLoad(
       withExpressionRuntime(state, result),
       pendingNode,
       'expression',
-      result.textLoad,
+      result,
     )
   }
 
@@ -1014,11 +1119,11 @@ function executeOutputNode(
     }
 
     if (result.status === 'loading') {
-      return startTextLoad(
+      return startNativeLoad(
         withExpressionRuntime(nextState, result),
         pending,
         'expression',
-        result.textLoad,
+        result,
       )
     }
 
@@ -1089,11 +1194,11 @@ function executeBranchNode(
   }
 
   if (result.status === 'loading') {
-    return startTextLoad(
+    return startNativeLoad(
       withExpressionRuntime(state, result),
       pendingNode,
       'expression',
-      result.textLoad,
+      result,
     )
   }
 
@@ -1129,11 +1234,11 @@ function executeReturnNode(
   }
 
   if (result.status === 'loading') {
-    return startTextLoad(
+    return startNativeLoad(
       withExpressionRuntime(state, result),
       pendingNode,
       'expression',
-      result.textLoad,
+      result,
     )
   }
 
@@ -1214,6 +1319,7 @@ function evaluateProgramExpression(
   environment: Environment = state.environment,
 ): ProgramExpressionResult {
   let turtle = state.turtle
+  let image = state.image
   let objectHeap = state.objectHeap
   let nextObjectId = state.nextObjectId
 
@@ -1289,6 +1395,24 @@ function evaluateProgramExpression(
             const result = splitWords(args)
             progress.completedCalls[currentCallIndex] = result
             return result
+          }
+
+          if (isImageFunctionName(name)) {
+            if (name === 'imread') {
+              throw new ImageLoadSuspension({
+                url: validateImreadArguments(args),
+                callIndex: currentCallIndex,
+              })
+            }
+
+            const result = runImageFunction(
+              image ?? initialImageRuntimeState(),
+              name,
+              args,
+            )
+            image = result.state
+            progress.completedCalls[currentCallIndex] = result.value
+            return result.value
           }
 
           turtle = runNativeFunction(turtle, name, args)
@@ -1402,6 +1526,7 @@ function evaluateProgramExpression(
       value,
       output: state.output,
       turtle,
+      image,
       objectHeap,
       nextObjectId,
     }
@@ -1411,6 +1536,7 @@ function evaluateProgramExpression(
         status: 'suspended',
         call: error.call,
         turtle,
+        image,
         objectHeap,
         nextObjectId,
       }
@@ -1421,6 +1547,7 @@ function evaluateProgramExpression(
         status: 'asking',
         ask: error.ask,
         turtle,
+        image,
         objectHeap,
         nextObjectId,
       }
@@ -1431,6 +1558,18 @@ function evaluateProgramExpression(
         status: 'loading',
         textLoad: error.textLoad,
         turtle,
+        image,
+        objectHeap,
+        nextObjectId,
+      }
+    }
+
+    if (error instanceof ImageLoadSuspension) {
+      return {
+        status: 'loading',
+        imageLoad: error.imageLoad,
+        turtle,
+        image,
         objectHeap,
         nextObjectId,
       }
@@ -1444,6 +1583,7 @@ function withExpressionRuntime(
   state: ExecutionState,
   result: {
     turtle?: TurtleState
+    image?: ImageRuntimeState
     objectHeap: ObjectHeap
     nextObjectId: number
   },
@@ -1451,6 +1591,7 @@ function withExpressionRuntime(
   return {
     ...state,
     turtle: result.turtle,
+    image: result.image,
     objectHeap: result.objectHeap,
     nextObjectId: result.nextObjectId,
   }
@@ -1474,6 +1615,33 @@ function startAsk(
   }
 }
 
+function startNativeLoad(
+  state: ExecutionState,
+  pendingNode: PendingNode,
+  pendingExpressionKey: PendingExpressionKey,
+  load: Pick<LoadingExpressionResult, 'textLoad' | 'imageLoad'>,
+): ExecutionState {
+  if (load.textLoad) {
+    return startTextLoad(
+      state,
+      pendingNode,
+      pendingExpressionKey,
+      load.textLoad,
+    )
+  }
+
+  if (load.imageLoad) {
+    return startImageLoad(
+      state,
+      pendingNode,
+      pendingExpressionKey,
+      load.imageLoad,
+    )
+  }
+
+  throw new Error('Native load request is missing.')
+}
+
 function startTextLoad(
   state: ExecutionState,
   pendingNode: PendingNode,
@@ -1488,6 +1656,25 @@ function startTextLoad(
       pendingNode,
       pendingExpressionKey,
       pendingCallIndex: textLoad.callIndex,
+    },
+    status: 'loading',
+  }
+}
+
+function startImageLoad(
+  state: ExecutionState,
+  pendingNode: PendingNode,
+  pendingExpressionKey: PendingExpressionKey,
+  imageLoad: ImageLoadCallRequest,
+): ExecutionState {
+  return {
+    ...state,
+    currentNodeId: pendingNode.node.id,
+    imageRequest: {
+      url: imageLoad.url,
+      pendingNode,
+      pendingExpressionKey,
+      pendingCallIndex: imageLoad.callIndex,
     },
     status: 'loading',
   }
@@ -1714,11 +1901,11 @@ function executeForPendingNode(
   }
 
   if (result.status === 'loading') {
-    return startTextLoad(
+    return startNativeLoad(
       withExpressionRuntime(state, result),
       pendingNode,
       'expression',
-      result.textLoad,
+      result,
     )
   }
 
@@ -1846,6 +2033,7 @@ function assignIndexedElement(
       pendingNode: nextPendingNode,
       call: indexResult.call,
       turtle: indexResult.turtle,
+      image: indexResult.image,
       objectHeap: indexResult.objectHeap,
       nextObjectId: indexResult.nextObjectId,
     }
@@ -1857,6 +2045,7 @@ function assignIndexedElement(
       pendingNode: nextPendingNode,
       ask: indexResult.ask,
       turtle: indexResult.turtle,
+      image: indexResult.image,
       objectHeap: indexResult.objectHeap,
       nextObjectId: indexResult.nextObjectId,
     }
@@ -1867,7 +2056,9 @@ function assignIndexedElement(
       status: 'loading',
       pendingNode: nextPendingNode,
       textLoad: indexResult.textLoad,
+      imageLoad: indexResult.imageLoad,
       turtle: indexResult.turtle,
+      image: indexResult.image,
       objectHeap: indexResult.objectHeap,
       nextObjectId: indexResult.nextObjectId,
     }
@@ -1900,6 +2091,7 @@ function assignIndexedElement(
         : { ...environment, [variable]: nextValue },
       output,
       turtle: indexResult.turtle,
+      image: indexResult.image,
       objectHeap: nextObjectHeap,
       nextObjectId: indexResult.nextObjectId,
     }
@@ -1926,6 +2118,7 @@ function assignIndexedElement(
       : { ...environment, [variable]: nextValue },
     output,
     turtle: indexResult.turtle,
+    image: indexResult.image,
     objectHeap: nextObjectHeap,
     nextObjectId: indexResult.nextObjectId,
   }
@@ -2035,6 +2228,10 @@ function stringifyHeapValue(
   seenObjectIds: Set<number> = new Set<number>(),
   nested = false,
 ): string {
+  if (isRuntimeImage(value)) {
+    return `Image #${value.id} (${value.width} × ${value.height})`
+  }
+
   if (isRuntimeObject(value)) {
     const instance = state.objectHeap[value.id]
     if (!instance) {
@@ -2424,7 +2621,9 @@ function normalizeNativeLibraries(nativeLibraries: string[]): string[] {
         .map((library) => library.trim().toLowerCase())
         .filter(
           (library) =>
-            library === TURTLE_LIBRARY_NAME || library === TEXT_LIBRARY_NAME,
+            library === TURTLE_LIBRARY_NAME ||
+            library === TEXT_LIBRARY_NAME ||
+            library === IMAGE_LIBRARY_NAME,
         ),
     ),
   ]
@@ -2438,6 +2637,9 @@ function nativeFunctionNamesForLibraries(nativeLibraries: string[]): string[] {
     ...(nativeLibraries.includes(TEXT_LIBRARY_NAME)
       ? [...TEXT_FUNCTION_NAMES]
       : []),
+    ...(nativeLibraries.includes(IMAGE_LIBRARY_NAME)
+      ? [...IMAGE_FUNCTION_NAMES]
+      : []),
   ]
 }
 
@@ -2446,7 +2648,9 @@ function isNativeFunctionAvailable(state: ExecutionState, name: string): boolean
     ((state.nativeLibraries.includes(TURTLE_LIBRARY_NAME) &&
       isTurtleCommandName(name)) ||
       (state.nativeLibraries.includes(TEXT_LIBRARY_NAME) &&
-        isTextFunctionName(name))) &&
+        isTextFunctionName(name)) ||
+      (state.nativeLibraries.includes(IMAGE_LIBRARY_NAME) &&
+        isImageFunctionName(name))) &&
     !hasFlowLabFunctionTarget(state, name)
   )
 }

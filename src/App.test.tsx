@@ -353,6 +353,26 @@ const textFromUrlProgram: Program = {
   ],
 }
 
+const imageDisplayProgram: Program = {
+  version: 1,
+  imports: 'image',
+  nodes: [
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'make-image',
+      type: 'process',
+      text:
+        'photo <- image_from_pixels([[[255, 0, 0], [0, 255, 0, 128]]])\nset_pixel(photo, 1, 0, [1, 2, 3])\nimshow(photo)\nimsave(photo, "flowlab-image")',
+      position: { x: 0, y: 100 },
+    },
+    { id: 'return', type: 'return', text: 'photo', position: { x: 0, y: 240 } },
+  ],
+  edges: [
+    { id: 'e1', source: 'main', target: 'make-image' },
+    { id: 'e2', source: 'make-image', target: 'return' },
+  ],
+}
+
 const multilineVariableProgram: Program = {
   version: 1,
   nodes: [
@@ -736,6 +756,29 @@ describe('App', () => {
       ),
     ).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /Turtle/i })).toBeInTheDocument()
+  })
+
+  it('loads image as a native library and displays an empty Image panel', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'image')
+
+    expect(
+      await screen.findByText(/Native libraries: image/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.textContent?.startsWith('Functions:') === true &&
+          element.textContent.includes('imread') &&
+          element.textContent.includes('imshow') &&
+          element.textContent.includes('set_pixel'),
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /^Image$/i })).toHaveTextContent(
+      'No image displayed',
+    )
   })
 
   it('runs block expressions that call imported helper functions', async () => {
@@ -1327,6 +1370,45 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       'Fetched text from class data',
     )
+    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+  })
+
+  it('renders imshow output and downloads imsave output as PNG', async () => {
+    const createImageData = vi.fn((width: number, height: number) => ({
+      data: new Uint8ClampedArray(width * height * 4),
+    }))
+    const putImageData = vi.fn()
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      createImageData,
+      putImageData,
+    } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(
+      (callback) => callback(new Blob(['png'], { type: 'image/png' })),
+    )
+
+    const user = userEvent.setup()
+    render(<App />)
+    importProgramFromFileMenu(
+      new File([JSON.stringify(imageDisplayProgram)], 'image.json', {
+        type: 'application/json',
+      }),
+    )
+
+    await screen.findByText(/Native libraries: image/i)
+    await user.click(screen.getByRole('button', { name: /Run/i }))
+
+    const panel = screen.getByRole('region', { name: /^Image$/i })
+    expect(within(panel).getByTestId('image-canvas')).toBeInTheDocument()
+    expect(panel).toHaveTextContent('Image #1 · 2 × 1')
+    expect(screen.getByRole('region', { name: /Variables/i })).toHaveTextContent(
+      'Image #1 (2 × 1)',
+    )
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(putImageData).toHaveBeenCalled()
+    expect(screen.getByText(/Image saved as flowlab-image\.png/i)).toBeInTheDocument()
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
   })
 

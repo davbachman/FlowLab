@@ -892,11 +892,44 @@ textarea {
   margin-top: 16px;
 }
 
+.image-panel {
+  margin-top: 16px;
+}
+
 .variables-panel h3,
 .turtle-panel h3,
 .output-log h3 {
   margin: 0 0 8px;
   font-size: 14px;
+}
+
+.image-panel h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.image-canvas {
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+  display: block;
+  border: 1px solid #e4e7ec;
+  border-radius: 6px;
+  background:
+    linear-gradient(45deg, #f2f4f7 25%, transparent 25%),
+    linear-gradient(-45deg, #f2f4f7 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #f2f4f7 75%),
+    linear-gradient(-45deg, transparent 75%, #f2f4f7 75%);
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  background-size: 16px 16px;
+  object-fit: contain;
+}
+
+.image-metadata,
+.empty-image {
+  margin: 7px 0 0;
+  color: #667085;
+  font-size: 12px;
 }
 
 .turtle-canvas {

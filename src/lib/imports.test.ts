@@ -92,6 +92,28 @@ describe('imports', () => {
     ])
   })
 
+  it('resolves image as a native library without loading a JSON file', async () => {
+    const resolution = await resolveFlowLabImports('image')
+
+    expect(resolution.errors).toEqual([])
+    expect(resolution.files).toEqual([])
+    expect(resolution.nativeLibraries).toEqual([
+      {
+        name: 'image',
+        functionNames: [
+          'get_pixel',
+          'image_from_pixels',
+          'image_to_pixels',
+          'imread',
+          'imsave',
+          'imshow',
+          'imsize',
+          'set_pixel',
+        ],
+      },
+    ])
+  })
+
   it('resolves turtle alongside normal FlowLab JSON imports', async () => {
     const directoryHandle = {
       getFileHandle: (name: string) => {

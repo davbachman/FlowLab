@@ -22,6 +22,7 @@
 | List | Bracket literals, such as `[1, 2, 3]`, `["a", True]`, and nested lists | Concatenation with `+` when both operands are lists; zero-based indexing like `L[0]`; indexed assignment like `L[i] <- value`; deep equality and inequality; truth tests where non-empty lists are true; For iteration over elements |
 | Dictionary | Brace literals with primitive keys, such as `{"name": "Ada"}`, `{1: "one", "1": "string"}`, and `{True: [2, 3]}` | Lookup like `D["name"]`; indexed assignment like `D[key] <- value` creates or overwrites keys; deep, order-independent equality and inequality; truth tests where non-empty dictionaries are true; For iteration over keys in insertion order |
 | Object | Construct an instance from a Class declaration, such as `p <- Point(2, 3)` for `Point(x, y)` | Field access such as `p.x`; field assignment such as `p.x <- 10`; method calls such as `p.move(5, -1)`; always true in truth tests; identity equality by default; customizable output, comparisons, and arithmetic through special methods |
+| Image | Returned by `imread(...)` or `image_from_pixels(...)` after importing `image` | Opaque, identity-based value with dimensions and RGBA pixels; use the [image library](imports-and-libraries.md#image-library) to inspect, change, display, or save it |
 | Function result | Any single value returned by a Return block | Use returned values in expressions, assignments, output, branch conditions, loops, list elements, and other function-call arguments |
 
 ## Expression rules
@@ -29,7 +30,7 @@
 - Parentheses control grouping.
 - From highest to lowest, the main operator precedence is postfix calls/indexing/member access, unary `-`, `*` and `/`, `+` and `-`, comparisons, `not`, `and`, then `or`.
 - Logical `and` and `or` short-circuit and return a Boolean.
-- False values are `False`, zero, and empty Strings, Lists, and Dictionaries. Objects and other nonempty values are true.
+- False values are `False`, zero, and empty Strings, Lists, and Dictionaries. Objects and Images are always true; other nonempty values are true.
 - `+` adds two Numbers, concatenates two Lists, and otherwise concatenates the basic String forms of its operands. Object operands follow the `__add__` rules in [Classes and objects](classes-and-objects.md); concatenation never calls `__repr__` implicitly.
 - String and List indexes are zero-based nonnegative integers. Dictionary lookup keys are Strings, Numbers, or Booleans.
 

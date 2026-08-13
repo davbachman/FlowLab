@@ -26,6 +26,13 @@ export interface RuntimeObject {
   className: string
 }
 
+export interface RuntimeImage {
+  kind: 'image'
+  id: number
+  width: number
+  height: number
+}
+
 export type RuntimeValue =
   | number
   | string
@@ -33,6 +40,7 @@ export type RuntimeValue =
   | RuntimeValue[]
   | RuntimeDictionary
   | RuntimeObject
+  | RuntimeImage
 export type Environment = Record<string, RuntimeValue>
 
 export interface ProgramPosition {

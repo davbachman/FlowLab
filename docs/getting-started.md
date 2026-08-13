@@ -67,10 +67,10 @@ Choose Edit > Split Process while exactly one Process block is selected to turn 
 - Reset creates a fresh execution at `main` without advancing it.
 - Step executes one visible block at a time and continues the current execution. Function and method calls enter the called flowchart.
 - Auto Step repeatedly steps at the speed selected beneath the controls. Use Pause to preserve the current position.
-- Run starts fresh and continues immediately until the program returns, waits for input, pauses for a text load, or reports an error.
-- Text loads and `ask()` submissions resume Run or Auto Step in the mode that started them.
+- Run starts fresh and continues immediately until the program returns, waits for input, pauses for a text or image load, or reports an error.
+- Text/image loads and `ask()` submissions resume Run or Auto Step in the mode that started them.
 - The Console reports execution status, executed-block count, and the active Flow name. It also shows runtime errors, Output lines, current variables, expandable object fields, and stable identities such as `Point #1`.
-- The current node is highlighted while stepping. Long multiline variable previews are shortened in the sidebar.
+- The current node is highlighted while stepping. Long multiline variable previews are shortened in the sidebar. Imported `image` and `turtle` libraries add their visual panels to the runtime sidebar.
 - FlowLab stops runaway execution after 1,000,000 executed blocks or 100 active nested calls.
 
 ## Use input

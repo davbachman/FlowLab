@@ -1,6 +1,7 @@
 import type {
   DictionaryKey,
   RuntimeDictionary,
+  RuntimeImage,
   RuntimeObject,
   RuntimeValue,
 } from './types'
@@ -22,6 +23,15 @@ export function isRuntimeObject(value: RuntimeValue): value is RuntimeObject {
     value !== null &&
     !Array.isArray(value) &&
     value.kind === 'object'
+  )
+}
+
+export function isRuntimeImage(value: RuntimeValue): value is RuntimeImage {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    value.kind === 'image'
   )
 }
 
@@ -97,7 +107,7 @@ export function toBoolean(value: RuntimeValue): boolean {
     return value.length > 0
   }
 
-  if (isRuntimeObject(value)) {
+  if (isRuntimeObject(value) || isRuntimeImage(value)) {
     return true
   }
 
@@ -120,6 +130,10 @@ export function stringifyValue(value: RuntimeValue): string {
 
   if (isRuntimeObject(value)) {
     return `${value.className} #${value.id}`
+  }
+
+  if (isRuntimeImage(value)) {
+    return `Image #${value.id} (${value.width} × ${value.height})`
   }
 
   if (typeof value === 'boolean') {
@@ -162,6 +176,14 @@ export function valuesEqual(left: RuntimeValue, right: RuntimeValue): boolean {
     return (
       isRuntimeObject(left) &&
       isRuntimeObject(right) &&
+      left.id === right.id
+    )
+  }
+
+  if (isRuntimeImage(left) || isRuntimeImage(right)) {
+    return (
+      isRuntimeImage(left) &&
+      isRuntimeImage(right) &&
       left.id === right.id
     )
   }

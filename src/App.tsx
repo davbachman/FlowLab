@@ -37,8 +37,10 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   answerAskExecution,
+  completeImageLoadExecution,
   completeTextLoadExecution,
   createExecution,
+  failImageLoadExecution,
   failTextLoadExecution,
   runExecution,
   stepExecution,
@@ -56,6 +58,16 @@ import {
   type ImportResolution,
 } from './lib/imports'
 import { stringifyValue } from './lib/expression'
+import {
+  displayedImageData,
+  downloadImage,
+  IMAGE_LIBRARY_NAME,
+  initialImageRuntimeState,
+  loadImageFromUrl,
+  paintImageCanvas,
+  type ImageRuntimeState,
+  type ImageSaveRequest,
+} from './lib/image'
 import {
   initialTurtleState,
   TURTLE_LIBRARY_NAME,
@@ -378,6 +390,9 @@ function App() {
   const fitViewAfterLoadRef = useRef(false)
   const toolbarRef = useRef<HTMLElement | null>(null)
   const importFileInputRef = useRef<HTMLInputElement | null>(null)
+  const processedImageSaveRequestsRef = useRef(
+    new WeakSet<ImageSaveRequest>(),
+  )
   const autoStepIsActive =
     autoStepEnabled &&
     (execution?.status === 'running' ||
@@ -579,6 +594,96 @@ function App() {
   }, [execution])
 
   useEffect(() => {
+    if (execution?.status !== 'loading' || !execution.imageRequest) {
+      return
+    }
+
+    let cancelled = false
+    const loadingExecution = execution
+    const { url } = execution.imageRequest
+
+    void loadImageFromUrl(url)
+      .then((image) => {
+        if (cancelled) {
+          return
+        }
+
+        setExecution((currentExecution) => {
+          if (currentExecution !== loadingExecution) {
+            return currentExecution
+          }
+
+          const resumedExecution = completeImageLoadExecution(
+            currentExecution,
+            image,
+          )
+
+          return askResumeModeRef.current === 'run'
+            ? runExecution(resumedExecution)
+            : resumedExecution
+        })
+        setMessage('')
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return
+        }
+
+        setExecution((currentExecution) =>
+          currentExecution === loadingExecution
+            ? failImageLoadExecution(
+                currentExecution,
+                imageLoadErrorMessage(url, error),
+              )
+            : currentExecution,
+        )
+        setMessage('')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [execution])
+
+  useEffect(() => {
+    const requests = execution?.image?.saveRequests ?? []
+
+    for (const request of requests) {
+      if (processedImageSaveRequestsRef.current.has(request)) {
+        continue
+      }
+
+      processedImageSaveRequestsRef.current.add(request)
+      void downloadImage(request.image, request.fileName)
+        .then(() => setMessage(`Image saved as ${request.fileName}.`))
+        .catch((error: unknown) =>
+          setMessage(
+            `Image save failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          ),
+        )
+        .finally(() => {
+          setExecution((currentExecution) => {
+            if (!currentExecution?.image) {
+              return currentExecution
+            }
+
+            return {
+              ...currentExecution,
+              image: {
+                ...currentExecution.image,
+                saveRequests: currentExecution.image.saveRequests.filter(
+                  (candidate) => candidate !== request,
+                ),
+              },
+            }
+          })
+        })
+    }
+  }, [execution?.image?.saveRequests])
+
+  useEffect(() => {
     if (
       !autoStepIsActive ||
       execution?.status !== 'running' ||
@@ -631,6 +736,7 @@ function App() {
     [importResolution.nativeLibraries],
   )
   const hasTurtleLibrary = nativeLibraryNames.includes(TURTLE_LIBRARY_NAME)
+  const hasImageLibrary = nativeLibraryNames.includes(IMAGE_LIBRARY_NAME)
   const importedFunctionNames = useMemo(
     () =>
       callableImportedFunctionNames(
@@ -686,6 +792,12 @@ function App() {
     () =>
       execution?.turtle ?? (hasTurtleLibrary ? initialTurtleState() : null),
     [execution?.turtle, hasTurtleLibrary],
+  )
+  const visibleImageState = useMemo(
+    () =>
+      execution?.image ??
+      (hasImageLibrary ? initialImageRuntimeState() : null),
+    [execution?.image, hasImageLibrary],
   )
   const visibleInputQueueText = showExecutionInputQueue
     ? formatInputQueue(execution.inputQueue)
@@ -2113,6 +2225,10 @@ function App() {
             <TurtlePanel turtle={visibleTurtleState} />
           ) : null}
 
+          {visibleImageState ? (
+            <ImagePanel imageState={visibleImageState} />
+          ) : null}
+
           <section className="variables-panel" aria-label="Variables">
             <h3>Variables</h3>
             {variableEntries.length ? (
@@ -2695,6 +2811,43 @@ function VariableValue({
   )
 }
 
+function ImagePanel({ imageState }: { imageState: ImageRuntimeState }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const image = displayedImageData(imageState)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !image) {
+      return
+    }
+
+    paintImageCanvas(canvas, image)
+  }, [image])
+
+  return (
+    <section className="image-panel" aria-label="Image">
+      <h3>Image</h3>
+      {image ? (
+        <>
+          <canvas
+            ref={canvasRef}
+            className="image-canvas"
+            data-testid="image-canvas"
+            aria-label="Displayed image"
+            width={image.width}
+            height={image.height}
+          />
+          <p className="image-metadata">
+            Image #{image.id} · {image.width} × {image.height}
+          </p>
+        </>
+      ) : (
+        <p className="empty-image">No image displayed</p>
+      )}
+    </section>
+  )
+}
+
 function TurtlePanel({ turtle }: { turtle: TurtleState }) {
   const baseViewBox = useMemo(() => turtleViewBoxBounds(turtle), [turtle])
   const [view, setView] = useState<TurtleViewState>(DEFAULT_TURTLE_VIEW)
@@ -3268,6 +3421,11 @@ async function loadTextFromUrl(url: string): Promise<string> {
 function textLoadErrorMessage(url: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
   return `Text load failed for "${url}": ${message}`
+}
+
+function imageLoadErrorMessage(url: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return `Image load failed for "${url}": ${message}`
 }
 
 function nextBranchLabel(
