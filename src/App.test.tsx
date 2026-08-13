@@ -425,7 +425,7 @@ describe('App', () => {
       ),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /^Assignment$/i }),
+      screen.getByRole('button', { name: /^Process$/i }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /^Function$/i }),
@@ -446,8 +446,11 @@ describe('App', () => {
       screen.getByRole('button', { name: /^Return$/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /^Call$/i }),
-    ).toBeInTheDocument()
+      screen.queryByRole('button', { name: /^Assignment$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Call$/i }),
+    ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /Add Call/i }),
     ).not.toBeInTheDocument()
@@ -464,6 +467,7 @@ describe('App', () => {
       screen.getByRole('button', { name: /^FlowLab$/i }),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^File$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Edit$/i })).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /^Examples$/i }),
     ).toBeInTheDocument()
@@ -528,7 +532,16 @@ describe('App', () => {
       within(toolbarMenu('Examples'))
         .getAllByRole('menuitem')
         .map((button) => button.textContent),
-    ).toEqual(['Basic', 'Object'])
+    ).toEqual([
+      'Basic',
+      'Process Basics',
+      'Number Guess',
+      'List Statistics',
+      'Dictionary Inventory',
+      'Object',
+      'Bank Account Class',
+      'Turtle Polygon',
+    ])
   })
 
   it('shows the exact About copy, links, and emphasis and restores focus when closed', async () => {
@@ -760,6 +773,45 @@ describe('App', () => {
     expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
     expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toHaveValue('3')
+  })
+
+  it('loads all six additional sample programs from the Examples menu', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await chooseToolbarAction(user, 'Examples', 'Process Basics')
+    expect(screen.getByTestId('flow-node-calculate-area')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Process text/i)).toHaveValue(
+      'width <- 8\nheight <- 5\narea <- width * height\nlabel <- "Area: " + area',
+    )
+
+    await chooseToolbarAction(user, 'Examples', 'Number Guess')
+    expect(screen.getByTestId('flow-node-guess-low-check')).toHaveAttribute(
+      'data-shape',
+      'diamond',
+    )
+
+    await chooseToolbarAction(user, 'Examples', 'List Statistics')
+    expect(screen.getByTestId('flow-node-stats-loop')).toHaveAttribute(
+      'data-shape',
+      'diamond',
+    )
+
+    await chooseToolbarAction(user, 'Examples', 'Dictionary Inventory')
+    expect(screen.getByTestId('flow-node-inventory-setup')).toBeInTheDocument()
+
+    await chooseToolbarAction(user, 'Examples', 'Bank Account Class')
+    expect(screen.getByTestId('flow-node-account-class')).toHaveAttribute(
+      'data-shape',
+      'declaration',
+    )
+
+    await chooseToolbarAction(user, 'Examples', 'Turtle Polygon')
+    expect(screen.getByTestId('flow-node-polygon-draw')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Imports list/i)).toHaveValue('turtle')
+    expect(
+      await screen.findByRole('region', { name: /Turtle/i }),
+    ).toBeInTheDocument()
   })
 
   it('keeps a compact special-method reference beside the node palette', () => {
@@ -1902,6 +1954,39 @@ describe('App', () => {
     expect(screen.getAllByDisplayValue('main')).toHaveLength(1)
   })
 
+  it('combines and splits a selected straight-line chain', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    fireEvent.click(screen.getByTestId('flow-node-add-n'))
+    await user.keyboard('{Shift>}')
+    fireEvent.click(screen.getByTestId('flow-node-dec-n'), { shiftKey: true })
+    await user.keyboard('{/Shift}')
+    expect(
+      screen.getByTestId('flow-node-add-n').closest('.react-flow__node'),
+    ).toHaveClass('selected')
+    expect(
+      screen.getByTestId('flow-node-dec-n').closest('.react-flow__node'),
+    ).toHaveClass('selected')
+    await chooseToolbarAction(user, 'Edit', 'Combine into Process')
+
+    expect(screen.getByText('2 blocks combined into one Process.')).toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-dec-n')).not.toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('flow-node-add-n')).getByLabelText(
+        /Process text/i,
+      ),
+    ).toHaveValue('total <- total + n\nn <- n - 1')
+
+    await chooseToolbarAction(user, 'Edit', 'Split Process')
+
+    expect(screen.getByText('Process split into 2 blocks.')).toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-assignment-1')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('total <- total + n')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('n <- n - 1')).toBeInTheDocument()
+  })
+
   it('selects a palette block and places it on the next canvas click', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
@@ -2038,21 +2123,24 @@ describe('App', () => {
     expect(screen.getByDisplayValue('item in L')).toBeInTheDocument()
   })
 
-  it('places Call blocks with editable call text', async () => {
+  it('places Process blocks with editable multiline text', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
-    const addCallButton = screen.getByRole('button', { name: /^Call$/i })
+    const addProcessButton = screen.getByRole('button', { name: /^Process$/i })
 
-    await user.click(addCallButton)
+    await user.click(addProcessButton)
 
     const pane = container.querySelector('.react-flow__pane')
     expect(pane).toBeInTheDocument()
     placePendingNodeOnPane(pane as Element)
 
-    expect(screen.getByTestId('flow-node-call-1')).toHaveAttribute(
+    const processNode = screen.getByTestId('flow-node-process-1')
+    expect(processNode).toHaveAttribute(
       'data-shape',
       'block',
     )
-    expect(screen.getByDisplayValue('forward(50)')).toBeInTheDocument()
+    const editor = within(processNode).getByLabelText(/Process text/i)
+    expect(editor.tagName).toBe('TEXTAREA')
+    expect(editor).toHaveValue('x <- 1\nsqrt(x)')
   })
 })

@@ -3,6 +3,7 @@ export type FlowNodeType =
   | 'class'
   | 'method'
   | 'return'
+  | 'process'
   | 'assignment'
   | 'call'
   | 'input'
@@ -72,6 +73,7 @@ export const FLOW_NODE_TYPES: readonly FlowNodeType[] = [
   'class',
   'method',
   'return',
+  'process',
   'assignment',
   'call',
   'input',
@@ -86,6 +88,7 @@ export const NODE_TYPE_LABELS: Record<FlowNodeType, string> = {
   class: 'Class',
   method: 'Method',
   return: 'Return',
+  process: 'Process',
   assignment: 'Assignment',
   call: 'Call',
   input: 'Input',

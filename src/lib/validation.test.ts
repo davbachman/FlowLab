@@ -116,6 +116,67 @@ describe('validateProgram', () => {
     expect(validateProgram(validForProgram).valid).toBe(true)
   })
 
+  it('accepts multiline Process assignments and standalone calls', () => {
+    const program: Program = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'set-total'
+          ? {
+              ...node,
+              type: 'process',
+              text:
+                'total <- 2 + 3\n\nroot <- sqrt(total)\nsqrt(root)\nsqrt("<-")',
+            }
+          : node,
+      ),
+    }
+
+    expect(validateProgram(program).errors).toEqual([])
+  })
+
+  it('reports Process syntax and missing calls with source line numbers', () => {
+    const malformed: Program = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'set-total'
+          ? {
+              ...node,
+              type: 'process',
+              text: 'total <- 2\n\nnot_a_call',
+            }
+          : node,
+      ),
+    }
+    const missingCall: Program = {
+      ...malformed,
+      nodes: malformed.nodes.map((node) =>
+        node.id === 'set-total'
+          ? { ...node, text: 'total <- 2\n\nmissing(total)' }
+          : node,
+      ),
+    }
+
+    expect(validateProgram(malformed).errors.join('\n')).toMatch(/line 3/i)
+    expect(validateProgram(missingCall).errors.join('\n')).toMatch(
+      /missing Function "missing" on line 3/i,
+    )
+  })
+
+  it('rejects an empty Process', () => {
+    const program: Program = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'set-total'
+          ? { ...node, type: 'process', text: '\n  \n' }
+          : node,
+      ),
+    }
+
+    expect(validateProgram(program).errors.join('\n')).toMatch(
+      /Process must contain at least one/i,
+    )
+  })
+
   it('requires exactly one main function and at least one return', () => {
     const program = {
       ...validLinearProgram,

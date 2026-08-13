@@ -658,6 +658,21 @@ button:disabled {
   border-color: #667085;
 }
 
+.flow-node-process {
+  width: 260px;
+  border-color: #667085;
+  background: #f8fafc;
+}
+
+.node-textarea {
+  display: block;
+  min-height: 48px;
+  resize: none;
+  overflow: hidden;
+  text-align: left;
+  white-space: pre;
+}
+
 .flow-node-call {
   border-color: #7c3aed;
   background: #fbf8ff;

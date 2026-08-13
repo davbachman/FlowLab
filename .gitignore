@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 .playwright-mcp
+.playwright-cli
 .private/
 
 # Editor directories and files

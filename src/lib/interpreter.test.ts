@@ -319,6 +319,102 @@ function objectOperatorProgram(
 }
 
 describe('interpreter', () => {
+  it('executes a multiline Process as one flowchart step across function calls', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'process',
+          type: 'process',
+          text: 'x <- 2\n\nx <- helper(x)\ny <- x + 3\nhelper(y)',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'show', type: 'output', text: 'y', position: { x: 0, y: 200 } },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 300 } },
+        {
+          id: 'helper',
+          type: 'function',
+          text: 'helper',
+          position: { x: 300, y: 0 },
+        },
+        { id: 'input', type: 'input', text: 'value', position: { x: 300, y: 100 } },
+        {
+          id: 'helper-end',
+          type: 'return',
+          text: 'value + 1',
+          position: { x: 300, y: 200 },
+        },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'process' },
+        { id: 'e2', source: 'process', target: 'show' },
+        { id: 'e3', source: 'show', target: 'end' },
+        { id: 'h1', source: 'helper', target: 'input' },
+        { id: 'h2', source: 'input', target: 'helper-end' },
+      ],
+    }
+
+    const finalState = runExecution(createExecution(program, []))
+
+    expect(finalState.status).toBe('halted')
+    expect(finalState.environment).toMatchObject({ x: 3, y: 6 })
+    expect(finalState.output).toEqual(['6'])
+    expect(finalState.steps).toBe(10)
+  })
+
+  it('resumes the remaining Process lines after ask()', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'process',
+          type: 'process',
+          text: 'x <- ask()\ny <- x + 1',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'end', type: 'return', text: 'y', position: { x: 0, y: 200 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'process' },
+        { id: 'e2', source: 'process', target: 'end' },
+      ],
+    }
+
+    const asking = runExecution(createExecution(program, []))
+    const finalState = runExecution(answerAskExecution(asking, '4'))
+
+    expect(asking.status).toBe('asking')
+    expect(finalState.status).toBe('halted')
+    expect(finalState.environment).toMatchObject({ x: 4, y: 5 })
+  })
+
+  it('reports runtime errors with the Process source line', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'process',
+          type: 'process',
+          text: 'x <- 1\ny <- missing + 1',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 200 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'process' },
+        { id: 'e2', source: 'process', target: 'end' },
+      ],
+    }
+
+    const finalState = runExecution(createExecution(program, []))
+
+    expect(finalState.status).toBe('error')
+    expect(finalState.error).toMatch(/Process node "process", line 2/i)
+  })
+
   it('starts execution at the main Function even when another function appears first', () => {
     const program: Program = {
       version: 1,

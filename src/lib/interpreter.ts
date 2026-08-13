@@ -12,7 +12,9 @@ import {
   parseAssignment,
   parseClassDeclaration,
   parseForLoop,
+  splitProcessStatements,
   type AssignmentTarget,
+  type ProcessStatementSource,
 } from './statements'
 import {
   attachedMethodDefinition,
@@ -190,6 +192,11 @@ interface RepresentationProgress {
   completedReprs: Record<number, RuntimeValue>
 }
 
+interface ProcessProgress {
+  statements: ProcessStatementSource[]
+  statementIndex: number
+}
+
 type PendingExpressionKey =
   | 'expression'
   | 'valueExpression'
@@ -205,11 +212,13 @@ type PendingNode =
       value?: RuntimeValue
       indexExpression?: ExpressionProgress
       indexTarget?: { value: RuntimeValue; receiver?: RuntimeObject }
+      process?: ProcessProgress
     }
   | {
       kind: 'call'
       node: ProgramNode
       expression: ExpressionProgress
+      process?: ProcessProgress
     }
   | {
       kind: 'output'
@@ -338,6 +347,8 @@ class TextLoadSuspension extends Error {
     this.textLoad = textLoad
   }
 }
+
+class ProcessStatementExecutionError extends Error {}
 
 export function createExecution(
   program: Program,
@@ -567,6 +578,16 @@ function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
     })
   }
 
+  if (node.type === 'process') {
+    const statements = splitProcessStatements(node.text)
+
+    if (!statements.length) {
+      return fail(state, `Process node "${node.id}" has no statements.`)
+    }
+
+    return executeProcessStatement(state, node, statements, 0)
+  }
+
   if (node.type === 'call') {
     return executeCallNode(state, {
       kind: 'call',
@@ -687,8 +708,94 @@ function resumePendingNode(
   try {
     return executePendingNode(state, pendingNode)
   } catch (error) {
-    return fail(state, error instanceof Error ? error.message : String(error))
+    return fail(state, pendingNodeError(pendingNode, error))
   }
+}
+
+function executeProcessStatement(
+  state: ExecutionState,
+  node: ProgramNode,
+  statements: ProcessStatementSource[],
+  statementIndex: number,
+): ExecutionState {
+  const statement = statements[statementIndex]
+  const process = { statements, statementIndex }
+
+  try {
+    if (statement.kind === 'assignment') {
+      const assignment = parseAssignment(statement.text)
+      return executeAssignmentNode(state, {
+        kind: 'assignment',
+        node,
+        assignment,
+        valueExpression: createExpressionProgress(assignment.expression),
+        indexExpression:
+          assignment.target.kind === 'index'
+            ? createExpressionProgress(assignment.target.indexExpression)
+            : undefined,
+        process,
+      })
+    }
+
+    return executeCallNode(state, {
+      kind: 'call',
+      node,
+      expression: createExpressionProgress(statement.text),
+      process,
+    })
+  } catch (error) {
+    if (error instanceof ProcessStatementExecutionError) {
+      throw error
+    }
+
+    throw new ProcessStatementExecutionError(
+      processStatementError(node, statement, error),
+    )
+  }
+}
+
+function pendingNodeError(pendingNode: PendingNode, error: unknown): string {
+  if (error instanceof ProcessStatementExecutionError) {
+    return error.message
+  }
+
+  if (
+    (pendingNode.kind === 'assignment' || pendingNode.kind === 'call') &&
+    pendingNode.process
+  ) {
+    const statement =
+      pendingNode.process.statements[pendingNode.process.statementIndex]
+    return processStatementError(pendingNode.node, statement, error)
+  }
+
+  return error instanceof Error ? error.message : String(error)
+}
+
+function processStatementError(
+  node: ProgramNode,
+  statement: ProcessStatementSource,
+  error: unknown,
+): string {
+  const detail = error instanceof Error ? error.message : String(error)
+  return `Process node "${node.id}", line ${statement.lineNumber}: ${detail}`
+}
+
+function finishLinearNode(
+  state: ExecutionState,
+  pendingNode: Extract<PendingNode, { kind: 'assignment' | 'call' }>,
+): ExecutionState {
+  const process = pendingNode.process
+
+  if (!process || process.statementIndex + 1 >= process.statements.length) {
+    return advance(state, pendingNode.node)
+  }
+
+  return executeProcessStatement(
+    state,
+    pendingNode.node,
+    process.statements,
+    process.statementIndex + 1,
+  )
 }
 
 function executeAssignmentNode(
@@ -783,7 +890,7 @@ function executeAssignmentNode(
       )
     }
 
-    return advance(
+    return finishLinearNode(
       {
         ...nextState,
         output: assignmentResult.output,
@@ -792,19 +899,19 @@ function executeAssignmentNode(
         nextObjectId: assignmentResult.nextObjectId,
         environment: assignmentResult.environment,
       },
-      pending.node,
+      pending,
     )
   }
 
   if (pending.assignment.target.kind === 'member') {
-    return advance(
+    return finishLinearNode(
       assignObjectMember(
         nextState,
         pending.assignment.target.variable,
         pending.assignment.target.member,
         value,
       ),
-      pending.node,
+      pending,
     )
   }
 
@@ -812,7 +919,7 @@ function executeAssignmentNode(
   if (!Object.prototype.hasOwnProperty.call(nextState.environment, variable)) {
     const field = implicitReceiverField(nextState, variable)
     if (field) {
-      return advance(
+      return finishLinearNode(
         {
           ...nextState,
           objectHeap: setObjectField(
@@ -822,12 +929,12 @@ function executeAssignmentNode(
             value,
           ),
         },
-        pending.node,
+        pending,
       )
     }
   }
 
-  return advance(
+  return finishLinearNode(
     {
       ...nextState,
       environment: {
@@ -835,7 +942,7 @@ function executeAssignmentNode(
         [variable]: value,
       },
     },
-    pending.node,
+    pending,
   )
 }
 
@@ -872,9 +979,9 @@ function executeCallNode(
     )
   }
 
-  return advance(
+  return finishLinearNode(
     { ...withExpressionRuntime(state, result), output: result.output },
-    pendingNode.node,
+    pendingNode,
   )
 }
 
