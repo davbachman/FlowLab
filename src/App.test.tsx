@@ -900,8 +900,16 @@ describe('App', () => {
     ).toHaveAttribute('data-handlepos', 'top')
     expect(screen.getByDisplayValue('move')).toBeInTheDocument()
     expect(screen.getByDisplayValue('__repr__')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('x <- x + dx')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('y <- y + dy')).toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('flow-node-move-x')).getByLabelText(
+        /Process text/i,
+      ),
+    ).toHaveValue('x <- x + dx\ny <- y + dy')
+    expect(
+      within(screen.getByTestId('flow-node-make-point')).getByLabelText(
+        /Process text/i,
+      ),
+    ).toHaveValue('p <- Point(2, 3)\nsame_point <- p')
     expect(
       within(classNode).getByLabelText(/Method connections/i),
     ).toHaveTextContent('move__repr__+ method')
@@ -993,7 +1001,7 @@ describe('App', () => {
 
     expect(flowStatus).toHaveTextContent('main')
 
-    for (let step = 0; step < 4; step += 1) {
+    for (let step = 0; step < 3; step += 1) {
       await user.click(screen.getByRole('button', { name: /^Step$/i }))
     }
 
@@ -1901,7 +1909,7 @@ describe('App', () => {
 
   it('routes loop-back wires into the incoming wire above decision diamonds', () => {
     const loopBackEdge = sampleProgram.edges.find(
-      (edge) => edge.id === 'edge-dec-while',
+      (edge) => edge.id === 'edge-add-while',
     )
     const joinOffset =
       loopBackEdge &&
@@ -1979,10 +1987,10 @@ describe('App', () => {
 
   it('keeps selected wires selected when routed edges are recomputed', () => {
     const selectedEdges = programToEdges(sampleProgram).map((edge) =>
-      edge.id === 'edge-dec-while' ? { ...edge, selected: true } : edge,
+      edge.id === 'edge-add-while' ? { ...edge, selected: true } : edge,
     )
     const routedEdges = programToEdges(sampleProgram, selectedEdges)
-    const loopBackEdge = routedEdges.find((edge) => edge.id === 'edge-dec-while')
+    const loopBackEdge = routedEdges.find((edge) => edge.id === 'edge-add-while')
 
     expect(loopBackEdge).toMatchObject({
       selected: true,
@@ -2036,37 +2044,28 @@ describe('App', () => {
     expect(screen.getAllByDisplayValue('main')).toHaveLength(1)
   })
 
-  it('combines and splits a selected straight-line chain', async () => {
+  it('splits and recombines a selected Process block', async () => {
     const user = userEvent.setup()
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
     fireEvent.click(screen.getByTestId('flow-node-add-n'))
-    await user.keyboard('{Shift>}')
-    fireEvent.click(screen.getByTestId('flow-node-dec-n'), { shiftKey: true })
-    await user.keyboard('{/Shift}')
-    expect(
-      screen.getByTestId('flow-node-add-n').closest('.react-flow__node'),
-    ).toHaveClass('selected')
-    expect(
-      screen.getByTestId('flow-node-dec-n').closest('.react-flow__node'),
-    ).toHaveClass('selected')
-    await chooseToolbarAction(user, 'Edit', 'Combine into Process')
-
-    expect(screen.getByText('2 blocks combined into one Process.')).toBeInTheDocument()
-    expect(screen.queryByTestId('flow-node-dec-n')).not.toBeInTheDocument()
-    expect(
-      within(screen.getByTestId('flow-node-add-n')).getByLabelText(
-        /Process text/i,
-      ),
-    ).toHaveValue('total <- total + n\nn <- n - 1')
-
     await chooseToolbarAction(user, 'Edit', 'Split Process')
 
     expect(screen.getByText('Process split into 2 blocks.')).toBeInTheDocument()
     expect(screen.getByTestId('flow-node-assignment-1')).toBeInTheDocument()
     expect(screen.getByDisplayValue('total <- total + n')).toBeInTheDocument()
     expect(screen.getByDisplayValue('n <- n - 1')).toBeInTheDocument()
+
+    await chooseToolbarAction(user, 'Edit', 'Combine into Process')
+
+    expect(screen.getByText('2 blocks combined into one Process.')).toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-assignment-1')).not.toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('flow-node-add-n')).getByLabelText(
+        /Process text/i,
+      ),
+    ).toHaveValue('total <- total + n\nn <- n - 1')
   })
 
   it('selects a palette block and places it on the next canvas click', async () => {
