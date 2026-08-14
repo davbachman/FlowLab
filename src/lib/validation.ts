@@ -14,6 +14,7 @@ import {
   parseClassDeclaration,
   parseForLoop,
   parseMethodDeclaration,
+  splitProcessStatements,
 } from './statements'
 import {
   isBranchLabel,
@@ -383,6 +384,33 @@ function validateNodeText(node: ProgramNode, errors: string[]): void {
       return
     }
 
+    if (node.type === 'process') {
+      const statements = splitProcessStatements(node.text)
+
+      if (!statements.length) {
+        throw new Error('Process must contain at least one assignment or call.')
+      }
+
+      for (const statement of statements) {
+        try {
+          if (statement.kind === 'assignment') {
+            const assignment = parseAssignment(statement.text)
+            if (assignment.target.kind === 'index') {
+              parseExpression(assignment.target.indexExpression)
+            }
+            parseExpression(assignment.expression)
+          } else {
+            parseCallExpression(statement.text)
+          }
+        } catch (error) {
+          throw new Error(`Line ${statement.lineNumber}: ${message(error)}`, {
+            cause: error,
+          })
+        }
+      }
+      return
+    }
+
     if (node.type === 'call') {
       if (!node.text.trim()) {
         throw new Error(`${label} text cannot be empty.`)
@@ -531,7 +559,7 @@ function validateExpressionCallTargets(
 
     for (const expression of expressions) {
       try {
-        for (const functionName of findExpressionCallNames(expression)) {
+        for (const functionName of findExpressionCallNames(expression.source)) {
           if (
             !isBuiltInFunctionName(functionName) &&
             !functionsByName.has(functionName) &&
@@ -547,28 +575,76 @@ function validateExpressionCallTargets(
     }
 
     for (const functionName of missingFunctionNames) {
+      const lines = expressions
+        .filter((expression) => {
+          try {
+            return findExpressionCallNames(expression.source).includes(functionName)
+          } catch {
+            return false
+          }
+        })
+        .map((expression) => expression.lineNumber)
+        .filter((lineNumber): lineNumber is number => lineNumber !== undefined)
+      const lineSuffix = lines.length
+        ? ` on line ${[...new Set(lines)].join(', ')}`
+        : ''
       errors.push(
-        `${NODE_TYPE_LABELS[node.type]} node "${node.id}" calls missing Function "${functionName}".`,
+        `${NODE_TYPE_LABELS[node.type]} node "${node.id}" calls missing Function "${functionName}"${lineSuffix}.`,
       )
     }
   }
 }
 
-function expressionSourcesForNode(node: ProgramNode): string[] {
+interface NodeExpressionSource {
+  source: string
+  lineNumber?: number
+}
+
+function expressionSourcesForNode(node: ProgramNode): NodeExpressionSource[] {
   try {
     if (node.type === 'assignment') {
       const assignment = parseAssignment(node.text)
       return assignment.target.kind === 'index'
-        ? [assignment.target.indexExpression, assignment.expression]
-        : [assignment.expression]
+        ? [
+            { source: assignment.target.indexExpression },
+            { source: assignment.expression },
+          ]
+        : [{ source: assignment.expression }]
     }
 
     if (node.type === 'call') {
-      return [node.text]
+      return [{ source: node.text }]
+    }
+
+    if (node.type === 'process') {
+      return splitProcessStatements(node.text).flatMap((statement) => {
+        if (statement.kind === 'call') {
+          return [{ source: statement.text, lineNumber: statement.lineNumber }]
+        }
+
+        const assignment = parseAssignment(statement.text)
+        return assignment.target.kind === 'index'
+          ? [
+              {
+                source: assignment.target.indexExpression,
+                lineNumber: statement.lineNumber,
+              },
+              {
+                source: assignment.expression,
+                lineNumber: statement.lineNumber,
+              },
+            ]
+          : [
+              {
+                source: assignment.expression,
+                lineNumber: statement.lineNumber,
+              },
+            ]
+      })
     }
 
     if (node.type === 'for') {
-      return [parseForLoop(node.text).iterableExpression]
+      return [{ source: parseForLoop(node.text).iterableExpression }]
     }
 
     if (
@@ -577,7 +653,7 @@ function expressionSourcesForNode(node: ProgramNode): string[] {
       node.type === 'while' ||
       node.type === 'return'
     ) {
-      return [node.text]
+      return [{ source: node.text }]
     }
   } catch {
     // Invalid statement text is reported by validateNodeText.
@@ -618,7 +694,8 @@ function validateMethodSelfBindings(
   const methodsById = new Map(methods.map((method) => [method.id, method]))
 
   for (const node of program.nodes) {
-    if (!bindsVariable(node, 'self')) {
+    const bindingLines = variableBindingLines(node, 'self')
+    if (!bindingLines.length) {
       continue
     }
 
@@ -627,9 +704,12 @@ function validateMethodSelfBindings(
       .filter((method): method is ProgramNode => Boolean(method))
 
     for (const method of owningMethods) {
-      errors.push(
-        `${NODE_TYPE_LABELS[node.type]} node "${node.id}" in Method "${method.text.trim()}" cannot bind the reserved receiver name "self".`,
-      )
+      for (const lineNumber of bindingLines) {
+        const lineSuffix = lineNumber === undefined ? '' : `, line ${lineNumber}`
+        errors.push(
+          `${NODE_TYPE_LABELS[node.type]} node "${node.id}"${lineSuffix} in Method "${method.text.trim()}" cannot bind the reserved receiver name "self".`,
+        )
+      }
     }
   }
 }
@@ -680,28 +760,47 @@ function validateDunderInputs(
   }
 }
 
-function bindsVariable(node: ProgramNode, variable: string): boolean {
+function variableBindingLines(
+  node: ProgramNode,
+  variable: string,
+): Array<number | undefined> {
   try {
     if (node.type === 'input') {
-      return node.text.trim() === variable
+      return node.text.trim() === variable ? [undefined] : []
     }
 
     if (node.type === 'assignment') {
       const assignment = parseAssignment(node.text)
-      return (
-        assignment.target.kind === 'variable' &&
+      return assignment.target.kind === 'variable' &&
         assignment.target.variable === variable
-      )
+        ? [undefined]
+        : []
+    }
+
+    if (node.type === 'process') {
+      return splitProcessStatements(node.text).flatMap((statement) => {
+        if (statement.kind !== 'assignment') {
+          return []
+        }
+
+        const assignment = parseAssignment(statement.text)
+        return (
+          assignment.target.kind === 'variable' &&
+          assignment.target.variable === variable
+        )
+          ? [statement.lineNumber]
+          : []
+      })
     }
 
     if (node.type === 'for') {
-      return parseForLoop(node.text).variable === variable
+      return parseForLoop(node.text).variable === variable ? [undefined] : []
     }
   } catch {
     // Invalid statement text is reported by validateNodeText.
   }
 
-  return false
+  return []
 }
 
 function findFunctionOwners(

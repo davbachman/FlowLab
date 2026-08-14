@@ -37,8 +37,10 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   answerAskExecution,
+  completeImageLoadExecution,
   completeTextLoadExecution,
   createExecution,
+  failImageLoadExecution,
   failTextLoadExecution,
   runExecution,
   stepExecution,
@@ -49,12 +51,23 @@ import {
   callableImportedFunctionNames,
   displayFlowLabFileName,
   importWarnings,
+  parseImportNames,
   registerFlowLabProgram,
   resolveFlowLabImports,
   type FlowLabDirectoryHandle,
   type ImportResolution,
 } from './lib/imports'
 import { stringifyValue } from './lib/expression'
+import {
+  displayedImageData,
+  downloadImage,
+  IMAGE_LIBRARY_NAME,
+  initialImageRuntimeState,
+  loadImageFromUrl,
+  paintImageCanvas,
+  type ImageRuntimeState,
+  type ImageSaveRequest,
+} from './lib/image'
 import {
   initialTurtleState,
   TURTLE_LIBRARY_NAME,
@@ -74,11 +87,11 @@ import {
   sourceHandleForBranch,
   sourceHandleForBranchConnection,
 } from './lib/flowRouting'
-import { sampleProgram } from './lib/sampleProgram'
-import { objectSampleProgram } from './lib/objectSampleProgram'
+import { FLOWLAB_EXAMPLES, type FlowLabExample } from './lib/examples'
 import { isRuntimeObject } from './lib/runtimeValues'
 import {
   parseClassDeclaration,
+  splitProcessStatements,
   type ClassDeclaration,
 } from './lib/statements'
 import {
@@ -172,7 +185,7 @@ interface ViewportSize {
   height: number
 }
 
-type ToolbarMenuName = 'flowlab' | 'file' | 'examples'
+type ToolbarMenuName = 'flowlab' | 'file' | 'edit' | 'examples'
 
 interface ToolbarMenuProps {
   id: ToolbarMenuName
@@ -230,6 +243,7 @@ const DEFAULT_NODE_TEXT: Record<FlowNodeType, string> = {
   class: 'Point(x, y)',
   method: 'move',
   return: '0',
+  process: 'x <- 1\nsqrt(x)',
   assignment: 'x <- x + 1',
   call: 'forward(50)',
   input: 'n',
@@ -246,8 +260,7 @@ const DEFINITION_NODE_PALETTE: FlowNodeType[] = [
 ]
 const STEP_NODE_PALETTE: FlowNodeType[] = [
   'return',
-  'assignment',
-  'call',
+  'process',
   'input',
   'output',
   'if',
@@ -271,8 +284,14 @@ const EXPORT_FILE_TYPES: SaveFilePickerOptions['types'] = [
 const CANVAS_DRAG_BUTTONS = [2] satisfies number[]
 const INITIAL_CANVAS_VIEWPORT = { x: 0, y: 0, zoom: 0.85 }
 const COPY_PASTE_OFFSET = { x: 36, y: 36 }
+const PROCESS_SPLIT_VERTICAL_GAP = 112
 const HISTORY_LIMIT = 80
 const NO_SELECTION_KEY = null satisfies KeyCode | null
+const MULTI_SELECTION_KEY_CODES = [
+  'Meta',
+  'Control',
+  'Shift',
+] satisfies KeyCode
 const DEFAULT_SIDEBAR_WIDTH = 420
 const MIN_SIDEBAR_WIDTH = 340
 const MAX_SIDEBAR_WIDTH = 720
@@ -371,6 +390,9 @@ function App() {
   const fitViewAfterLoadRef = useRef(false)
   const toolbarRef = useRef<HTMLElement | null>(null)
   const importFileInputRef = useRef<HTMLInputElement | null>(null)
+  const processedImageSaveRequestsRef = useRef(
+    new WeakSet<ImageSaveRequest>(),
+  )
   const autoStepIsActive =
     autoStepEnabled &&
     (execution?.status === 'running' ||
@@ -572,6 +594,96 @@ function App() {
   }, [execution])
 
   useEffect(() => {
+    if (execution?.status !== 'loading' || !execution.imageRequest) {
+      return
+    }
+
+    let cancelled = false
+    const loadingExecution = execution
+    const { url } = execution.imageRequest
+
+    void loadImageFromUrl(url)
+      .then((image) => {
+        if (cancelled) {
+          return
+        }
+
+        setExecution((currentExecution) => {
+          if (currentExecution !== loadingExecution) {
+            return currentExecution
+          }
+
+          const resumedExecution = completeImageLoadExecution(
+            currentExecution,
+            image,
+          )
+
+          return askResumeModeRef.current === 'run'
+            ? runExecution(resumedExecution)
+            : resumedExecution
+        })
+        setMessage('')
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return
+        }
+
+        setExecution((currentExecution) =>
+          currentExecution === loadingExecution
+            ? failImageLoadExecution(
+                currentExecution,
+                imageLoadErrorMessage(url, error),
+              )
+            : currentExecution,
+        )
+        setMessage('')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [execution])
+
+  useEffect(() => {
+    const requests = execution?.image?.saveRequests ?? []
+
+    for (const request of requests) {
+      if (processedImageSaveRequestsRef.current.has(request)) {
+        continue
+      }
+
+      processedImageSaveRequestsRef.current.add(request)
+      void downloadImage(request.image, request.fileName)
+        .then(() => setMessage(`Image saved as ${request.fileName}.`))
+        .catch((error: unknown) =>
+          setMessage(
+            `Image save failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          ),
+        )
+        .finally(() => {
+          setExecution((currentExecution) => {
+            if (!currentExecution?.image) {
+              return currentExecution
+            }
+
+            return {
+              ...currentExecution,
+              image: {
+                ...currentExecution.image,
+                saveRequests: currentExecution.image.saveRequests.filter(
+                  (candidate) => candidate !== request,
+                ),
+              },
+            }
+          })
+        })
+    }
+  }, [execution?.image?.saveRequests])
+
+  useEffect(() => {
     if (
       !autoStepIsActive ||
       execution?.status !== 'running' ||
@@ -624,6 +736,7 @@ function App() {
     [importResolution.nativeLibraries],
   )
   const hasTurtleLibrary = nativeLibraryNames.includes(TURTLE_LIBRARY_NAME)
+  const hasImageLibrary = nativeLibraryNames.includes(IMAGE_LIBRARY_NAME)
   const importedFunctionNames = useMemo(
     () =>
       callableImportedFunctionNames(
@@ -680,6 +793,12 @@ function App() {
       execution?.turtle ?? (hasTurtleLibrary ? initialTurtleState() : null),
     [execution?.turtle, hasTurtleLibrary],
   )
+  const visibleImageState = useMemo(
+    () =>
+      execution?.image ??
+      (hasImageLibrary ? initialImageRuntimeState() : null),
+    [execution?.image, hasImageLibrary],
+  )
   const visibleInputQueueText = showExecutionInputQueue
     ? formatInputQueue(execution.inputQueue)
     : inputQueueText
@@ -735,6 +854,14 @@ function App() {
         },
       })),
     [currentNodeId, edges, nodes, updateNodeText],
+  )
+  const combinableSelection = useMemo(
+    () => selectedLinearNodeChain(nodes, edges),
+    [edges, nodes],
+  )
+  const splittableProcess = useMemo(
+    () => selectedProcessNode(nodes),
+    [nodes],
   )
 
   const onNodesChange = useCallback(
@@ -930,27 +1057,25 @@ function App() {
     importFileInputRef.current?.click()
   }
 
-  function resetSample(): void {
-    pushHistorySnapshot()
-    setNodes(programToNodes(sampleProgram))
-    setEdges(programToEdges(sampleProgram))
-    setInputQueueText('3')
-    setDocumentName(DEFAULT_DOCUMENT_NAME)
-    setExecution(null)
-    setPendingNodeType(null)
-    setMessage('Sample program loaded.')
-  }
-
-  function resetObjectSample(): void {
+  function loadExample(example: FlowLabExample): void {
     pushHistorySnapshot()
     fitViewAfterLoadRef.current = true
-    setNodes(programToNodes(objectSampleProgram))
-    setEdges(programToEdges(objectSampleProgram))
-    setInputQueueText('')
+    setNodes(programToNodes(example.program))
+    setEdges(programToEdges(example.program))
+    setInputQueueText(example.inputQueue)
+    const currentImports = parseImportNames(importNamesText)
+    const missingImports = example.requiredImports.filter(
+      (name) => !currentImports.includes(name),
+    )
+    if (missingImports.length) {
+      updateImportNames(
+        [...currentImports, ...missingImports].join('\n'),
+      )
+    }
     setDocumentName(DEFAULT_DOCUMENT_NAME)
     setExecution(null)
     setPendingNodeType(null)
-    setMessage('Object sample loaded.')
+    setMessage(example.message)
   }
 
   function clearCanvas(): void {
@@ -1202,6 +1327,158 @@ function App() {
     restoreCanvasSnapshot(previousSnapshot)
     setMessage('Undo.')
   }, [restoreCanvasSnapshot])
+
+  const combineSelectionIntoProcess = useCallback(() => {
+    const chain = selectedLinearNodeChain(nodesRef.current, edgesRef.current)
+
+    if (!chain) {
+      setMessage(
+        'Select one straight-line chain of Assignment, Call, or Process blocks.',
+      )
+      return
+    }
+
+    pushHistorySnapshot()
+    const entryNode = chain[0]
+    const exitNode = chain.at(-1) as EditorNode
+    const selectedNodeIds = new Set(chain.map((node) => node.id))
+    const comments = chain
+      .map((node) => node.data.comment?.trim())
+      .filter((comment): comment is string => Boolean(comment))
+    const processNode: EditorNode = {
+      ...entryNode,
+      measured: undefined,
+      selected: true,
+      data: {
+        ...entryNode.data,
+        nodeType: 'process',
+        text: chain
+          .map((node) => node.data.text.trim())
+          .filter(Boolean)
+          .join('\n'),
+        comment: comments.length ? comments.join('\n\n') : undefined,
+      },
+    }
+    const nextNodes = nodesRef.current.flatMap((node) => {
+      if (node.id === entryNode.id) {
+        return [processNode]
+      }
+
+      return selectedNodeIds.has(node.id) ? [] : [{ ...node, selected: false }]
+    })
+    const nextEdges = edgesRef.current.flatMap((edge) => {
+      const sourceIsSelected = selectedNodeIds.has(edge.source)
+      const targetIsSelected = selectedNodeIds.has(edge.target)
+
+      if (sourceIsSelected && targetIsSelected) {
+        return []
+      }
+
+      if (edge.source === exitNode.id) {
+        return [
+          {
+            ...edge,
+            source: entryNode.id,
+            sourceHandle: null,
+            selected: false,
+          },
+        ]
+      }
+
+      return [{ ...edge, selected: false }]
+    })
+
+    nodesRef.current = nextNodes
+    edgesRef.current = nextEdges
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    setExecution(null)
+    setPendingNodeType(null)
+    setMessage(`${chain.length} blocks combined into one Process.`)
+  }, [pushHistorySnapshot])
+
+  const splitSelectedProcess = useCallback(() => {
+    const processNode = selectedProcessNode(nodesRef.current)
+
+    if (!processNode) {
+      setMessage('Select exactly one Process block to split.')
+      return
+    }
+
+    const statements = splitProcessStatements(processNode.data.text)
+    if (!statements.length) {
+      setMessage('The selected Process has no statements to split.')
+      return
+    }
+
+    pushHistorySnapshot()
+    const createdNodes: EditorNode[] = []
+    for (const [index, statement] of statements.entries()) {
+      const id =
+        index === 0
+          ? processNode.id
+          : nextNodeId(statement.kind, [
+              ...nodesRef.current,
+              ...createdNodes,
+            ])
+      createdNodes.push({
+        id,
+        type: 'flowNode',
+        position: {
+          x: processNode.position.x,
+          y: processNode.position.y + index * PROCESS_SPLIT_VERTICAL_GAP,
+        },
+        selected: true,
+        data: {
+          nodeType: statement.kind,
+          text: statement.text,
+          comment: index === 0 ? processNode.data.comment : undefined,
+        },
+      })
+    }
+
+    const lastNode = createdNodes.at(-1) as EditorNode
+    const rewiredEdges = edgesRef.current.map((edge) =>
+      edge.source === processNode.id
+        ? { ...edge, source: lastNode.id, sourceHandle: null, selected: false }
+        : { ...edge, selected: false },
+    )
+    const internalEdges: EditorEdge[] = []
+    for (let index = 0; index < createdNodes.length - 1; index += 1) {
+      const source = createdNodes[index].id
+      const target = createdNodes[index + 1].id
+      const connection: Connection = {
+        source,
+        target,
+        sourceHandle: null,
+        targetHandle: null,
+      }
+      internalEdges.push({
+        ...connection,
+        id: nextEdgeId(connection, [...rewiredEdges, ...internalEdges]),
+        type: 'smoothstep',
+      })
+    }
+
+    const nextNodes = nodesRef.current.flatMap((node) =>
+      node.id === processNode.id
+        ? createdNodes
+        : [{ ...node, selected: false }],
+    )
+    const nextEdges = [...rewiredEdges, ...internalEdges]
+
+    nodesRef.current = nextNodes
+    edgesRef.current = nextEdges
+    setNodes(nextNodes)
+    setEdges(nextEdges)
+    setExecution(null)
+    setPendingNodeType(null)
+    setMessage(
+      `Process split into ${createdNodes.length} block${
+        createdNodes.length === 1 ? '' : 's'
+      }.`,
+    )
+  }, [pushHistorySnapshot])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -1573,10 +1850,10 @@ function App() {
           </ToolbarMenu>
 
           <ToolbarMenu
-            id="examples"
-            label="Examples"
-            isOpen={openToolbarMenu === 'examples'}
-            onOpen={() => setOpenToolbarMenu('examples')}
+            id="edit"
+            label="Edit"
+            isOpen={openToolbarMenu === 'edit'}
+            onOpen={() => setOpenToolbarMenu('edit')}
             onClose={() => setOpenToolbarMenu(null)}
           >
             <button
@@ -1584,19 +1861,46 @@ function App() {
               className="toolbar-menu-item"
               data-menu-item
               role="menuitem"
-              onClick={() => runToolbarAction('examples', resetSample)}
+              disabled={!combinableSelection}
+              onClick={() =>
+                runToolbarAction('edit', combineSelectionIntoProcess)
+              }
             >
-              Basic
+              Combine into Process
             </button>
             <button
               type="button"
               className="toolbar-menu-item"
               data-menu-item
               role="menuitem"
-              onClick={() => runToolbarAction('examples', resetObjectSample)}
+              disabled={!splittableProcess}
+              onClick={() => runToolbarAction('edit', splitSelectedProcess)}
             >
-              Object
+              Split Process
             </button>
+          </ToolbarMenu>
+
+          <ToolbarMenu
+            id="examples"
+            label="Examples"
+            isOpen={openToolbarMenu === 'examples'}
+            onOpen={() => setOpenToolbarMenu('examples')}
+            onClose={() => setOpenToolbarMenu(null)}
+          >
+            {FLOWLAB_EXAMPLES.map((example) => (
+              <button
+                key={example.id}
+                type="button"
+                className="toolbar-menu-item"
+                data-menu-item
+                role="menuitem"
+                onClick={() =>
+                  runToolbarAction('examples', () => loadExample(example))
+                }
+              >
+                {example.label}
+              </button>
+            ))}
           </ToolbarMenu>
         </nav>
 
@@ -1788,6 +2092,7 @@ function App() {
             onBeforeDelete={onBeforeDelete}
             deleteKeyCode={DELETE_KEY_CODES}
             selectionKeyCode={NO_SELECTION_KEY}
+            multiSelectionKeyCode={MULTI_SELECTION_KEY_CODES}
             selectionOnDrag
             selectionMode={SelectionMode.Partial}
             panOnDrag={CANVAS_DRAG_BUTTONS}
@@ -1918,6 +2223,10 @@ function App() {
 
           {visibleTurtleState ? (
             <TurtlePanel turtle={visibleTurtleState} />
+          ) : null}
+
+          {visibleImageState ? (
+            <ImagePanel imageState={visibleImageState} />
           ) : null}
 
           <section className="variables-panel" aria-label="Variables">
@@ -2106,8 +2415,9 @@ function ToolbarMenu({
 
   function menuItems(): HTMLElement[] {
     return Array.from(
-      containerRef.current?.querySelectorAll<HTMLElement>('[data-menu-item]') ??
-        [],
+      containerRef.current?.querySelectorAll<HTMLElement>(
+        '[data-menu-item]:not([disabled])',
+      ) ?? [],
     )
   }
 
@@ -2244,6 +2554,7 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
     data.nodeType === 'class' ||
     data.nodeType === 'method' ||
     data.nodeType === 'return' ||
+    data.nodeType === 'process' ||
     data.nodeType === 'assignment' ||
     data.nodeType === 'call' ||
     data.nodeType === 'input' ||
@@ -2261,6 +2572,7 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
   const isFunctionRoot = data.nodeType === 'function'
   const isInputOutput =
     data.nodeType === 'input' || data.nodeType === 'output'
+  const isProcess = data.nodeType === 'process'
   const classSignature = isDeclaration
     ? tryParseClassDeclaration(data.text)
     : null
@@ -2326,13 +2638,26 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
             <label className="sr-only" htmlFor={`${id}-text`}>
               {label} text
             </label>
-            <input
-              id={`${id}-text`}
-              className="node-input nodrag"
-              value={data.text}
-              onChange={(event) => data.onTextChange?.(id, event.target.value)}
-              spellCheck={false}
-            />
+            {isProcess ? (
+              <textarea
+                id={`${id}-text`}
+                className="node-input node-textarea nodrag nowheel"
+                value={data.text}
+                rows={Math.max(2, data.text.split(/\r?\n/).length)}
+                onChange={(event) =>
+                  data.onTextChange?.(id, event.target.value)
+                }
+                spellCheck={false}
+              />
+            ) : (
+              <input
+                id={`${id}-text`}
+                className="node-input nodrag"
+                value={data.text}
+                onChange={(event) => data.onTextChange?.(id, event.target.value)}
+                spellCheck={false}
+              />
+            )}
             {classSignature?.fields.length ? (
               <div className="class-fields" aria-label="Declared fields">
                 {classSignature.fields.map((field) => (
@@ -2483,6 +2808,43 @@ function VariableValue({
         <p className="empty-object-fields">No fields</p>
       )}
     </details>
+  )
+}
+
+function ImagePanel({ imageState }: { imageState: ImageRuntimeState }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const image = displayedImageData(imageState)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || !image) {
+      return
+    }
+
+    paintImageCanvas(canvas, image)
+  }, [image])
+
+  return (
+    <section className="image-panel" aria-label="Image">
+      <h3>Image</h3>
+      {image ? (
+        <>
+          <canvas
+            ref={canvasRef}
+            className="image-canvas"
+            data-testid="image-canvas"
+            aria-label="Displayed image"
+            width={image.width}
+            height={image.height}
+          />
+          <p className="image-metadata">
+            Image #{image.id} · {image.width} × {image.height}
+          </p>
+        </>
+      ) : (
+        <p className="empty-image">No image displayed</p>
+      )}
+    </section>
   )
 }
 
@@ -2859,6 +3221,107 @@ function nextCopiedId(originalId: string, usedIds: Set<string>): string {
   return id
 }
 
+function selectedLinearNodeChain(
+  nodes: EditorNode[],
+  edges: EditorEdge[],
+): EditorNode[] | null {
+  const selectedNodes = nodes.filter((node) => node.selected)
+  if (
+    selectedNodes.length < 2 ||
+    selectedNodes.some(
+      (node) =>
+        node.data.nodeType !== 'assignment' &&
+        node.data.nodeType !== 'call' &&
+        node.data.nodeType !== 'process',
+    )
+  ) {
+    return null
+  }
+
+  const selectedIds = new Set(selectedNodes.map((node) => node.id))
+  const selectedById = new Map(selectedNodes.map((node) => [node.id, node]))
+  const internalEdges = edges.filter(
+    (edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target),
+  )
+  if (internalEdges.length !== selectedNodes.length - 1) {
+    return null
+  }
+
+  const internalIncoming = new Map<string, EditorEdge[]>()
+  const internalOutgoing = new Map<string, EditorEdge[]>()
+  for (const edge of internalEdges) {
+    internalIncoming.set(edge.target, [
+      ...(internalIncoming.get(edge.target) ?? []),
+      edge,
+    ])
+    internalOutgoing.set(edge.source, [
+      ...(internalOutgoing.get(edge.source) ?? []),
+      edge,
+    ])
+  }
+
+  if (
+    selectedNodes.some(
+      (node) =>
+        (internalIncoming.get(node.id)?.length ?? 0) > 1 ||
+        (internalOutgoing.get(node.id)?.length ?? 0) > 1,
+    )
+  ) {
+    return null
+  }
+
+  const entries = selectedNodes.filter(
+    (node) => !internalIncoming.get(node.id)?.length,
+  )
+  const exits = selectedNodes.filter(
+    (node) => !internalOutgoing.get(node.id)?.length,
+  )
+  if (entries.length !== 1 || exits.length !== 1) {
+    return null
+  }
+
+  const entryId = entries[0].id
+  const exitId = exits[0].id
+  if (
+    edges.some(
+      (edge) =>
+        !selectedIds.has(edge.source) &&
+        selectedIds.has(edge.target) &&
+        edge.target !== entryId,
+    ) ||
+    edges.some(
+      (edge) =>
+        selectedIds.has(edge.source) &&
+        !selectedIds.has(edge.target) &&
+        edge.source !== exitId,
+    )
+  ) {
+    return null
+  }
+
+  const chain: EditorNode[] = []
+  let currentId: string | undefined = entryId
+  while (currentId) {
+    const node = selectedById.get(currentId)
+    if (!node || chain.some((candidate) => candidate.id === currentId)) {
+      return null
+    }
+
+    chain.push(node)
+    currentId = internalOutgoing.get(currentId)?.[0]?.target
+  }
+
+  return chain.length === selectedNodes.length ? chain : null
+}
+
+function selectedProcessNode(nodes: EditorNode[]): EditorNode | null {
+  const selectedNodes = nodes.filter((node) => node.selected)
+  return selectedNodes.length === 1 &&
+    selectedNodes[0].data.nodeType === 'process'
+    ? selectedNodes[0]
+    : null
+}
+
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
@@ -2958,6 +3421,11 @@ async function loadTextFromUrl(url: string): Promise<string> {
 function textLoadErrorMessage(url: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
   return `Text load failed for "${url}": ${message}`
+}
+
+function imageLoadErrorMessage(url: string, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return `Image load failed for "${url}": ${message}`
 }
 
 function nextBranchLabel(
@@ -3085,10 +3553,18 @@ function centerNodePosition(
     ? 188
     : nodeType === 'class'
       ? 200
-      : nodeType === 'assignment'
+      : nodeType === 'process'
+        ? 260
+        : nodeType === 'assignment'
         ? 190
         : 170
-  const height = isBranchNodeType(nodeType) ? 142 : nodeType === 'class' ? 138 : 82
+  const height = isBranchNodeType(nodeType)
+    ? 142
+    : nodeType === 'class'
+      ? 138
+      : nodeType === 'process'
+        ? 112
+        : 82
 
   return {
     x: position.x - width / 2,

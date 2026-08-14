@@ -3,6 +3,7 @@ export type FlowNodeType =
   | 'class'
   | 'method'
   | 'return'
+  | 'process'
   | 'assignment'
   | 'call'
   | 'input'
@@ -25,6 +26,13 @@ export interface RuntimeObject {
   className: string
 }
 
+export interface RuntimeImage {
+  kind: 'image'
+  id: number
+  width: number
+  height: number
+}
+
 export type RuntimeValue =
   | number
   | string
@@ -32,6 +40,7 @@ export type RuntimeValue =
   | RuntimeValue[]
   | RuntimeDictionary
   | RuntimeObject
+  | RuntimeImage
 export type Environment = Record<string, RuntimeValue>
 
 export interface ProgramPosition {
@@ -72,6 +81,7 @@ export const FLOW_NODE_TYPES: readonly FlowNodeType[] = [
   'class',
   'method',
   'return',
+  'process',
   'assignment',
   'call',
   'input',
@@ -86,6 +96,7 @@ export const NODE_TYPE_LABELS: Record<FlowNodeType, string> = {
   class: 'Class',
   method: 'Method',
   return: 'Return',
+  process: 'Process',
   assignment: 'Assignment',
   call: 'Call',
   input: 'Input',

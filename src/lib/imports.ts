@@ -1,6 +1,7 @@
 import type { Program } from './types'
 import { parseClassDeclaration } from './statements'
 import { attachedMethodDefinition } from './classMethods'
+import { IMAGE_FUNCTION_NAMES, IMAGE_LIBRARY_NAME } from './image'
 import { TEXT_FUNCTION_NAMES, TEXT_LIBRARY_NAME } from './text'
 import { TURTLE_COMMAND_NAMES, TURTLE_LIBRARY_NAME } from './turtle'
 import { normalizeImportedProgram, validateProgram } from './validation'
@@ -178,7 +179,8 @@ function isNativeLibraryImport(name: string): boolean {
   const normalizedName = name.trim().toLowerCase()
   return (
     normalizedName === TURTLE_LIBRARY_NAME ||
-    normalizedName === TEXT_LIBRARY_NAME
+    normalizedName === TEXT_LIBRARY_NAME ||
+    normalizedName === IMAGE_LIBRARY_NAME
   )
 }
 
@@ -196,6 +198,13 @@ function nativeLibraryFor(name: string): NativeLibraryImport {
     return {
       name: TEXT_LIBRARY_NAME,
       functionNames: [...TEXT_FUNCTION_NAMES],
+    }
+  }
+
+  if (normalizedName === IMAGE_LIBRARY_NAME) {
+    return {
+      name: IMAGE_LIBRARY_NAME,
+      functionNames: [...IMAGE_FUNCTION_NAMES],
     }
   }
 

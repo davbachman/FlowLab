@@ -353,6 +353,26 @@ const textFromUrlProgram: Program = {
   ],
 }
 
+const imageDisplayProgram: Program = {
+  version: 1,
+  imports: 'image',
+  nodes: [
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'make-image',
+      type: 'process',
+      text:
+        'photo <- image_from_pixels([[[255, 0, 0], [0, 255, 0, 128]]])\nset_pixel(photo, 1, 0, [1, 2, 3])\nimshow(photo)\nimsave(photo, "flowlab-image")',
+      position: { x: 0, y: 100 },
+    },
+    { id: 'return', type: 'return', text: 'photo', position: { x: 0, y: 240 } },
+  ],
+  edges: [
+    { id: 'e1', source: 'main', target: 'make-image' },
+    { id: 'e2', source: 'make-image', target: 'return' },
+  ],
+}
+
 const multilineVariableProgram: Program = {
   version: 1,
   nodes: [
@@ -425,7 +445,7 @@ describe('App', () => {
       ),
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /^Assignment$/i }),
+      screen.getByRole('button', { name: /^Process$/i }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /^Function$/i }),
@@ -446,8 +466,11 @@ describe('App', () => {
       screen.getByRole('button', { name: /^Return$/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /^Call$/i }),
-    ).toBeInTheDocument()
+      screen.queryByRole('button', { name: /^Assignment$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Call$/i }),
+    ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /Add Call/i }),
     ).not.toBeInTheDocument()
@@ -464,6 +487,7 @@ describe('App', () => {
       screen.getByRole('button', { name: /^FlowLab$/i }),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^File$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Edit$/i })).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /^Examples$/i }),
     ).toBeInTheDocument()
@@ -528,7 +552,16 @@ describe('App', () => {
       within(toolbarMenu('Examples'))
         .getAllByRole('menuitem')
         .map((button) => button.textContent),
-    ).toEqual(['Basic', 'Object'])
+    ).toEqual([
+      'Basic',
+      'Process Basics',
+      'Number Guess',
+      'List Statistics',
+      'Dictionary Inventory',
+      'Object',
+      'Bank Account Class',
+      'Turtle Polygon',
+    ])
   })
 
   it('shows the exact About copy, links, and emphasis and restores focus when closed', async () => {
@@ -725,6 +758,29 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: /Turtle/i })).toBeInTheDocument()
   })
 
+  it('loads image as a native library and displays an empty Image panel', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'image')
+
+    expect(
+      await screen.findByText(/Native libraries: image/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.textContent?.startsWith('Functions:') === true &&
+          element.textContent.includes('imread') &&
+          element.textContent.includes('imshow') &&
+          element.textContent.includes('set_pixel'),
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /^Image$/i })).toHaveTextContent(
+      'No image displayed',
+    )
+  })
+
   it('runs block expressions that call imported helper functions', async () => {
     const user = userEvent.setup()
     registerFlowLabProgram('helpers.json', importedHelperProgram)
@@ -760,6 +816,45 @@ describe('App', () => {
     expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
     expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toHaveValue('3')
+  })
+
+  it('loads all six additional sample programs from the Examples menu', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await chooseToolbarAction(user, 'Examples', 'Process Basics')
+    expect(screen.getByTestId('flow-node-calculate-area')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Process text/i)).toHaveValue(
+      'width <- 8\nheight <- 5\narea <- width * height\nlabel <- "Area: " + area',
+    )
+
+    await chooseToolbarAction(user, 'Examples', 'Number Guess')
+    expect(screen.getByTestId('flow-node-guess-low-check')).toHaveAttribute(
+      'data-shape',
+      'diamond',
+    )
+
+    await chooseToolbarAction(user, 'Examples', 'List Statistics')
+    expect(screen.getByTestId('flow-node-stats-loop')).toHaveAttribute(
+      'data-shape',
+      'diamond',
+    )
+
+    await chooseToolbarAction(user, 'Examples', 'Dictionary Inventory')
+    expect(screen.getByTestId('flow-node-inventory-setup')).toBeInTheDocument()
+
+    await chooseToolbarAction(user, 'Examples', 'Bank Account Class')
+    expect(screen.getByTestId('flow-node-account-class')).toHaveAttribute(
+      'data-shape',
+      'declaration',
+    )
+
+    await chooseToolbarAction(user, 'Examples', 'Turtle Polygon')
+    expect(screen.getByTestId('flow-node-polygon-draw')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Imports list/i)).toHaveValue('turtle')
+    expect(
+      await screen.findByRole('region', { name: /Turtle/i }),
+    ).toBeInTheDocument()
   })
 
   it('keeps a compact special-method reference beside the node palette', () => {
@@ -1275,6 +1370,45 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       'Fetched text from class data',
     )
+    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+  })
+
+  it('renders imshow output and downloads imsave output as PNG', async () => {
+    const createImageData = vi.fn((width: number, height: number) => ({
+      data: new Uint8ClampedArray(width * height * 4),
+    }))
+    const putImageData = vi.fn()
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      createImageData,
+      putImageData,
+    } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(
+      (callback) => callback(new Blob(['png'], { type: 'image/png' })),
+    )
+
+    const user = userEvent.setup()
+    render(<App />)
+    importProgramFromFileMenu(
+      new File([JSON.stringify(imageDisplayProgram)], 'image.json', {
+        type: 'application/json',
+      }),
+    )
+
+    await screen.findByText(/Native libraries: image/i)
+    await user.click(screen.getByRole('button', { name: /Run/i }))
+
+    const panel = screen.getByRole('region', { name: /^Image$/i })
+    expect(within(panel).getByTestId('image-canvas')).toBeInTheDocument()
+    expect(panel).toHaveTextContent('Image #1 · 2 × 1')
+    expect(screen.getByRole('region', { name: /Variables/i })).toHaveTextContent(
+      'Image #1 (2 × 1)',
+    )
+    await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
+    expect(putImageData).toHaveBeenCalled()
+    expect(screen.getByText(/Image saved as flowlab-image\.png/i)).toBeInTheDocument()
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
   })
 
@@ -1902,6 +2036,39 @@ describe('App', () => {
     expect(screen.getAllByDisplayValue('main')).toHaveLength(1)
   })
 
+  it('combines and splits a selected straight-line chain', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    fireEvent.click(screen.getByTestId('flow-node-add-n'))
+    await user.keyboard('{Shift>}')
+    fireEvent.click(screen.getByTestId('flow-node-dec-n'), { shiftKey: true })
+    await user.keyboard('{/Shift}')
+    expect(
+      screen.getByTestId('flow-node-add-n').closest('.react-flow__node'),
+    ).toHaveClass('selected')
+    expect(
+      screen.getByTestId('flow-node-dec-n').closest('.react-flow__node'),
+    ).toHaveClass('selected')
+    await chooseToolbarAction(user, 'Edit', 'Combine into Process')
+
+    expect(screen.getByText('2 blocks combined into one Process.')).toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-dec-n')).not.toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('flow-node-add-n')).getByLabelText(
+        /Process text/i,
+      ),
+    ).toHaveValue('total <- total + n\nn <- n - 1')
+
+    await chooseToolbarAction(user, 'Edit', 'Split Process')
+
+    expect(screen.getByText('Process split into 2 blocks.')).toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-assignment-1')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('total <- total + n')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('n <- n - 1')).toBeInTheDocument()
+  })
+
   it('selects a palette block and places it on the next canvas click', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
@@ -2038,21 +2205,24 @@ describe('App', () => {
     expect(screen.getByDisplayValue('item in L')).toBeInTheDocument()
   })
 
-  it('places Call blocks with editable call text', async () => {
+  it('places Process blocks with editable multiline text', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
-    const addCallButton = screen.getByRole('button', { name: /^Call$/i })
+    const addProcessButton = screen.getByRole('button', { name: /^Process$/i })
 
-    await user.click(addCallButton)
+    await user.click(addProcessButton)
 
     const pane = container.querySelector('.react-flow__pane')
     expect(pane).toBeInTheDocument()
     placePendingNodeOnPane(pane as Element)
 
-    expect(screen.getByTestId('flow-node-call-1')).toHaveAttribute(
+    const processNode = screen.getByTestId('flow-node-process-1')
+    expect(processNode).toHaveAttribute(
       'data-shape',
       'block',
     )
-    expect(screen.getByDisplayValue('forward(50)')).toBeInTheDocument()
+    const editor = within(processNode).getByLabelText(/Process text/i)
+    expect(editor.tagName).toBe('TEXTAREA')
+    expect(editor).toHaveValue('x <- 1\nsqrt(x)')
   })
 })

@@ -44,6 +44,12 @@ export interface ForStatement {
   iterableExpression: string
 }
 
+export interface ProcessStatementSource {
+  kind: 'assignment' | 'call'
+  text: string
+  lineNumber: number
+}
+
 export function isVariableName(value: string): boolean {
   const name = value.trim()
   return VARIABLE_NAME_PATTERN.test(name) && !RESERVED_LANGUAGE_NAMES.has(name)
@@ -155,4 +161,47 @@ export function parseForLoop(text: string): ForStatement {
     variable: match[1],
     iterableExpression: match[2],
   }
+}
+
+export function splitProcessStatements(text: string): ProcessStatementSource[] {
+  return text.split(/\r?\n/).flatMap((line, index) => {
+    const statement = line.trim()
+
+    if (!statement) {
+      return []
+    }
+
+    return [
+      {
+        kind: hasAssignmentArrow(statement) ? 'assignment' : 'call',
+        text: statement,
+        lineNumber: index + 1,
+      },
+    ]
+  })
+}
+
+function hasAssignmentArrow(statement: string): boolean {
+  let quote: '"' | "'" | null = null
+
+  for (let index = 0; index < statement.length - 1; index += 1) {
+    const character = statement[index]
+
+    if (quote) {
+      if (character === '\\') {
+        index += 1
+      } else if (character === quote) {
+        quote = null
+      }
+      continue
+    }
+
+    if (character === '"' || character === "'") {
+      quote = character
+    } else if (character === '<' && statement[index + 1] === '-') {
+      return true
+    }
+  }
+
+  return false
 }
