@@ -19,15 +19,9 @@ export const sampleProgram: Program = {
     },
     {
       id: 'add-n',
-      type: 'assignment',
-      text: 'total <- total + n',
+      type: 'process',
+      text: 'total <- total + n\nn <- n - 1',
       position: { x: 20, y: 470 },
-    },
-    {
-      id: 'dec-n',
-      type: 'assignment',
-      text: 'n <- n - 1',
-      position: { x: 20, y: 580 },
     },
     {
       id: 'show-total',
@@ -47,8 +41,7 @@ export const sampleProgram: Program = {
       target: 'add-n',
       label: 'true',
     },
-    { id: 'edge-add-dec', source: 'add-n', target: 'dec-n' },
-    { id: 'edge-dec-while', source: 'dec-n', target: 'while-n' },
+    { id: 'edge-add-while', source: 'add-n', target: 'while-n' },
     {
       id: 'edge-while-output',
       source: 'while-n',
