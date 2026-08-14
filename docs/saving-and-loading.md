@@ -38,7 +38,7 @@ Import resolution also remembers programs previously imported or exported in the
 
 FlowLab JSON saves:
 
-- Block positions, types, and text
+- Block positions, widths, types, and text
 - Wires and branch labels
 - Block comments
 - The Imports list

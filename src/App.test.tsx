@@ -1121,6 +1121,45 @@ describe('App', () => {
     })
   })
 
+  it('loads and saves a custom block width', async () => {
+    const user = userEvent.setup()
+    const write = vi.fn<(value: Blob) => Promise<void>>(() => Promise.resolve())
+    const close = vi.fn<() => Promise<void>>(() => Promise.resolve())
+    const createWritable = vi.fn(() => Promise.resolve({ write, close }))
+    const showSaveFilePicker = vi.fn<TestSaveFilePicker>(() =>
+      Promise.resolve({ name: 'wide-basic.json', createWritable }),
+    )
+    const wideProgram: Program = {
+      ...sampleProgram,
+      nodes: sampleProgram.nodes.map((node) =>
+        node.id === 'init-total' ? { ...node, width: 520 } : node,
+      ),
+    }
+
+    ;(window as TestWindowWithFilePickers).showSaveFilePicker = showSaveFilePicker
+
+    render(<App />)
+    importProgramFromFileMenu(
+      new File([JSON.stringify(wideProgram)], 'wide-basic.json', {
+        type: 'application/json',
+      }),
+    )
+
+    const block = await screen.findByTestId('flow-node-init-total')
+    expect(block).toHaveClass('flow-node-width-custom')
+    expect(block.closest('.react-flow__node')).toHaveStyle({ width: '520px' })
+
+    await chooseToolbarAction(user, 'File', 'Save')
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
+
+    const exportedBlob = write.mock.calls[0]?.[0]
+    expect(exportedBlob).toBeInstanceOf(Blob)
+    const exportedProgram = JSON.parse(await exportedBlob.text()) as Program
+    expect(
+      exportedProgram.nodes.find((node) => node.id === 'init-total')?.width,
+    ).toBe(520)
+  })
+
   it('imports the saved imports list and input queue before validating the program', async () => {
     render(<App />)
 
@@ -1872,6 +1911,48 @@ describe('App', () => {
       'data-shape',
       'diamond',
     )
+  })
+
+  it('offers horizontal resize grips on every block type', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    function expectResizeGrips(nodeId: string): void {
+      const node = screen.getByTestId(`flow-node-${nodeId}`)
+      fireEvent.click(node)
+      expect(node.querySelectorAll('.node-width-resizer.left')).toHaveLength(1)
+      expect(node.querySelectorAll('.node-width-resizer.right')).toHaveLength(1)
+      expect(node.querySelectorAll('.node-width-resizer.top')).toHaveLength(0)
+      expect(node.querySelectorAll('.node-width-resizer.bottom')).toHaveLength(0)
+    }
+
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    for (const nodeId of [
+      'main',
+      'input-n',
+      'init-total',
+      'while-n',
+      'add-n',
+      'show-total',
+      'return',
+    ]) {
+      expectResizeGrips(nodeId)
+    }
+
+    await chooseToolbarAction(user, 'Examples', 'Object')
+    for (const nodeId of [
+      'point-class',
+      'point-move',
+      'move-point',
+    ]) {
+      expectResizeGrips(nodeId)
+    }
+
+    await chooseToolbarAction(user, 'Examples', 'Number Guess')
+    expectResizeGrips('guess-low-check')
+
+    await chooseToolbarAction(user, 'Examples', 'List Statistics')
+    expectResizeGrips('stats-loop')
   })
 
   it('shows left and right true branch handles before a diamond branch is used', async () => {

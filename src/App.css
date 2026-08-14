@@ -474,6 +474,16 @@ button:disabled {
     0 14px 28px rgba(146, 64, 14, 0.18);
 }
 
+.node-width-resizer.react-flow__resize-control.handle {
+  z-index: 6;
+  width: 9px;
+  height: 30px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #2f6fd6;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, 0.3);
+}
+
 .flow-node-function,
 .flow-node-method,
 .flow-node-return {
@@ -662,6 +672,68 @@ button:disabled {
   width: 260px;
   border-color: #667085;
   background: #f8fafc;
+}
+
+.flow-node-width-custom {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.flow-node-width-custom.flow-node-if::before,
+.flow-node-width-custom.flow-node-while::before,
+.flow-node-width-custom.flow-node-for::before {
+  inset: 16px 8px;
+  border: 0;
+  border-radius: 0;
+  background: #2f6fd6;
+  box-shadow: none;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  filter: drop-shadow(0 8px 9px rgba(15, 23, 42, 0.12));
+  transform: none;
+}
+
+.flow-node-width-custom.flow-node-if::after,
+.flow-node-width-custom.flow-node-while::after,
+.flow-node-width-custom.flow-node-for::after {
+  content: '';
+  position: absolute;
+  inset: 18px 11px;
+  z-index: 0;
+  background: #f7fbff;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  pointer-events: none;
+}
+
+.react-flow__node.selected .flow-node-width-custom.flow-node-if::before,
+.react-flow__node.selected .flow-node-width-custom.flow-node-while::before,
+.react-flow__node.selected .flow-node-width-custom.flow-node-for::before {
+  background: #2f6fd6;
+  filter: drop-shadow(0 0 5px rgba(47, 111, 214, 0.5));
+}
+
+.flow-node-width-custom.flow-node-if[data-current='true']::before,
+.flow-node-width-custom.flow-node-while[data-current='true']::before,
+.flow-node-width-custom.flow-node-for[data-current='true']::before,
+.react-flow__node.selected
+  .flow-node-width-custom.flow-node-if[data-current='true']::before,
+.react-flow__node.selected
+  .flow-node-width-custom.flow-node-while[data-current='true']::before,
+.react-flow__node.selected
+  .flow-node-width-custom.flow-node-for[data-current='true']::before {
+  background: #d97706;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.55));
+}
+
+.flow-node-width-custom.flow-node-if[data-current='true']::after,
+.flow-node-width-custom.flow-node-while[data-current='true']::after,
+.flow-node-width-custom.flow-node-for[data-current='true']::after,
+.react-flow__node.selected
+  .flow-node-width-custom.flow-node-if[data-current='true']::after,
+.react-flow__node.selected
+  .flow-node-width-custom.flow-node-while[data-current='true']::after,
+.react-flow__node.selected
+  .flow-node-width-custom.flow-node-for[data-current='true']::after {
+  background: #fffbeb;
 }
 
 .node-textarea {

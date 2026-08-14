@@ -29,6 +29,7 @@ The Examples menu contains eight complete programs that can be edited and run as
 - Drag between block handles to make wires. Function and Method roots begin executable flows. Class handles attach Methods.
 - If, While, and For diamonds use either side for the `true` or loop-body branch and the bottom for the `false` or exit branch. FlowLab labels those wires and routes loop-back wires automatically.
 - Left-click selects one block. Shift-, Ctrl-, or Cmd-click extends the selection, and left-drag on empty canvas makes a selection window. Drag any selected block to move the selection.
+- Select a block and drag either blue grip at its left or right edge to expand its width for long code. Width changes can be undone and are preserved when the program is saved.
 - Use Ctrl/Cmd+C to copy selected blocks and their internal wires, Ctrl/Cmd+V to paste, and Ctrl/Cmd+Z to undo. Backspace or Delete removes selected blocks or wires.
 - Right-click a block to add, edit, or remove a comment. Comments appear inside the block and are preserved when the program is saved.
 - Right-drag or scroll to pan the main canvas. Use the canvas controls or pinch gestures to zoom, and use Fit View to frame the whole program.

@@ -33,13 +33,13 @@ Choose a program from the Examples menu to load its complete, editable flowchart
 
 ## Highlights
 
-- Visual canvas editing with selection, wiring, comments, copy/paste, undo, pan, zoom, and fit view.
+- Visual canvas editing with selection, wiring, comments, horizontal block resizing, copy/paste, undo, pan, zoom, and fit view.
 - Multiline Process blocks plus commands for combining and splitting straight-line code.
 - Functions, classes, objects, methods, fields, recursion, and Python-style special methods.
 - Numbers, strings, booleans, lists, dictionaries, and expandable object values.
 - Continuous and step-through execution with active-flow input, variables, output, and node highlighting.
 - Imports from FlowLab JSON programs plus native text, image, and turtle libraries.
-- JSON loading and saving, including block layout, comments, imports, and queued input.
+- JSON loading and saving, including block positions and widths, comments, imports, and queued input.
 
 ## Documentation
 

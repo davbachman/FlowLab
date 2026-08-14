@@ -20,6 +20,7 @@ import {
   Controls,
   ConnectionLineType,
   Handle,
+  NodeResizeControl,
   Position,
   ReactFlow,
   useUpdateNodeInternals,
@@ -111,9 +112,11 @@ interface FlowNodeData extends Record<string, unknown> {
   text: string
   comment?: string
   isCurrent?: boolean
+  isWidthCustomized?: boolean
   trueBranchHandle?: string
   attachedMethods?: AttachedMethodHandle[]
   onTextChange?: (nodeId: string, text: string) => void
+  onResizeStart?: () => void
 }
 
 interface AttachedMethodHandle {
@@ -720,6 +723,10 @@ function App() {
     ]
   }, [])
 
+  const recordCanvasChangeStart = useCallback(() => {
+    pushHistorySnapshot()
+  }, [pushHistorySnapshot])
+
   const restoreCanvasSnapshot = useCallback((snapshot: CanvasSnapshot) => {
     const nextSnapshot = cloneCanvasSnapshot(snapshot)
     nodesRef.current = nextSnapshot.nodes
@@ -845,15 +852,23 @@ function App() {
         data: {
           ...node.data,
           isCurrent: node.id === currentNodeId,
+          isWidthCustomized: node.width !== undefined,
           trueBranchHandle: trueBranchHandleForNode(node, edges),
           attachedMethods:
             node.data.nodeType === 'class'
               ? attachedMethodsForClass(node.id, nodes, edges)
               : undefined,
           onTextChange: updateNodeText,
+          onResizeStart: recordCanvasChangeStart,
         },
       })),
-    [currentNodeId, edges, nodes, updateNodeText],
+    [
+      currentNodeId,
+      edges,
+      nodes,
+      recordCanvasChangeStart,
+      updateNodeText,
+    ],
   )
   const combinableSelection = useMemo(
     () => selectedLinearNodeChain(nodes, edges),
@@ -928,6 +943,22 @@ function App() {
       })
 
       if (attachmentEdgeId) {
+        if (sourceNode?.width !== undefined) {
+          const attachedMethodCount =
+            attachedMethodsForClass(sourceNode.id, nodes, edges).length + 1
+          const minimumWidth = minimumNodeWidth('class', attachedMethodCount)
+
+          if (sourceNode.width < minimumWidth) {
+            setNodes((currentNodes) =>
+              currentNodes.map((node) =>
+                node.id === sourceNode.id
+                  ? { ...node, width: minimumWidth }
+                  : node,
+              ),
+            )
+          }
+        }
+
         // Keep the edge on the already-measured open handle until React Flow
         // has measured the newly expanded, method-specific handle row.
         window.requestAnimationFrame(() => {
@@ -1176,10 +1207,6 @@ function App() {
     setImportsLoading(false)
   }
 
-  const recordDragStart = useCallback(() => {
-    pushHistorySnapshot()
-  }, [pushHistorySnapshot])
-
   const onBeforeDelete = useCallback(
     async ({ nodes: deletedNodes, edges: deletedEdges }: CanvasSnapshot) => {
       if (deletedNodes.length || deletedEdges.length) {
@@ -1347,6 +1374,10 @@ function App() {
       .filter((comment): comment is string => Boolean(comment))
     const processNode: EditorNode = {
       ...entryNode,
+      width:
+        entryNode.width === undefined
+          ? undefined
+          : Math.max(entryNode.width, minimumNodeWidth('process')),
       measured: undefined,
       selected: true,
       data: {
@@ -1424,6 +1455,13 @@ function App() {
       createdNodes.push({
         id,
         type: 'flowNode',
+        width:
+          processNode.width === undefined
+            ? undefined
+            : Math.max(
+                processNode.width,
+                minimumNodeWidth(statement.kind),
+              ),
         position: {
           x: processNode.position.x,
           y: processNode.position.y + index * PROCESS_SPLIT_VERTICAL_GAP,
@@ -2087,8 +2125,8 @@ function App() {
             onPaneClick={placePendingNode}
             onNodeClick={selectClickedNode}
             onNodeContextMenu={openNodeCommentDialog}
-            onNodeDragStart={recordDragStart}
-            onSelectionDragStart={recordDragStart}
+            onNodeDragStart={recordCanvasChangeStart}
+            onSelectionDragStart={recordCanvasChangeStart}
             onBeforeDelete={onBeforeDelete}
             deleteKeyCode={DELETE_KEY_CODES}
             selectionKeyCode={NO_SELECTION_KEY}
@@ -2546,7 +2584,7 @@ function trapDialogFocus(event: ReactKeyboardEvent<HTMLDivElement>): void {
   }
 }
 
-function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
+function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
   const updateNodeInternals = useUpdateNodeInternals()
   const label = NODE_TYPE_LABELS[data.nodeType]
   const editable =
@@ -2578,6 +2616,10 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
     : null
   const attachedMethods = data.attachedMethods ?? []
   const classMethodSlotCount = attachedMethods.length + 1
+  const minimumWidth = minimumNodeWidth(
+    data.nodeType,
+    attachedMethods.length,
+  )
   const attachedMethodIds = attachedMethods
     .map((method) => method.nodeId)
     .join('\u0000')
@@ -2590,7 +2632,9 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
 
   return (
     <div
-      className={`flow-node flow-node-${data.nodeType}`}
+      className={`flow-node flow-node-${data.nodeType}${
+        data.isWidthCustomized ? ' flow-node-width-custom' : ''
+      }`}
       data-testid={`flow-node-${id}`}
       data-current={data.isCurrent ? 'true' : 'false'}
       data-shape={
@@ -2607,14 +2651,31 @@ function FlowChartNode({ id, data }: NodeProps<EditorNode>) {
         isDeclaration
           ? ({
               '--class-method-slot-count': classMethodSlotCount,
-              '--class-node-width': `${Math.max(
-                200,
-                classMethodSlotCount * 70 + 20,
+              '--class-node-width': `${classNodeContentWidth(
+                attachedMethods.length,
               )}px`,
             } as CSSProperties)
           : undefined
       }
     >
+      {selected ? (
+        <>
+          <NodeResizeControl
+            className="node-width-resizer"
+            position="left"
+            resizeDirection="horizontal"
+            minWidth={minimumWidth}
+            onResizeStart={() => data.onResizeStart?.()}
+          />
+          <NodeResizeControl
+            className="node-width-resizer"
+            position="right"
+            resizeDirection="horizontal"
+            minWidth={minimumWidth}
+            onResizeStart={() => data.onResizeStart?.()}
+          />
+        </>
+      ) : null}
       {!isFunctionRoot && !isDeclaration ? (
         <Handle
           id={data.nodeType === 'method' ? METHOD_OWNER_HANDLE : undefined}
@@ -3330,16 +3391,31 @@ function isEditableShortcutTarget(target: EventTarget | null): boolean {
 }
 
 function programToNodes(program: Program): EditorNode[] {
-  return program.nodes.map((node) => ({
-    id: node.id,
-    type: 'flowNode',
-    position: node.position,
-    data: {
-      nodeType: node.type,
-      text: node.text,
-      comment: node.comment,
-    },
-  }))
+  return program.nodes.map((node) => {
+    const attachedMethodCount =
+      node.type === 'class'
+        ? attachedProgramMethodCount(node.id, program)
+        : 0
+    const width =
+      node.width === undefined
+        ? undefined
+        : Math.max(
+            node.width,
+            minimumNodeWidth(node.type, attachedMethodCount),
+          )
+
+    return {
+      id: node.id,
+      type: 'flowNode',
+      width,
+      position: node.position,
+      data: {
+        nodeType: node.type,
+        text: node.text,
+        comment: node.comment,
+      },
+    }
+  })
 }
 
 function toProgram(nodes: EditorNode[], edges: EditorEdge[]): Program {
@@ -3353,6 +3429,7 @@ function toProgram(nodes: EditorNode[], edges: EditorEdge[]): Program {
         type: node.data.nodeType,
         text: node.data.text,
         ...(comment ? { comment: node.data.comment } : {}),
+        ...(node.width === undefined ? {} : { width: node.width }),
         position: node.position,
       }
     }),
@@ -3363,6 +3440,54 @@ function toProgram(nodes: EditorNode[], edges: EditorEdge[]): Program {
       label: isBranchLabel(edge.label) ? edge.label : undefined,
     })),
   }
+}
+
+function attachedProgramMethodCount(
+  classNodeId: string,
+  program: Program,
+): number {
+  const methodIds = new Set(
+    program.nodes
+      .filter((node) => node.type === 'method')
+      .map((node) => node.id),
+  )
+
+  return new Set(
+    program.edges
+      .filter(
+        (edge) =>
+          edge.source === classNodeId && methodIds.has(edge.target),
+      )
+      .map((edge) => edge.target),
+  ).size
+}
+
+function classNodeContentWidth(attachedMethodCount: number): number {
+  const methodSlotCount = attachedMethodCount + 1
+  return Math.max(200, methodSlotCount * 70 + 20)
+}
+
+function minimumNodeWidth(
+  nodeType: FlowNodeType,
+  attachedMethodCount = 0,
+): number {
+  if (isBranchNodeType(nodeType)) {
+    return 188
+  }
+
+  if (nodeType === 'class') {
+    return classNodeContentWidth(attachedMethodCount) + 24
+  }
+
+  if (nodeType === 'process') {
+    return 284
+  }
+
+  if (nodeType === 'assignment') {
+    return 214
+  }
+
+  return 194
 }
 
 function programWithSavedRuntimeState(

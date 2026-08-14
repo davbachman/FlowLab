@@ -53,6 +53,7 @@ export interface ProgramNode {
   type: FlowNodeType
   text: string
   comment?: string
+  width?: number
   position: ProgramPosition
 }
 

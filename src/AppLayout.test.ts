@@ -116,6 +116,30 @@ describe('app layout scrolling', () => {
     })
   })
 
+  it('stretches custom block widths and limits resize grips to the horizontal axis', () => {
+    expect(declarationsFor('.flow-node-width-custom')).toMatchObject({
+      'box-sizing': 'border-box',
+      width: '100%',
+    })
+    expect(
+      declarationsFor(
+        '.node-width-resizer.react-flow__resize-control.handle',
+      ),
+    ).toMatchObject({
+      width: '9px',
+      height: '30px',
+      background: '#2f6fd6',
+    })
+    expect(
+      declarationsFor(
+        '.flow-node-width-custom.flow-node-if::before,\n.flow-node-width-custom.flow-node-while::before,\n.flow-node-width-custom.flow-node-for::before',
+      ),
+    ).toMatchObject({
+      'clip-path': 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
+      transform: 'none',
+    })
+  })
+
   it('draws Input and Output as unskewed-content parallelograms', () => {
     expect(
       declarationsFor('.flow-node-input,\n.flow-node-output'),

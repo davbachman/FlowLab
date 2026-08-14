@@ -116,6 +116,28 @@ describe('validateProgram', () => {
     expect(validateProgram(validForProgram).valid).toBe(true)
   })
 
+  it('accepts positive block widths and rejects invalid widths', () => {
+    const withWidth: Program = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) =>
+        node.id === 'set-total' ? { ...node, width: 520 } : node,
+      ),
+    }
+
+    expect(validateProgram(withWidth).errors).toEqual([])
+
+    for (const width of [0, -1, Number.NaN]) {
+      const invalid: Program = {
+        ...withWidth,
+        nodes: withWidth.nodes.map((node) =>
+          node.id === 'set-total' ? { ...node, width } : node,
+        ),
+      }
+
+      expect(validateProgram(invalid).valid).toBe(false)
+    }
+  })
+
   it('accepts multiline Process assignments and standalone calls', () => {
     const program: Program = {
       ...validLinearProgram,
