@@ -463,6 +463,9 @@ describe('App', () => {
       screen.getByRole('heading', { name: /^Steps$/i }),
     ).toBeInTheDocument()
     expect(
+      screen.getByRole('heading', { name: /^Control Flow$/i }),
+    ).toBeInTheDocument()
+    expect(
       screen.getByRole('button', { name: /^Return$/i }),
     ).toBeInTheDocument()
     expect(
@@ -477,6 +480,25 @@ describe('App', () => {
     expect(
       screen.getByRole('button', { name: /^For$/i }),
     ).toBeInTheDocument()
+    const stepsGroup = screen
+      .getByRole('heading', { name: /^Steps$/i })
+      .closest('section')
+    const controlFlowGroup = screen
+      .getByRole('heading', { name: /^Control Flow$/i })
+      .closest('section')
+
+    expect(stepsGroup).not.toBeNull()
+    expect(controlFlowGroup).not.toBeNull()
+    expect(
+      within(stepsGroup as HTMLElement).queryByRole('button', {
+        name: /^If$/i,
+      }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(controlFlowGroup as HTMLElement).getAllByRole('button').map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(['If', 'While', 'For'])
     expect(
       screen.getByLabelText(/Current document/i),
     ).toHaveTextContent('untitled')

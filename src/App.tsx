@@ -266,6 +266,8 @@ const STEP_NODE_PALETTE: FlowNodeType[] = [
   'process',
   'input',
   'output',
+]
+const CONTROL_FLOW_NODE_PALETTE: FlowNodeType[] = [
   'if',
   'while',
   'for',
@@ -1991,6 +1993,27 @@ function App() {
             <h3 id="steps-heading">Steps</h3>
             <div className="palette-buttons">
               {STEP_NODE_PALETTE.map((nodeType) => (
+                <button
+                  key={nodeType}
+                  type="button"
+                  className={
+                    pendingNodeType === nodeType ? 'palette-button-active' : ''
+                  }
+                  aria-pressed={pendingNodeType === nodeType}
+                  onClick={() => selectNodeType(nodeType)}
+                >
+                  {NODE_TYPE_LABELS[nodeType]}
+                </button>
+              ))}
+            </div>
+          </section>
+          <section
+            className="palette-group"
+            aria-labelledby="control-flow-heading"
+          >
+            <h3 id="control-flow-heading">Control Flow</h3>
+            <div className="palette-buttons">
+              {CONTROL_FLOW_NODE_PALETTE.map((nodeType) => (
                 <button
                   key={nodeType}
                   type="button"
