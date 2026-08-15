@@ -16,7 +16,7 @@
 
 | Data type | Literals and values | Allowed operations |
 | --- | --- | --- |
-| Number | Integers and decimals, such as `3`, `-2`, `4.5` | Arithmetic `+`, `-`, `*`, `/`; unary `-`; comparisons `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`; built-ins `sqrt(number)` and `rand()`; truth tests where zero is false |
+| Number | Integers and decimals, such as `3`, `-2`, `4.5` | Arithmetic `+`, `-`, `*`, `/`; unary `-`; comparisons `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`; standard math built-ins described below; truth tests where zero is false |
 | String | Single- or double-quoted text, such as `"cat"` or `'hello'`; supports escapes like `\n`, `\t`, `\"`, `\'`, and `\\` | Concatenation with `+`; zero-based indexing like `S[0]`; equality and inequality with `=`, `==`, `!=`; truth tests where non-empty strings are true; For iteration over characters |
 | Boolean | `True` and `False` | Logical `and`, `or`, `not`; equality and inequality; assignment, output, Return values, If conditions, and While conditions |
 | List | Bracket literals, such as `[1, 2, 3]`, `["a", True]`, and nested lists | Concatenation with `+` when both operands are lists; zero-based indexing like `L[0]`; indexed assignment like `L[i] <- value`; deep equality and inequality; truth tests where non-empty lists are true; For iteration over elements |
@@ -76,6 +76,10 @@ Each Process line follows the same grammar as an Assignment or Call block. Lines
 - Calls used inside other block expressions keep their return value.
 - Custom Function calls use normal notation, such as `helper(1, "text", [2, 3])`.
 - `sqrt(nonnegativeNumber)` returns the square root of a Number.
+- `exp(number)`, `log(positiveNumber)`, and `log10(positiveNumber)` provide exponential, natural-logarithm, and base-10-logarithm operations.
+- `sin(radians)`, `cos(radians)`, and `tan(radians)` provide the standard trigonometric functions. Angles are measured in radians.
+- `asin(number)`, `acos(number)`, and `atan(number)` provide inverse trigonometric functions and return radians. The input to `asin` and `acos` must be from -1 through 1.
+- `atan2(y, x)` returns the angle in radians from the positive x-axis to the point `(x, y)`.
 - `rand()` returns a Number from 0 up to but not including 1.
 - `ask()` opens an input dialog and returns the parsed value.
 
@@ -83,7 +87,7 @@ Each Process line follows the same grammar as an Assignment or Call block. Lines
 
 - Names must start with a letter or underscore and may contain letters, digits, and underscores.
 - The language words `and`, `or`, `not`, `True`, and `False` cannot be used as names.
-- `sqrt`, `rand`, and `ask` cannot be redefined as Functions or Classes.
+- Built-in names listed above cannot be redefined as Functions or Classes.
 - Dictionary literal keys are String, Number, or Boolean literals. Those key types remain distinct, so `1`, `"1"`, and `True` may coexist.
 - A later duplicate literal key replaces the earlier value.
 - `D[key]` accepts an expression of one of the three primitive key types, and `D[key] <- value` creates or overwrites an entry.

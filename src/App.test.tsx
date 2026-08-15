@@ -659,6 +659,16 @@ describe('App', () => {
     )
     expect(functionSignaturesFor('Core')).toEqual([
       'sqrt(number)',
+      'exp(number)',
+      'log(number)',
+      'log10(number)',
+      'sin(radians)',
+      'cos(radians)',
+      'tan(radians)',
+      'asin(number)',
+      'acos(number)',
+      'atan(number)',
+      'atan2(y, x)',
       'rand()',
       'ask()',
     ])

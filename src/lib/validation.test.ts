@@ -320,11 +320,13 @@ describe('validateProgram', () => {
     expect(validateProgram(program).errors).toEqual([])
   })
 
-  it('accepts rand as a built-in and rejects removed built-in calls', () => {
-    const randProgram = {
+  it('accepts standard math built-ins and rejects removed built-in calls', () => {
+    const mathProgram = {
       ...validLinearProgram,
       nodes: validLinearProgram.nodes.map((node) =>
-        node.id === 'set-total' ? { ...node, text: 'total <- rand()' } : node,
+        node.id === 'set-total'
+          ? { ...node, text: 'total <- sin(rand()) + log10(100)' }
+          : node,
       ),
     }
     const lenProgram = {
@@ -334,7 +336,7 @@ describe('validateProgram', () => {
       ),
     }
 
-    expect(validateProgram(randProgram).errors).toEqual([])
+    expect(validateProgram(mathProgram).errors).toEqual([])
     expect(validateProgram(lenProgram).errors.join('\n')).toMatch(
       /missing Function "len"/,
     )

@@ -36,6 +36,46 @@ const CORE_FUNCTION_DETAILS = {
     signature: 'sqrt(number)',
     description: 'Returns the square root of a nonnegative Number.',
   },
+  exp: {
+    signature: 'exp(number)',
+    description: 'Returns e raised to the given Number.',
+  },
+  log: {
+    signature: 'log(number)',
+    description: 'Returns the natural logarithm of a positive Number.',
+  },
+  log10: {
+    signature: 'log10(number)',
+    description: 'Returns the base-10 logarithm of a positive Number.',
+  },
+  sin: {
+    signature: 'sin(radians)',
+    description: 'Returns the sine of an angle measured in radians.',
+  },
+  cos: {
+    signature: 'cos(radians)',
+    description: 'Returns the cosine of an angle measured in radians.',
+  },
+  tan: {
+    signature: 'tan(radians)',
+    description: 'Returns the tangent of an angle measured in radians.',
+  },
+  asin: {
+    signature: 'asin(number)',
+    description: 'Returns an angle in radians whose sine is the given Number.',
+  },
+  acos: {
+    signature: 'acos(number)',
+    description: 'Returns an angle in radians whose cosine is the given Number.',
+  },
+  atan: {
+    signature: 'atan(number)',
+    description: 'Returns an angle in radians whose tangent is the given Number.',
+  },
+  atan2: {
+    signature: 'atan2(y, x)',
+    description: 'Returns the angle in radians from the positive x-axis to (x, y).',
+  },
   rand: {
     signature: 'rand()',
     description: 'Returns a random Number from 0 up to, but not including, 1.',
