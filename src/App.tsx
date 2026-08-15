@@ -59,6 +59,7 @@ import {
   type ImportResolution,
 } from './lib/imports'
 import { stringifyValue } from './lib/expression'
+import { FUNCTION_REFERENCE_SECTIONS } from './lib/functionReference'
 import {
   displayedImageData,
   downloadImage,
@@ -382,6 +383,7 @@ function App() {
   const [openToolbarMenu, setOpenToolbarMenu] =
     useState<ToolbarMenuName | null>(null)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [functionReferenceOpen, setFunctionReferenceOpen] = useState(false)
   const [pendingNodeType, setPendingNodeType] = useState<FlowNodeType | null>(
     null,
   )
@@ -406,6 +408,13 @@ function App() {
 
   const closeAboutDialog = useCallback(() => {
     setAboutOpen(false)
+    window.requestAnimationFrame(() => {
+      document.getElementById('flowlab-menu-trigger')?.focus()
+    })
+  }, [])
+
+  const closeFunctionReferenceDialog = useCallback(() => {
+    setFunctionReferenceOpen(false)
     window.requestAnimationFrame(() => {
       document.getElementById('flowlab-menu-trigger')?.focus()
     })
@@ -446,6 +455,23 @@ function App() {
     document.addEventListener('keydown', closeAboutOnEscape)
     return () => document.removeEventListener('keydown', closeAboutOnEscape)
   }, [aboutOpen, closeAboutDialog])
+
+  useEffect(() => {
+    if (!functionReferenceOpen) {
+      return
+    }
+
+    function closeFunctionReferenceOnEscape(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeFunctionReferenceDialog()
+      }
+    }
+
+    document.addEventListener('keydown', closeFunctionReferenceOnEscape)
+    return () =>
+      document.removeEventListener('keydown', closeFunctionReferenceOnEscape)
+  }, [functionReferenceOpen, closeFunctionReferenceDialog])
 
   useEffect(() => {
     nodesRef.current = nodes
@@ -1083,6 +1109,11 @@ function App() {
   function openAboutDialog(): void {
     setOpenToolbarMenu(null)
     setAboutOpen(true)
+  }
+
+  function openFunctionReferenceDialog(): void {
+    setOpenToolbarMenu(null)
+    setFunctionReferenceOpen(true)
   }
 
   function openImportPicker(): void {
@@ -1836,6 +1867,15 @@ function App() {
             >
               About
             </button>
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              onClick={openFunctionReferenceDialog}
+            >
+              Function Reference
+            </button>
             <a
               className="toolbar-menu-item"
               data-menu-item
@@ -2367,6 +2407,68 @@ function App() {
               <button type="button" autoFocus onClick={closeAboutDialog}>
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {functionReferenceOpen ? (
+        <div
+          className="modal-backdrop"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeFunctionReferenceDialog()
+            }
+          }}
+        >
+          <div
+            className="function-reference-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="function-reference-title"
+            aria-describedby="function-reference-description"
+            onKeyDown={trapDialogFocus}
+          >
+            <header className="function-reference-header">
+              <div>
+                <h2 id="function-reference-title">Function Reference</h2>
+                <p id="function-reference-description">
+                  Core functions are always available. Library functions are
+                  built into FlowLab and require the named import.
+                </p>
+              </div>
+              <button
+                type="button"
+                autoFocus
+                onClick={closeFunctionReferenceDialog}
+              >
+                Close
+              </button>
+            </header>
+            <div className="function-reference-grid">
+              {FUNCTION_REFERENCE_SECTIONS.map((section) => (
+                <section
+                  key={section.id}
+                  className="function-reference-section"
+                  aria-labelledby={`function-reference-${section.id}`}
+                >
+                  <h3 id={`function-reference-${section.id}`}>
+                    {section.title}
+                  </h3>
+                  <p className="function-reference-availability">
+                    {section.availability}
+                  </p>
+                  <dl className="function-reference-list">
+                    {section.functions.map((entry) => (
+                      <div key={entry.name} className="function-reference-entry">
+                        <dt>
+                          <code>{entry.signature}</code>
+                        </dt>
+                        <dd>{entry.description}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
             </div>
           </div>
         </div>

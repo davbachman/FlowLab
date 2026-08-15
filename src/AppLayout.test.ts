@@ -253,7 +253,11 @@ describe('app layout scrolling', () => {
     expect(declarationsFor('.modal-backdrop')).toMatchObject({
       'overflow-y': 'auto',
     })
-    expect(declarationsFor('.filename-modal,\n.about-modal')).toMatchObject({
+    expect(
+      declarationsFor(
+        '.filename-modal,\n.about-modal,\n.function-reference-modal',
+      ),
+    ).toMatchObject({
       'box-sizing': 'border-box',
       'max-height': '100%',
       'overflow-y': 'auto',

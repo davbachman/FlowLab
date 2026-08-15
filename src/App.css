@@ -165,7 +165,8 @@ button:disabled {
 }
 
 .filename-modal,
-.about-modal {
+.about-modal,
+.function-reference-modal {
   box-sizing: border-box;
   max-height: 100%;
   display: grid;
@@ -186,8 +187,14 @@ button:disabled {
   width: min(560px, 100%);
 }
 
+.function-reference-modal {
+  width: min(960px, 100%);
+  gap: 16px;
+}
+
 .filename-modal h2,
-.about-modal h2 {
+.about-modal h2,
+.function-reference-modal h2 {
   margin: 0 0 2px;
   font-size: 16px;
 }
@@ -201,6 +208,83 @@ button:disabled {
 .about-modal a {
   color: #1849a9;
   overflow-wrap: anywhere;
+}
+
+.function-reference-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.function-reference-header p {
+  max-width: 660px;
+  margin: 4px 0 0;
+  color: #475467;
+  line-height: 1.45;
+}
+
+.function-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: start;
+  gap: 14px;
+}
+
+.function-reference-section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #d8dde6;
+  border-radius: 7px;
+  background: #f8fafc;
+}
+
+.function-reference-section h3 {
+  margin: 0;
+  padding: 11px 12px 2px;
+  color: #17202f;
+  font-size: 14px;
+}
+
+.function-reference-availability {
+  margin: 0;
+  padding: 2px 12px 10px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.function-reference-list {
+  margin: 0;
+  border-top: 1px solid #e4e7ec;
+  background: #ffffff;
+}
+
+.function-reference-entry {
+  display: grid;
+  gap: 4px;
+  padding: 9px 12px;
+}
+
+.function-reference-entry + .function-reference-entry {
+  border-top: 1px solid #eef0f4;
+}
+
+.function-reference-entry dt,
+.function-reference-entry dd {
+  min-width: 0;
+}
+
+.function-reference-entry code {
+  color: #1849a9;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.function-reference-entry dd {
+  margin: 0;
+  color: #475467;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .filename-modal input {

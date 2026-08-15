@@ -83,7 +83,8 @@ const LEFT_ONLY_OBJECT_OPERATORS = new Set([
   '>=',
 ])
 const WORD_OPERATORS = new Set(['and', 'or', 'not'])
-const BUILT_IN_FUNCTIONS = new Set(['sqrt', 'rand', 'ask'])
+export const CORE_FUNCTION_NAMES = ['sqrt', 'rand', 'ask'] as const
+const BUILT_IN_FUNCTIONS = new Set<string>(CORE_FUNCTION_NAMES)
 
 export interface ExpressionEvaluationContext {
   getVariable?: (

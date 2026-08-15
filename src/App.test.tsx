@@ -60,6 +60,16 @@ function toolbarMenu(name: string): HTMLElement {
   })
 }
 
+function functionSignaturesFor(sectionName: string): string[] {
+  const section = screen.getByRole('region', {
+    name: new RegExp(`^${sectionName}$`, 'i'),
+  })
+
+  return Array.from(section.querySelectorAll('code')).map(
+    (signature) => signature.textContent ?? '',
+  )
+}
+
 async function chooseToolbarAction(
   user: TestUser,
   menuName: string,
@@ -550,6 +560,11 @@ describe('App', () => {
     expect(
       within(flowLabMenu).getByRole('menuitem', { name: /^Instructions$/i }),
     ).toBeInTheDocument()
+    expect(
+      within(flowLabMenu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['About', 'Function Reference', 'Instructions'])
     expect(flowLabTrigger).toHaveAttribute('aria-expanded', 'true')
 
     await user.click(fileTrigger)
@@ -626,6 +641,65 @@ describe('App', () => {
     await user.keyboard('{Escape}')
     expect(
       screen.queryByRole('dialog', { name: /^About FlowLab$/i }),
+    ).not.toBeInTheDocument()
+    await waitFor(() => expect(flowLabTrigger).toHaveFocus())
+  })
+
+  it('shows every built-in function in a categorized reference dialog', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const flowLabTrigger = screen.getByRole('button', { name: /^FlowLab$/i })
+    await chooseToolbarAction(user, 'FlowLab', 'Function Reference')
+
+    const dialog = screen.getByRole('dialog', { name: /^Function Reference$/i })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(dialog).toHaveTextContent(
+      'Core functions are always available. Library functions are built into FlowLab and require the named import.',
+    )
+    expect(functionSignaturesFor('Core')).toEqual([
+      'sqrt(number)',
+      'rand()',
+      'ask()',
+    ])
+    expect(functionSignaturesFor('Text')).toEqual([
+      'text_from_url(url)',
+      'split_words(text)',
+    ])
+    expect(functionSignaturesFor('Image')).toEqual([
+      'get_pixel(image, x, y)',
+      'image_from_pixels(rows)',
+      'image_to_pixels(image)',
+      'imread(url)',
+      'imsave(image, filename)',
+      'imshow(image)',
+      'imsize(image)',
+      'set_pixel(image, x, y, color)',
+    ])
+    expect(functionSignaturesFor('Turtle')).toEqual([
+      'backward(distance)',
+      'clear()',
+      'color(text)',
+      'forward(distance)',
+      'home()',
+      'left(degrees)',
+      'pendown()',
+      'penup()',
+      'right(degrees)',
+    ])
+    expect(screen.getByRole('region', { name: /^Text$/i })).toHaveTextContent(
+      'Enter text in Imports',
+    )
+    expect(screen.getByRole('region', { name: /^Image$/i })).toHaveTextContent(
+      'Enter image in Imports',
+    )
+    expect(screen.getByRole('region', { name: /^Turtle$/i })).toHaveTextContent(
+      'Enter turtle in Imports',
+    )
+
+    await user.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('dialog', { name: /^Function Reference$/i }),
     ).not.toBeInTheDocument()
     await waitFor(() => expect(flowLabTrigger).toHaveFocus())
   })
