@@ -1,7 +1,13 @@
-import { CORE_FUNCTION_NAMES } from './expression'
+import {
+  CORE_FUNCTION_NAMES,
+  isBuiltInFunctionName,
+} from './expression'
 import { IMAGE_FUNCTION_NAMES, IMAGE_LIBRARY_NAME } from './image'
+import type { ImportResolution } from './imports'
+import { isVariableName } from './statements'
 import { TEXT_FUNCTION_NAMES, TEXT_LIBRARY_NAME } from './text'
 import { TURTLE_COMMAND_NAMES, TURTLE_LIBRARY_NAME } from './turtle'
+import type { Program } from './types'
 
 export interface FunctionReferenceEntry {
   name: string
@@ -13,6 +19,20 @@ export interface FunctionReferenceSection {
   id: string
   title: string
   availability: string
+  functions: FunctionReferenceEntry[]
+}
+
+export interface LibraryReferenceEntry {
+  id: string
+  name: string
+  description: string
+  imported: boolean
+}
+
+interface NativeLibraryReference {
+  name: string
+  title: string
+  description: string
   functions: FunctionReferenceEntry[]
 }
 
@@ -171,29 +191,158 @@ const TURTLE_FUNCTION_DETAILS = {
   },
 } satisfies FunctionDetails<typeof TURTLE_COMMAND_NAMES>
 
-export const FUNCTION_REFERENCE_SECTIONS = [
+const CORE_FUNCTION_REFERENCE: FunctionReferenceSection = {
+  id: 'core',
+  title: 'Core',
+  availability: 'Always available.',
+  functions: referenceEntries(CORE_FUNCTION_NAMES, CORE_FUNCTION_DETAILS),
+}
+
+const NATIVE_LIBRARY_REFERENCES: NativeLibraryReference[] = [
   {
-    id: 'core',
-    title: 'Core',
-    availability: 'Always available.',
-    functions: referenceEntries(CORE_FUNCTION_NAMES, CORE_FUNCTION_DETAILS),
-  },
-  {
-    id: TEXT_LIBRARY_NAME,
+    name: TEXT_LIBRARY_NAME,
     title: 'Text',
-    availability: `Enter ${TEXT_LIBRARY_NAME} in Imports to use these functions.`,
+    description: 'Loads text from URLs and splits text into words.',
     functions: referenceEntries(TEXT_FUNCTION_NAMES, TEXT_FUNCTION_DETAILS),
   },
   {
-    id: IMAGE_LIBRARY_NAME,
+    name: IMAGE_LIBRARY_NAME,
     title: 'Image',
-    availability: `Enter ${IMAGE_LIBRARY_NAME} in Imports to use these functions.`,
+    description: 'Loads, saves, displays, and edits raster images.',
     functions: referenceEntries(IMAGE_FUNCTION_NAMES, IMAGE_FUNCTION_DETAILS),
   },
   {
-    id: TURTLE_LIBRARY_NAME,
+    name: TURTLE_LIBRARY_NAME,
     title: 'Turtle',
-    availability: `Enter ${TURTLE_LIBRARY_NAME} in Imports to use these functions.`,
+    description: 'Draws line graphics by moving and turning a turtle.',
     functions: referenceEntries(TURTLE_COMMAND_NAMES, TURTLE_FUNCTION_DETAILS),
   },
-] satisfies FunctionReferenceSection[]
+]
+
+export function availableFunctionReferenceSections(
+  program: Program,
+  importResolution: ImportResolution,
+  availableImportedFunctionNames: readonly string[],
+): FunctionReferenceSection[] {
+  const sections: FunctionReferenceSection[] = [CORE_FUNCTION_REFERENCE]
+  const currentFunctionNames = [
+    ...new Set(
+      program.nodes
+        .filter((node) => node.type === 'function')
+        .map((node) => node.text.trim())
+        .filter(
+          (name) =>
+            name !== 'main' &&
+            isVariableName(name) &&
+            !isBuiltInFunctionName(name),
+        ),
+    ),
+  ].sort((left, right) => left.localeCompare(right))
+
+  if (currentFunctionNames.length) {
+    sections.push({
+      id: 'current-program',
+      title: 'This program',
+      availability: 'Defined on the current canvas.',
+      functions: userFunctionEntries(
+        currentFunctionNames,
+        'Defined in the current program.',
+      ),
+    })
+  }
+
+  const remainingImportedNames = new Set(availableImportedFunctionNames)
+  const importedNativeNames = new Set(
+    importResolution.nativeLibraries.map((library) => library.name),
+  )
+
+  for (const library of NATIVE_LIBRARY_REFERENCES) {
+    if (!importedNativeNames.has(library.name)) {
+      continue
+    }
+
+    const functions = library.functions.filter((entry) => {
+      if (!remainingImportedNames.has(entry.name)) {
+        return false
+      }
+
+      remainingImportedNames.delete(entry.name)
+      return true
+    })
+
+    if (functions.length) {
+      sections.push({
+        id: library.name,
+        title: library.title,
+        availability: `Available from the imported ${library.name} library.`,
+        functions,
+      })
+    }
+  }
+
+  for (const [fileIndex, file] of importResolution.files.entries()) {
+    const names: string[] = []
+
+    for (const node of file.program.nodes) {
+      const name = node.text.trim()
+      if (
+        node.type !== 'function' ||
+        name === 'main' ||
+        !remainingImportedNames.has(name)
+      ) {
+        continue
+      }
+
+      remainingImportedNames.delete(name)
+      names.push(name)
+    }
+
+    if (names.length) {
+      sections.push({
+        id: `flowlab-file-${fileIndex}`,
+        title: file.name,
+        availability: `Available from the imported ${file.name} FlowLab file.`,
+        functions: userFunctionEntries(
+          names.sort((left, right) => left.localeCompare(right)),
+          'Imported FlowLab function.',
+        ),
+      })
+    }
+  }
+
+  return sections
+}
+
+export function availableLibraryReferences(
+  importResolution: ImportResolution,
+): LibraryReferenceEntry[] {
+  const importedNativeNames = new Set(
+    importResolution.nativeLibraries.map((library) => library.name),
+  )
+
+  return [
+    ...NATIVE_LIBRARY_REFERENCES.map((library) => ({
+      id: `native-${library.name}`,
+      name: library.name,
+      description: library.description,
+      imported: importedNativeNames.has(library.name),
+    })),
+    ...importResolution.files.map((file, index) => ({
+      id: `flowlab-file-${index}`,
+      name: file.name,
+      description: 'User-defined FlowLab program file.',
+      imported: true,
+    })),
+  ]
+}
+
+function userFunctionEntries(
+  names: readonly string[],
+  description: string,
+): FunctionReferenceEntry[] {
+  return names.map((name) => ({
+    name,
+    signature: `${name}(…)`,
+    description,
+  }))
+}

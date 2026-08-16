@@ -224,6 +224,22 @@ button:disabled {
   line-height: 1.45;
 }
 
+.reference-category {
+  display: grid;
+  gap: 10px;
+}
+
+.reference-category + .reference-category {
+  border-top: 1px solid #e4e7ec;
+  padding-top: 16px;
+}
+
+.reference-category > h3 {
+  margin: 0;
+  color: #17202f;
+  font-size: 15px;
+}
+
 .function-reference-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -239,7 +255,7 @@ button:disabled {
   background: #f8fafc;
 }
 
-.function-reference-section h3 {
+.function-reference-section h4 {
   margin: 0;
   padding: 11px 12px 2px;
   color: #17202f;
@@ -254,19 +270,17 @@ button:disabled {
 }
 
 .function-reference-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   margin: 0;
-  border-top: 1px solid #e4e7ec;
   background: #ffffff;
 }
 
 .function-reference-entry {
   display: grid;
   gap: 4px;
-  padding: 9px 12px;
-}
-
-.function-reference-entry + .function-reference-entry {
   border-top: 1px solid #eef0f4;
+  padding: 9px 12px;
 }
 
 .function-reference-entry dt,
@@ -285,6 +299,66 @@ button:disabled {
   color: #475467;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.library-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.library-reference-entry {
+  min-width: 0;
+  border: 1px solid #d8dde6;
+  border-radius: 7px;
+  background: #f8fafc;
+  padding: 11px 12px;
+}
+
+.library-reference-entry header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.library-reference-entry h4 {
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+}
+
+.library-reference-entry h4 code {
+  color: #1849a9;
+  overflow-wrap: anywhere;
+}
+
+.library-reference-entry p {
+  margin: 7px 0 0;
+  color: #475467;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.library-reference-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #e4e7ec;
+  color: #475467;
+  padding: 3px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.library-reference-entry[data-imported='true'] {
+  border-color: #86c8a3;
+  background: #f0fdf4;
+}
+
+.library-reference-entry[data-imported='true'] .library-reference-status {
+  background: #d1fadf;
+  color: #05603a;
 }
 
 .filename-modal input {

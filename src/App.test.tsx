@@ -60,8 +60,11 @@ function toolbarMenu(name: string): HTMLElement {
   })
 }
 
-function functionSignaturesFor(sectionName: string): string[] {
-  const section = screen.getByRole('region', {
+function functionSignaturesFor(
+  container: HTMLElement,
+  sectionName: string,
+): string[] {
+  const section = within(container).getByRole('region', {
     name: new RegExp(`^${sectionName}$`, 'i'),
   })
 
@@ -564,7 +567,7 @@ describe('App', () => {
       within(flowLabMenu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['About', 'Function Reference', 'Instructions'])
+    ).toEqual(['About', 'Reference', 'Instructions'])
     expect(flowLabTrigger).toHaveAttribute('aria-expanded', 'true')
 
     await user.click(fileTrigger)
@@ -645,19 +648,19 @@ describe('App', () => {
     await waitFor(() => expect(flowLabTrigger).toHaveFocus())
   })
 
-  it('shows every built-in function in a categorized reference dialog', async () => {
+  it('shows core functions and the complete library catalog by default', async () => {
     const user = userEvent.setup()
     render(<App />)
 
     const flowLabTrigger = screen.getByRole('button', { name: /^FlowLab$/i })
-    await chooseToolbarAction(user, 'FlowLab', 'Function Reference')
+    await chooseToolbarAction(user, 'FlowLab', 'Reference')
 
-    const dialog = screen.getByRole('dialog', { name: /^Function Reference$/i })
+    const dialog = screen.getByRole('dialog', { name: /^Reference$/i })
     expect(dialog).toHaveAttribute('aria-modal', 'true')
     expect(dialog).toHaveTextContent(
-      'Core functions are always available. Library functions are built into FlowLab and require the named import.',
+      'Functions currently available to this program, followed by built-in and imported libraries. Library functions appear only after their library is imported.',
     )
-    expect(functionSignaturesFor('Core')).toEqual([
+    expect(functionSignaturesFor(dialog, 'Core')).toEqual([
       'sqrt(number)',
       'exp(number)',
       'log(number)',
@@ -672,11 +675,46 @@ describe('App', () => {
       'rand()',
       'ask()',
     ])
-    expect(functionSignaturesFor('Text')).toEqual([
-      'text_from_url(url)',
-      'split_words(text)',
-    ])
-    expect(functionSignaturesFor('Image')).toEqual([
+    expect(
+      within(dialog).queryByRole('region', { name: /^Text$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('region', { name: /^Image$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).queryByRole('region', { name: /^Turtle$/i }),
+    ).not.toBeInTheDocument()
+
+    const libraries = within(dialog).getByRole('region', {
+      name: /^Available libraries$/i,
+    })
+    for (const libraryName of ['text', 'image', 'turtle']) {
+      expect(
+        within(libraries).getByRole('article', {
+          name: new RegExp(`^${libraryName}$`, 'i'),
+        }),
+      ).toHaveTextContent('Not imported')
+    }
+
+    await user.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('dialog', { name: /^Reference$/i }),
+    ).not.toBeInTheDocument()
+    await waitFor(() => expect(flowLabTrigger).toHaveFocus())
+  })
+
+  it('lists functions only from imported native and FlowLab libraries', async () => {
+    const user = userEvent.setup()
+    registerFlowLabProgram('helpers.json', importedHelperProgram)
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'image\nhelpers')
+    await screen.findByText(/Native libraries: image/i)
+    await screen.findByText(/Imported files: helpers/i)
+    await chooseToolbarAction(user, 'FlowLab', 'Reference')
+
+    const dialog = screen.getByRole('dialog', { name: /^Reference$/i })
+    expect(functionSignaturesFor(dialog, 'Image')).toEqual([
       'get_pixel(image, x, y)',
       'image_from_pixels(rows)',
       'image_to_pixels(image)',
@@ -686,32 +724,26 @@ describe('App', () => {
       'imsize(image)',
       'set_pixel(image, x, y, color)',
     ])
-    expect(functionSignaturesFor('Turtle')).toEqual([
-      'backward(distance)',
-      'clear()',
-      'color(text)',
-      'forward(distance)',
-      'home()',
-      'left(degrees)',
-      'pendown()',
-      'penup()',
-      'right(degrees)',
-    ])
-    expect(screen.getByRole('region', { name: /^Text$/i })).toHaveTextContent(
-      'Enter text in Imports',
-    )
-    expect(screen.getByRole('region', { name: /^Image$/i })).toHaveTextContent(
-      'Enter image in Imports',
-    )
-    expect(screen.getByRole('region', { name: /^Turtle$/i })).toHaveTextContent(
-      'Enter turtle in Imports',
-    )
-
-    await user.keyboard('{Escape}')
+    expect(functionSignaturesFor(dialog, 'helpers')).toEqual(['helper(…)'])
     expect(
-      screen.queryByRole('dialog', { name: /^Function Reference$/i }),
+      within(dialog).queryByRole('region', { name: /^Text$/i }),
     ).not.toBeInTheDocument()
-    await waitFor(() => expect(flowLabTrigger).toHaveFocus())
+    expect(
+      within(dialog).queryByRole('region', { name: /^Turtle$/i }),
+    ).not.toBeInTheDocument()
+
+    const libraries = within(dialog).getByRole('region', {
+      name: /^Available libraries$/i,
+    })
+    expect(
+      within(libraries).getByRole('article', { name: /^image$/i }),
+    ).toHaveTextContent('Imported')
+    expect(
+      within(libraries).getByRole('article', { name: /^helpers$/i }),
+    ).toHaveTextContent('Imported')
+    expect(
+      within(libraries).getByRole('article', { name: /^text$/i }),
+    ).toHaveTextContent('Not imported')
   })
 
   it('links Instructions directly to the GitHub README in a separate tab', async () => {

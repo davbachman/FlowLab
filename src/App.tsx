@@ -59,7 +59,10 @@ import {
   type ImportResolution,
 } from './lib/imports'
 import { stringifyValue } from './lib/expression'
-import { FUNCTION_REFERENCE_SECTIONS } from './lib/functionReference'
+import {
+  availableFunctionReferenceSections,
+  availableLibraryReferences,
+} from './lib/functionReference'
 import {
   displayedImageData,
   downloadImage,
@@ -789,6 +792,19 @@ function App() {
     const classNames = new Set(importedClassNames)
     return importedFunctionNames.filter((name) => !classNames.has(name))
   }, [importedClassNames, importedFunctionNames])
+  const referenceFunctionSections = useMemo(
+    () =>
+      availableFunctionReferenceSections(
+        program,
+        importResolution,
+        importedPlainFunctionNames,
+      ),
+    [importResolution, importedPlainFunctionNames, program],
+  )
+  const referenceLibraries = useMemo(
+    () => availableLibraryReferences(importResolution),
+    [importResolution],
+  )
   const importedPrograms = useMemo(
     () => importResolution.files.map((file) => file.program),
     [importResolution.files],
@@ -1874,7 +1890,7 @@ function App() {
               role="menuitem"
               onClick={openFunctionReferenceDialog}
             >
-              Function Reference
+              Reference
             </button>
             <a
               className="toolbar-menu-item"
@@ -2424,16 +2440,17 @@ function App() {
             className="function-reference-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="function-reference-title"
-            aria-describedby="function-reference-description"
+            aria-labelledby="reference-title"
+            aria-describedby="reference-description"
             onKeyDown={trapDialogFocus}
           >
             <header className="function-reference-header">
               <div>
-                <h2 id="function-reference-title">Function Reference</h2>
-                <p id="function-reference-description">
-                  Core functions are always available. Library functions are
-                  built into FlowLab and require the named import.
+                <h2 id="reference-title">Reference</h2>
+                <p id="reference-description">
+                  Functions currently available to this program, followed by
+                  built-in and imported libraries. Library functions appear
+                  only after their library is imported.
                 </p>
               </div>
               <button
@@ -2444,32 +2461,67 @@ function App() {
                 Close
               </button>
             </header>
-            <div className="function-reference-grid">
-              {FUNCTION_REFERENCE_SECTIONS.map((section) => (
-                <section
-                  key={section.id}
-                  className="function-reference-section"
-                  aria-labelledby={`function-reference-${section.id}`}
-                >
-                  <h3 id={`function-reference-${section.id}`}>
-                    {section.title}
-                  </h3>
-                  <p className="function-reference-availability">
-                    {section.availability}
-                  </p>
-                  <dl className="function-reference-list">
-                    {section.functions.map((entry) => (
-                      <div key={entry.name} className="function-reference-entry">
-                        <dt>
-                          <code>{entry.signature}</code>
-                        </dt>
-                        <dd>{entry.description}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </section>
-              ))}
-            </div>
+            <section
+              className="reference-category"
+              aria-labelledby="available-functions-title"
+            >
+              <h3 id="available-functions-title">Available functions</h3>
+              <div className="function-reference-grid">
+                {referenceFunctionSections.map((section) => (
+                  <section
+                    key={section.id}
+                    className="function-reference-section"
+                    aria-labelledby={`function-reference-${section.id}`}
+                  >
+                    <h4 id={`function-reference-${section.id}`}>
+                      {section.title}
+                    </h4>
+                    <p className="function-reference-availability">
+                      {section.availability}
+                    </p>
+                    <dl className="function-reference-list">
+                      {section.functions.map((entry) => (
+                        <div
+                          key={entry.name}
+                          className="function-reference-entry"
+                        >
+                          <dt>
+                            <code>{entry.signature}</code>
+                          </dt>
+                          <dd>{entry.description}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </section>
+                ))}
+              </div>
+            </section>
+            <section
+              className="reference-category"
+              aria-labelledby="available-libraries-title"
+            >
+              <h3 id="available-libraries-title">Available libraries</h3>
+              <div className="library-reference-grid">
+                {referenceLibraries.map((library) => (
+                  <article
+                    key={library.id}
+                    className="library-reference-entry"
+                    data-imported={library.imported}
+                    aria-labelledby={`library-reference-${library.id}`}
+                  >
+                    <header>
+                      <h4 id={`library-reference-${library.id}`}>
+                        <code>{library.name}</code>
+                      </h4>
+                      <span className="library-reference-status">
+                        {library.imported ? 'Imported' : 'Not imported'}
+                      </span>
+                    </header>
+                    <p>{library.description}</p>
+                  </article>
+                ))}
+              </div>
+            </section>
           </div>
         </div>
       ) : null}
