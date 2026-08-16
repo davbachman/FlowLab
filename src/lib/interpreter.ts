@@ -54,6 +54,12 @@ import {
   validateTextFromUrlArguments,
 } from './text'
 import {
+  isMathFunctionName,
+  MATH_FUNCTION_NAMES,
+  MATH_LIBRARY_NAME,
+  runMathFunction,
+} from './math'
+import {
   initialTurtleState,
   isTurtleCommandName,
   runTurtleCommand,
@@ -1384,6 +1390,12 @@ function evaluateProgramExpression(
         }
 
         if (isNativeFunctionAvailable(state, name)) {
+          if (isMathFunctionName(name)) {
+            const result = runMathFunction(name, args)
+            progress.completedCalls[currentCallIndex] = result
+            return result
+          }
+
           if (isTextFunctionName(name)) {
             if (name === 'text_from_url') {
               throw new TextLoadSuspension({
@@ -2623,7 +2635,8 @@ function normalizeNativeLibraries(nativeLibraries: string[]): string[] {
           (library) =>
             library === TURTLE_LIBRARY_NAME ||
             library === TEXT_LIBRARY_NAME ||
-            library === IMAGE_LIBRARY_NAME,
+            library === IMAGE_LIBRARY_NAME ||
+            library === MATH_LIBRARY_NAME,
         ),
     ),
   ]
@@ -2640,6 +2653,9 @@ function nativeFunctionNamesForLibraries(nativeLibraries: string[]): string[] {
     ...(nativeLibraries.includes(IMAGE_LIBRARY_NAME)
       ? [...IMAGE_FUNCTION_NAMES]
       : []),
+    ...(nativeLibraries.includes(MATH_LIBRARY_NAME)
+      ? [...MATH_FUNCTION_NAMES]
+      : []),
   ]
 }
 
@@ -2650,7 +2666,9 @@ function isNativeFunctionAvailable(state: ExecutionState, name: string): boolean
       (state.nativeLibraries.includes(TEXT_LIBRARY_NAME) &&
         isTextFunctionName(name)) ||
       (state.nativeLibraries.includes(IMAGE_LIBRARY_NAME) &&
-        isImageFunctionName(name))) &&
+        isImageFunctionName(name)) ||
+      (state.nativeLibraries.includes(MATH_LIBRARY_NAME) &&
+        isMathFunctionName(name))) &&
     !hasFlowLabFunctionTarget(state, name)
   )
 }

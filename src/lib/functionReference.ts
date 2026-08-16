@@ -3,6 +3,7 @@ import {
   isBuiltInFunctionName,
 } from './expression'
 import { IMAGE_FUNCTION_NAMES, IMAGE_LIBRARY_NAME } from './image'
+import { MATH_FUNCTION_NAMES, MATH_LIBRARY_NAME } from './math'
 import type { ImportResolution } from './imports'
 import { isVariableName } from './statements'
 import { TEXT_FUNCTION_NAMES, TEXT_LIBRARY_NAME } from './text'
@@ -56,6 +57,17 @@ const CORE_FUNCTION_DETAILS = {
     signature: 'sqrt(number)',
     description: 'Returns the square root of a nonnegative Number.',
   },
+  rand: {
+    signature: 'rand()',
+    description: 'Returns a random Number from 0 up to, but not including, 1.',
+  },
+  ask: {
+    signature: 'ask()',
+    description: 'Opens an input dialog and returns the parsed value.',
+  },
+} satisfies FunctionDetails<typeof CORE_FUNCTION_NAMES>
+
+const MATH_FUNCTION_DETAILS = {
   exp: {
     signature: 'exp(number)',
     description: 'Returns e raised to the given Number.',
@@ -96,15 +108,7 @@ const CORE_FUNCTION_DETAILS = {
     signature: 'atan2(y, x)',
     description: 'Returns the angle in radians from the positive x-axis to (x, y).',
   },
-  rand: {
-    signature: 'rand()',
-    description: 'Returns a random Number from 0 up to, but not including, 1.',
-  },
-  ask: {
-    signature: 'ask()',
-    description: 'Opens an input dialog and returns the parsed value.',
-  },
-} satisfies FunctionDetails<typeof CORE_FUNCTION_NAMES>
+} satisfies FunctionDetails<typeof MATH_FUNCTION_NAMES>
 
 const TEXT_FUNCTION_DETAILS = {
   text_from_url: {
@@ -199,6 +203,12 @@ const CORE_FUNCTION_REFERENCE: FunctionReferenceSection = {
 }
 
 const NATIVE_LIBRARY_REFERENCES: NativeLibraryReference[] = [
+  {
+    name: MATH_LIBRARY_NAME,
+    title: 'Math',
+    description: 'Provides exponential, logarithmic, and trigonometric functions.',
+    functions: referenceEntries(MATH_FUNCTION_NAMES, MATH_FUNCTION_DETAILS),
+  },
   {
     name: TEXT_LIBRARY_NAME,
     title: 'Text',

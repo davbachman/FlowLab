@@ -7,6 +7,7 @@
 - [Add imports](#add-imports)
 - [Resolve JSON imports](#resolve-json-imports)
 - [Handle name conflicts](#handle-name-conflicts)
+- [Math library](#math-library)
 - [Text library](#text-library)
 - [Image library](#image-library)
 - [Turtle library](#turtle-library)
@@ -34,6 +35,25 @@ Import a file once if the browser cannot otherwise find it by name. See [Saving 
 - Only a winning imported Class contributes its Methods.
 - A current-canvas Method wins over an imported Method with the same qualified name.
 - FlowLab Functions and Classes take priority over same-named native-library functions, allowing a program to deliberately replace an imported command.
+
+## Math library
+
+Enter `math` in Imports to enable:
+
+| Call | Result |
+| --- | --- |
+| `exp(number)` | Returns e raised to the given Number. |
+| `log(number)` | Returns the natural logarithm of a positive Number. |
+| `log10(number)` | Returns the base-10 logarithm of a positive Number. |
+| `sin(radians)` | Returns the sine of an angle measured in radians. |
+| `cos(radians)` | Returns the cosine of an angle measured in radians. |
+| `tan(radians)` | Returns the tangent of an angle measured in radians. |
+| `asin(number)` | Returns an angle in radians whose sine is the given Number. |
+| `acos(number)` | Returns an angle in radians whose cosine is the given Number. |
+| `atan(number)` | Returns an angle in radians whose tangent is the given Number. |
+| `atan2(y, x)` | Returns the angle in radians from the positive x-axis to `(x, y)`. |
+
+Angles passed to trigonometric functions and returned by inverse trigonometric functions are measured in radians. The inputs to `asin` and `acos` must be from -1 through 1, and logarithms require positive inputs.
 
 ## Text library
 

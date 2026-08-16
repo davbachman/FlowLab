@@ -662,19 +662,12 @@ describe('App', () => {
     )
     expect(functionSignaturesFor(dialog, 'Core')).toEqual([
       'sqrt(number)',
-      'exp(number)',
-      'log(number)',
-      'log10(number)',
-      'sin(radians)',
-      'cos(radians)',
-      'tan(radians)',
-      'asin(number)',
-      'acos(number)',
-      'atan(number)',
-      'atan2(y, x)',
       'rand()',
       'ask()',
     ])
+    expect(
+      within(dialog).queryByRole('region', { name: /^Math$/i }),
+    ).not.toBeInTheDocument()
     expect(
       within(dialog).queryByRole('region', { name: /^Text$/i }),
     ).not.toBeInTheDocument()
@@ -688,7 +681,7 @@ describe('App', () => {
     const libraries = within(dialog).getByRole('region', {
       name: /^Available libraries$/i,
     })
-    for (const libraryName of ['text', 'image', 'turtle']) {
+    for (const libraryName of ['math', 'text', 'image', 'turtle']) {
       expect(
         within(libraries).getByRole('article', {
           name: new RegExp(`^${libraryName}$`, 'i'),
@@ -708,12 +701,24 @@ describe('App', () => {
     registerFlowLabProgram('helpers.json', importedHelperProgram)
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'image\nhelpers')
-    await screen.findByText(/Native libraries: image/i)
+    await user.type(screen.getByLabelText(/Imports list/i), 'math\nimage\nhelpers')
+    await screen.findByText(/Native libraries: math, image/i)
     await screen.findByText(/Imported files: helpers/i)
     await chooseToolbarAction(user, 'FlowLab', 'Reference')
 
     const dialog = screen.getByRole('dialog', { name: /^Reference$/i })
+    expect(functionSignaturesFor(dialog, 'Math')).toEqual([
+      'exp(number)',
+      'log(number)',
+      'log10(number)',
+      'sin(radians)',
+      'cos(radians)',
+      'tan(radians)',
+      'asin(number)',
+      'acos(number)',
+      'atan(number)',
+      'atan2(y, x)',
+    ])
     expect(functionSignaturesFor(dialog, 'Image')).toEqual([
       'get_pixel(image, x, y)',
       'image_from_pixels(rows)',
@@ -735,6 +740,9 @@ describe('App', () => {
     const libraries = within(dialog).getByRole('region', {
       name: /^Available libraries$/i,
     })
+    expect(
+      within(libraries).getByRole('article', { name: /^math$/i }),
+    ).toHaveTextContent('Imported')
     expect(
       within(libraries).getByRole('article', { name: /^image$/i }),
     ).toHaveTextContent('Imported')

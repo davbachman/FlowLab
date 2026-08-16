@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeImportedProgram, validateProgram } from './validation'
+import { MATH_FUNCTION_NAMES } from './math'
 import type { Program } from './types'
 
 const validLinearProgram: Program = {
@@ -320,7 +321,7 @@ describe('validateProgram', () => {
     expect(validateProgram(program).errors).toEqual([])
   })
 
-  it('accepts standard math built-ins and rejects removed built-in calls', () => {
+  it('requires the math library functions to be imported', () => {
     const mathProgram = {
       ...validLinearProgram,
       nodes: validLinearProgram.nodes.map((node) =>
@@ -336,7 +337,14 @@ describe('validateProgram', () => {
       ),
     }
 
-    expect(validateProgram(mathProgram).errors).toEqual([])
+    expect(validateProgram(mathProgram).errors.join('\n')).toMatch(
+      /missing Function "sin".*missing Function "log10"/s,
+    )
+    expect(
+      validateProgram(mathProgram, {
+        externalFunctionNames: new Set(MATH_FUNCTION_NAMES),
+      }).errors,
+    ).toEqual([])
     expect(validateProgram(lenProgram).errors.join('\n')).toMatch(
       /missing Function "len"/,
     )

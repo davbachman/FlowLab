@@ -180,19 +180,6 @@ describe('evaluateExpression', () => {
     expect(value as number).toBeLessThan(1)
   })
 
-  it('supports exponential, logarithmic, and trigonometric functions', () => {
-    expect(evaluateExpression('exp(1)', {})).toBeCloseTo(Math.E)
-    expect(evaluateExpression('log(2.718281828459045)', {})).toBeCloseTo(1)
-    expect(evaluateExpression('log10(1000)', {})).toBe(3)
-    expect(evaluateExpression('sin(0)', {})).toBe(0)
-    expect(evaluateExpression('cos(0)', {})).toBe(1)
-    expect(evaluateExpression('tan(0)', {})).toBe(0)
-    expect(evaluateExpression('asin(1)', {})).toBeCloseTo(Math.PI / 2)
-    expect(evaluateExpression('acos(1)', {})).toBe(0)
-    expect(evaluateExpression('atan(1)', {})).toBeCloseTo(Math.PI / 4)
-    expect(evaluateExpression('atan2(1, 0)', {})).toBeCloseTo(Math.PI / 2)
-  })
-
   it('lets the runtime preserve rand values by expression site', () => {
     const visitedSites: number[] = []
 
@@ -320,6 +307,9 @@ describe('evaluateExpression', () => {
     )
     expect(() => evaluateExpression('len(S)', { S: 'cat' })).toThrow(
       /Unknown function "len"/,
+    )
+    expect(() => evaluateExpression('sin(0)', {})).toThrow(
+      /Unknown function "sin"/,
     )
   })
 
@@ -458,27 +448,6 @@ describe('evaluateExpression', () => {
     )
     expect(() => evaluateExpression('rand(1)', {})).toThrow(
       /rand requires no arguments/,
-    )
-    expect(() => evaluateExpression('sin("zero")', {})).toThrow(
-      /requires numbers/,
-    )
-    expect(() => evaluateExpression('atan2(1)', {})).toThrow(
-      /atan2 requires exactly two arguments/,
-    )
-    expect(() => evaluateExpression('asin(2)', {})).toThrow(
-      /asin requires a number from -1 through 1/,
-    )
-    expect(() => evaluateExpression('acos(-2)', {})).toThrow(
-      /acos requires a number from -1 through 1/,
-    )
-    expect(() => evaluateExpression('log(0)', {})).toThrow(
-      /log requires a positive number/,
-    )
-    expect(() => evaluateExpression('log10(-1)', {})).toThrow(
-      /log10 requires a positive number/,
-    )
-    expect(() => evaluateExpression('exp(1000)', {})).toThrow(
-      /exp result is outside the supported Number range/,
     )
   })
 })

@@ -1210,6 +1210,37 @@ describe('interpreter', () => {
     expect(state.callStack).toHaveLength(0)
   })
 
+  it('runs math functions only when the math library is imported', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'calculate',
+          type: 'assignment',
+          text: 'value <- sin(0) + cos(0) + log10(100)',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'end', type: 'return', text: 'value', position: { x: 0, y: 200 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'calculate' },
+        { id: 'e2', source: 'calculate', target: 'end' },
+      ],
+    }
+
+    const unavailable = createExecution(program, [])
+    const finalState = runExecution(
+      createExecution(program, [], { nativeLibraries: ['math'] }),
+    )
+
+    expect(unavailable.status).toBe('error')
+    expect(unavailable.error).toMatch(/missing Function "sin"/)
+    expect(finalState.status).toBe('halted')
+    expect(finalState.environment.value).toBe(3)
+    expect(finalState.returnValue).toBe(3)
+  })
+
   it('runs turtle Call blocks and records the final drawing instantly', () => {
     const program: Program = {
       version: 1,

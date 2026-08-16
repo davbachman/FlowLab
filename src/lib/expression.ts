@@ -83,21 +83,7 @@ const LEFT_ONLY_OBJECT_OPERATORS = new Set([
   '>=',
 ])
 const WORD_OPERATORS = new Set(['and', 'or', 'not'])
-export const CORE_FUNCTION_NAMES = [
-  'sqrt',
-  'exp',
-  'log',
-  'log10',
-  'sin',
-  'cos',
-  'tan',
-  'asin',
-  'acos',
-  'atan',
-  'atan2',
-  'rand',
-  'ask',
-] as const
+export const CORE_FUNCTION_NAMES = ['sqrt', 'rand', 'ask'] as const
 const BUILT_IN_FUNCTIONS = new Set<string>(CORE_FUNCTION_NAMES)
 
 export interface ExpressionEvaluationContext {
@@ -924,52 +910,6 @@ function evaluateCall(
     return Math.sqrt(number)
   }
 
-  if (expression.name === 'exp') {
-    return requireFiniteFunctionResult(
-      expression.name,
-      Math.exp(requireSingleNumberArgument(expression.name, args)),
-    )
-  }
-
-  if (expression.name === 'log' || expression.name === 'log10') {
-    const number = requireSingleNumberArgument(expression.name, args)
-    if (number <= 0) {
-      throw new Error(`${expression.name} requires a positive number`)
-    }
-
-    return expression.name === 'log' ? Math.log(number) : Math.log10(number)
-  }
-
-  if (
-    expression.name === 'sin' ||
-    expression.name === 'cos' ||
-    expression.name === 'tan' ||
-    expression.name === 'atan'
-  ) {
-    const number = requireSingleNumberArgument(expression.name, args)
-    return Math[expression.name](number)
-  }
-
-  if (expression.name === 'asin' || expression.name === 'acos') {
-    const number = requireSingleNumberArgument(expression.name, args)
-    if (number < -1 || number > 1) {
-      throw new Error(`${expression.name} requires a number from -1 through 1`)
-    }
-
-    return Math[expression.name](number)
-  }
-
-  if (expression.name === 'atan2') {
-    if (args.length !== 2) {
-      throw new Error('atan2 requires exactly two arguments')
-    }
-
-    return Math.atan2(
-      requireNumber(args[0], expression.name),
-      requireNumber(args[1], expression.name),
-    )
-  }
-
   if (expression.name === 'rand') {
     if (args.length !== 0) {
       throw new Error('rand requires no arguments')
@@ -998,14 +938,6 @@ function requireSingleNumberArgument(
   args: RuntimeValue[],
 ): number {
   return requireNumber(requireSingleArgument(name, args), name)
-}
-
-function requireFiniteFunctionResult(name: string, value: number): number {
-  if (!Number.isFinite(value)) {
-    throw new Error(`${name} result is outside the supported Number range`)
-  }
-
-  return value
 }
 
 function evaluateIndex(

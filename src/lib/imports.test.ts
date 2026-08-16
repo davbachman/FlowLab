@@ -114,6 +114,30 @@ describe('imports', () => {
     ])
   })
 
+  it('resolves math as a native library without loading a JSON file', async () => {
+    const resolution = await resolveFlowLabImports('math')
+
+    expect(resolution.errors).toEqual([])
+    expect(resolution.files).toEqual([])
+    expect(resolution.nativeLibraries).toEqual([
+      {
+        name: 'math',
+        functionNames: [
+          'exp',
+          'log',
+          'log10',
+          'sin',
+          'cos',
+          'tan',
+          'asin',
+          'acos',
+          'atan',
+          'atan2',
+        ],
+      },
+    ])
+  })
+
   it('resolves turtle alongside normal FlowLab JSON imports', async () => {
     const directoryHandle = {
       getFileHandle: (name: string) => {

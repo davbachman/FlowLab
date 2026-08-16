@@ -2,7 +2,7 @@
 
 [Open the FlowLab app](https://davbachman.github.io/FlowLab/)
 
-FlowLab is a browser-based flowchart programming environment for building, validating, stepping through, and running visual programs with functions, classes, objects, loops, input queues, output, text utilities, image processing, and turtle graphics.
+FlowLab is a browser-based flowchart programming environment for building, validating, stepping through, and running visual programs with functions, classes, objects, loops, input queues, output, math and text utilities, image processing, and turtle graphics.
 
 Created by David Bachman with GPT 5.5 and GPT 5.6 sol. Learn more about David at [Pitzer College](https://pzacad.pitzer.edu/~dbachman/) and subscribe to his AI podcast, [*Entropy Bonus*](https://profbachman.substack.com/).
 
@@ -38,7 +38,7 @@ Choose a program from the Examples menu to load its complete, editable flowchart
 - Functions, classes, objects, methods, fields, recursion, and Python-style special methods.
 - Numbers, strings, booleans, lists, dictionaries, and expandable object values.
 - Continuous and step-through execution with active-flow input, variables, output, and node highlighting.
-- Imports from FlowLab JSON programs plus native text, image, and turtle libraries.
+- Imports from FlowLab JSON programs plus native math, text, image, and turtle libraries.
 - JSON loading and saving, including block positions and widths, comments, imports, and queued input.
 
 ## Documentation
@@ -48,7 +48,7 @@ Choose a program from the Examples menu to load its complete, editable flowchart
 | [Getting started](docs/getting-started.md) | Canvas workflow, Process blocks, validation, execution controls, input, and inspection. |
 | [Language reference](docs/language-reference.md) | Data types, expressions, assignments, calls, control flow, and built-ins. |
 | [Classes and objects](docs/classes-and-objects.md) | Declarations, fields, methods, identity, and special methods. |
-| [Imports and native libraries](docs/imports-and-libraries.md) | JSON program imports plus the `text`, `image`, and `turtle` libraries. |
+| [Imports and native libraries](docs/imports-and-libraries.md) | JSON program imports plus the `math`, `text`, `image`, and `turtle` libraries. |
 | [Saving and loading](docs/saving-and-loading.md) | New programs, JSON files, programs folders, and restored state. |
 
 ## License
