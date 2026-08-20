@@ -48,7 +48,7 @@ import {
 } from './image'
 import {
   isTextFunctionName,
-  splitWords,
+  runTextFunction,
   TEXT_FUNCTION_NAMES,
   TEXT_LIBRARY_NAME,
   validateTextFromUrlArguments,
@@ -1404,7 +1404,7 @@ function evaluateProgramExpression(
               })
             }
 
-            const result = splitWords(args)
+            const result = runTextFunction(name, args)
             progress.completedCalls[currentCallIndex] = result
             return result
           }

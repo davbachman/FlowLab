@@ -701,8 +701,11 @@ describe('App', () => {
     registerFlowLabProgram('helpers.json', importedHelperProgram)
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'math\nimage\nhelpers')
-    await screen.findByText(/Native libraries: math, image/i)
+    await user.type(
+      screen.getByLabelText(/Imports list/i),
+      'math\ntext\nimage\nhelpers',
+    )
+    await screen.findByText(/Native libraries: math, text, image/i)
     await screen.findByText(/Imported files: helpers/i)
     await chooseToolbarAction(user, 'FlowLab', 'Reference')
 
@@ -719,6 +722,12 @@ describe('App', () => {
       'atan(number)',
       'atan2(y, x)',
     ])
+    expect(functionSignaturesFor(dialog, 'Text')).toEqual([
+      'text_from_url(url)',
+      'split_words(text)',
+      'chr(code)',
+      'ord(character)',
+    ])
     expect(functionSignaturesFor(dialog, 'Image')).toEqual([
       'get_pixel(image, x, y)',
       'image_from_pixels(rows)',
@@ -730,9 +739,6 @@ describe('App', () => {
       'set_pixel(image, x, y, color)',
     ])
     expect(functionSignaturesFor(dialog, 'helpers')).toEqual(['helper(…)'])
-    expect(
-      within(dialog).queryByRole('region', { name: /^Text$/i }),
-    ).not.toBeInTheDocument()
     expect(
       within(dialog).queryByRole('region', { name: /^Turtle$/i }),
     ).not.toBeInTheDocument()
@@ -751,7 +757,7 @@ describe('App', () => {
     ).toHaveTextContent('Imported')
     expect(
       within(libraries).getByRole('article', { name: /^text$/i }),
-    ).toHaveTextContent('Not imported')
+    ).toHaveTextContent('Imported')
   })
 
   it('links Instructions directly to the GitHub README in a separate tab', async () => {

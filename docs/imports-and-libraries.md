@@ -61,6 +61,8 @@ Enter `text` in Imports to enable:
 
 - `text_from_url(url)` loads a browser-readable URL and returns its contents as a String. The server must allow the browser request, including any required cross-origin permissions.
 - `split_words(text)` splits a String on whitespace and returns a List of words.
+- `chr(code)` returns the one-character String for an integer Unicode code point from 0 through 1,114,111.
+- `ord(character)` returns the integer Unicode code point for a String containing exactly one Unicode character.
 
 Calling `text_from_url()` temporarily shows the loading state while the browser fetches the text.
 

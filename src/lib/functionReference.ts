@@ -119,6 +119,14 @@ const TEXT_FUNCTION_DETAILS = {
     signature: 'split_words(text)',
     description: 'Splits a String on whitespace and returns a List of words.',
   },
+  chr: {
+    signature: 'chr(code)',
+    description: 'Returns the String character for a Unicode code point.',
+  },
+  ord: {
+    signature: 'ord(character)',
+    description: 'Returns the Unicode code point for a one-character String.',
+  },
 } satisfies FunctionDetails<typeof TEXT_FUNCTION_NAMES>
 
 const IMAGE_FUNCTION_DETAILS = {
@@ -212,7 +220,7 @@ const NATIVE_LIBRARY_REFERENCES: NativeLibraryReference[] = [
   {
     name: TEXT_LIBRARY_NAME,
     title: 'Text',
-    description: 'Loads text from URLs and splits text into words.',
+    description: 'Loads text and converts or splits Strings.',
     functions: referenceEntries(TEXT_FUNCTION_NAMES, TEXT_FUNCTION_DETAILS),
   },
   {

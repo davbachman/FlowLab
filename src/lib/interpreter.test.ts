@@ -1443,6 +1443,41 @@ describe('interpreter', () => {
     expect(state.returnValue).toEqual(['alpha', 'beta', 'gamma'])
   })
 
+  it('converts characters and Unicode code points through the text library', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'convert',
+          type: 'process',
+          text: 'letter <- chr(65)\nface <- chr(128578)\ncode <- ord(face)',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'end', type: 'return', text: 'code', position: { x: 0, y: 200 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'convert' },
+        { id: 'e2', source: 'convert', target: 'end' },
+      ],
+    }
+
+    const unavailable = createExecution(program, [])
+    const state = runExecution(
+      createExecution(program, [], { nativeLibraries: ['text'] }),
+    )
+
+    expect(unavailable.status).toBe('error')
+    expect(unavailable.error).toMatch(/missing Function "chr"/)
+    expect(state.status).toBe('halted')
+    expect(state.environment).toMatchObject({
+      letter: 'A',
+      face: '🙂',
+      code: 128578,
+    })
+    expect(state.returnValue).toBe(128578)
+  })
+
   it('runs image creation, pixel, display, and save functions together', () => {
     const program: Program = {
       version: 1,
