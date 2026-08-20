@@ -35,6 +35,25 @@ describe('evaluateExpression', () => {
     expect(evaluateExpression('x + y - 1', { x: 14, y: 2 })).toBe(15)
   })
 
+  it('supports Python-style floor division and modulo', () => {
+    expect(evaluateExpression('10 // 3', {})).toBe(3)
+    expect(evaluateExpression('10 % 3', {})).toBe(1)
+    expect(evaluateExpression('-10 // 3', {})).toBe(-4)
+    expect(evaluateExpression('-10 % 3', {})).toBe(2)
+    expect(evaluateExpression('10 // -3', {})).toBe(-4)
+    expect(evaluateExpression('10 % -3', {})).toBe(-2)
+    expect(evaluateExpression('-10 // -3', {})).toBe(3)
+    expect(evaluateExpression('-10 % -3', {})).toBe(-1)
+    expect(evaluateExpression('7.5 // 2', {})).toBe(3)
+    expect(evaluateExpression('7.5 % 2', {})).toBe(1.5)
+  })
+
+  it('gives floor division and modulo multiplicative precedence', () => {
+    expect(evaluateExpression('2 + 10 // 3 * 4 % 5', {})).toBe(4)
+    expect(evaluateExpression('10 // 3 / 2', {})).toBe(1.5)
+    expect(evaluateExpression('10 / 3 // 2', {})).toBe(1)
+  })
+
   it('offers every overloadable operator to the left object with a stable site', () => {
     const left = object('Box', 1)
     const right = object('Box', 2)
@@ -49,6 +68,13 @@ describe('evaluateExpression', () => {
       { source: 'left - right', operator: '-', args: [right], result: 'subtracted' },
       { source: 'left * right', operator: '*', args: [right], result: 'multiplied' },
       { source: 'left / right', operator: '/', args: [right], result: 'divided' },
+      {
+        source: 'left // right',
+        operator: '//',
+        args: [right],
+        result: 'floor divided',
+      },
+      { source: 'left % right', operator: '%', args: [right], result: 'modulo' },
       { source: 'left = right', operator: '=', args: [right], result: true },
       { source: 'left == right', operator: '==', args: [right], result: true },
       { source: 'left != right', operator: '!=', args: [right], result: true },
@@ -105,6 +131,9 @@ describe('evaluateExpression', () => {
       /object on the right.*reflected.*not supported/i,
     )
     expect(() => evaluateExpression('1 < right', { right }, context)).toThrow(
+      /object on the right.*reflected.*not supported/i,
+    )
+    expect(() => evaluateExpression('1 % right', { right }, context)).toThrow(
       /object on the right.*reflected.*not supported/i,
     )
     expect(evaluateExpression('1 == right', { right }, context)).toBe(false)
@@ -292,7 +321,7 @@ describe('evaluateExpression', () => {
     )
   })
 
-  it('rejects removed mod and exponentiation operators', () => {
+  it('rejects word-form mod and exponentiation operators', () => {
     expect(() => evaluateExpression('10 mod 3', {})).toThrow(
       /Unexpected token "mod"/,
     )
@@ -437,6 +466,16 @@ describe('evaluateExpression', () => {
       /Undefined variable "missing"/,
     )
     expect(() => evaluateExpression('10 / 0', {})).toThrow(/Division by zero/)
+    expect(() => evaluateExpression('10 // 0', {})).toThrow(
+      /Floor division by zero/,
+    )
+    expect(() => evaluateExpression('10 % 0', {})).toThrow(/Modulo by zero/)
+    expect(() => evaluateExpression('"10" // 2', {})).toThrow(
+      /Operator "\/\/" requires numbers/,
+    )
+    expect(() => evaluateExpression('10 % "2"', {})).toThrow(
+      /Operator "%" requires numbers/,
+    )
     expect(() => evaluateExpression('L["x"]', { L: [1, 2, 3] })).toThrow(
       /Index must be a number/,
     )

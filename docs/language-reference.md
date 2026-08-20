@@ -16,7 +16,7 @@
 
 | Data type | Literals and values | Allowed operations |
 | --- | --- | --- |
-| Number | Integers and decimals, such as `3`, `-2`, `4.5` | Arithmetic `+`, `-`, `*`, `/`; unary `-`; comparisons `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`; core numeric functions and the imported [math library](imports-and-libraries.md#math-library); truth tests where zero is false |
+| Number | Integers and decimals, such as `3`, `-2`, `4.5` | Arithmetic `+`, `-`, `*`, `/`, `//`, `%`; unary `-`; comparisons `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`; core numeric functions and the imported [math library](imports-and-libraries.md#math-library); truth tests where zero is false |
 | String | Single- or double-quoted text, such as `"cat"` or `'hello'`; supports escapes like `\n`, `\t`, `\"`, `\'`, and `\\` | Concatenation with `+`; zero-based indexing like `S[0]`; equality and inequality with `=`, `==`, `!=`; truth tests where non-empty strings are true; For iteration over characters |
 | Boolean | `True` and `False` | Logical `and`, `or`, `not`; equality and inequality; assignment, output, Return values, If conditions, and While conditions |
 | List | Bracket literals, such as `[1, 2, 3]`, `["a", True]`, and nested lists | Concatenation with `+` when both operands are lists; zero-based indexing like `L[0]`; indexed assignment like `L[i] <- value`; deep equality and inequality; truth tests where non-empty lists are true; For iteration over elements |
@@ -28,10 +28,11 @@
 ## Expression rules
 
 - Parentheses control grouping.
-- From highest to lowest, the main operator precedence is postfix calls/indexing/member access, unary `-`, `*` and `/`, `+` and `-`, comparisons, `not`, `and`, then `or`.
+- From highest to lowest, the main operator precedence is postfix calls/indexing/member access, unary `-`, `*`, `/`, `//`, and `%`, `+` and `-`, comparisons, `not`, `and`, then `or`.
 - Logical `and` and `or` short-circuit and return a Boolean.
 - False values are `False`, zero, and empty Strings, Lists, and Dictionaries. Objects and Images are always true; other nonempty values are true.
 - `+` adds two Numbers, concatenates two Lists, and otherwise concatenates the basic String forms of its operands. Object operands follow the `__add__` rules in [Classes and objects](classes-and-objects.md); concatenation never calls `__repr__` implicitly.
+- `a // b` returns the floor of `a / b`. `a % b` returns the remainder with the same sign as `b`, so `a = (a // b) * b + (a % b)`.
 - String and List indexes are zero-based nonnegative integers. Dictionary lookup keys are Strings, Numbers, or Booleans.
 
 ## Assignment and Process syntax

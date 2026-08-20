@@ -1015,6 +1015,8 @@ describe('App', () => {
     const reference = screen.getByLabelText(/Special methods reference/i)
     expect(reference).toHaveTextContent('__repr__')
     expect(reference).toHaveTextContent('__add__')
+    expect(reference).toHaveTextContent('__floordiv__')
+    expect(reference).toHaveTextContent('__mod__')
     expect(reference).toHaveTextContent('__eq__')
     expect(reference).toHaveTextContent('1 Input · Boolean')
   })

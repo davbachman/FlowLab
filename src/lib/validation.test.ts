@@ -820,6 +820,8 @@ describe('validateProgram', () => {
       '__sub__',
       '__mul__',
       '__truediv__',
+      '__floordiv__',
+      '__mod__',
       '__eq__',
       '__ne__',
       '__lt__',

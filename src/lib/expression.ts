@@ -77,6 +77,8 @@ const LEFT_ONLY_OBJECT_OPERATORS = new Set([
   '-',
   '*',
   '/',
+  '//',
+  '%',
   '<',
   '<=',
   '>',
@@ -246,13 +248,13 @@ function tokenize(source: string): Token[] {
     }
 
     const twoChar = source.slice(index, index + 2)
-    if (['<=', '>=', '==', '!='].includes(twoChar)) {
+    if (['<=', '>=', '==', '!=', '//'].includes(twoChar)) {
       tokens.push({ type: 'operator', value: twoChar })
       index += 2
       continue
     }
 
-    if (['+', '-', '*', '/', '<', '>', '='].includes(char)) {
+    if (['+', '-', '*', '/', '%', '<', '>', '='].includes(char)) {
       tokens.push({ type: 'operator', value: char })
       index += 1
       continue
@@ -468,7 +470,7 @@ class Parser {
 
     while (
       this.peek().type === 'operator' &&
-      ['*', '/'].includes(this.peek().value)
+      ['*', '/', '//', '%'].includes(this.peek().value)
     ) {
       const operator = this.advance().value
       const right = this.unary()
@@ -1049,6 +1051,30 @@ function evaluateBinary(
       throw new Error('Division by zero')
     }
     return requireNumber(left, '/') / divisor
+  }
+
+  if (operator === '//') {
+    const divisor = requireNumber(right, '//')
+    if (divisor === 0) {
+      throw new Error('Floor division by zero')
+    }
+    return Math.floor(requireNumber(left, '//') / divisor)
+  }
+
+  if (operator === '%') {
+    const divisor = requireNumber(right, '%')
+    if (divisor === 0) {
+      throw new Error('Modulo by zero')
+    }
+
+    const remainder = requireNumber(left, '%') % divisor
+    if (remainder === 0) {
+      return 0
+    }
+
+    return Math.sign(remainder) === Math.sign(divisor)
+      ? remainder
+      : remainder + divisor
   }
 
   return compareValues(left, right, operator)

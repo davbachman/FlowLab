@@ -2098,6 +2098,20 @@ describe('interpreter', () => {
         expected: { kind: 'object', className: 'Box', id: 2 },
       },
       {
+        method: '__floordiv__',
+        input: 'other',
+        expression: 'left // right',
+        returnExpression: '"floor divided"',
+        expected: 'floor divided',
+      },
+      {
+        method: '__mod__',
+        input: 'other',
+        expression: 'left % right',
+        returnExpression: '[value, other.value]',
+        expected: [8, 2],
+      },
+      {
         method: '__neg__',
         expression: '-left',
         returnExpression: 'False',
@@ -2157,25 +2171,33 @@ describe('interpreter', () => {
     expect(state.returnValue).toEqual([10, -8, true])
   })
 
-  it('lets __truediv__ handle a zero right operand itself', () => {
-    const state = runExecution(
-      createExecution(
-        objectOperatorProgram(
-          [
-            {
-              name: '__truediv__',
-              input: 'divisor',
-              returnExpression: '"handled " + divisor',
-            },
-          ],
-          'left / 0',
-        ),
-        [],
-      ),
-    )
+  it('lets division dunders handle a zero right operand themselves', () => {
+    const cases = [
+      { method: '__truediv__', expression: 'left / 0' },
+      { method: '__floordiv__', expression: 'left // 0' },
+      { method: '__mod__', expression: 'left % 0' },
+    ]
 
-    expect(state.status).toBe('halted')
-    expect(state.returnValue).toBe('handled 0')
+    for (const testCase of cases) {
+      const state = runExecution(
+        createExecution(
+          objectOperatorProgram(
+            [
+              {
+                name: testCase.method,
+                input: 'divisor',
+                returnExpression: '"handled " + divisor',
+              },
+            ],
+            testCase.expression,
+          ),
+          [],
+        ),
+      )
+
+      expect(state.status, testCase.method).toBe('halted')
+      expect(state.returnValue, testCase.method).toBe('handled 0')
+    }
   })
 
   it('dispatches both equality spellings and every comparison dunder', () => {
@@ -2404,6 +2426,8 @@ describe('interpreter', () => {
       '__sub__',
       '__mul__',
       '__truediv__',
+      '__floordiv__',
+      '__mod__',
       '__eq__',
       '__ne__',
       '__lt__',
@@ -2459,6 +2483,8 @@ describe('interpreter', () => {
       { expression: 'left - right', method: '__sub__', operator: '-' },
       { expression: 'left * right', method: '__mul__', operator: '\\*' },
       { expression: 'left / right', method: '__truediv__', operator: '/' },
+      { expression: 'left // right', method: '__floordiv__', operator: '//' },
+      { expression: 'left % right', method: '__mod__', operator: '%' },
       { expression: '-left', method: '__neg__', operator: '-' },
       { expression: 'left < right', method: '__lt__', operator: '<' },
       { expression: 'left <= right', method: '__le__', operator: '<=' },
@@ -2487,6 +2513,8 @@ describe('interpreter', () => {
       { expression: '1 - right', method: '__sub__' },
       { expression: '1 * right', method: '__mul__' },
       { expression: '1 / right', method: '__truediv__' },
+      { expression: '1 // right', method: '__floordiv__' },
+      { expression: '1 % right', method: '__mod__' },
       { expression: '1 < right', method: '__lt__' },
       { expression: '1 <= right', method: '__le__' },
       { expression: '1 > right', method: '__gt__' },

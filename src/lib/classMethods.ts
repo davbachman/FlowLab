@@ -8,6 +8,8 @@ export const OBJECT_BINARY_DUNDER_METHODS: Readonly<Record<string, string>> = {
   '-': '__sub__',
   '*': '__mul__',
   '/': '__truediv__',
+  '//': '__floordiv__',
+  '%': '__mod__',
   '=': '__eq__',
   '==': '__eq__',
   '!=': '__ne__',

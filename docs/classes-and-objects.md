@@ -62,6 +62,8 @@ Special methods are ordinary Method blocks attached to a Class, but FlowLab also
 | `__sub__` | Exactly one, connected directly after the Method | Any FlowLab value | `-` |
 | `__mul__` | Exactly one, connected directly after the Method | Any FlowLab value | `*` |
 | `__truediv__` | Exactly one, connected directly after the Method | Any FlowLab value | `/` |
+| `__floordiv__` | Exactly one, connected directly after the Method | Any FlowLab value | `//` |
+| `__mod__` | Exactly one, connected directly after the Method | Any FlowLab value | `%` |
 | `__neg__` | None | Any FlowLab value | Unary `-`, as in `-p` |
 
 - Binary operators use only the left object's special method and pass the right value through the Method's single Input block. Reflected right-side methods are not supported.

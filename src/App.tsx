@@ -82,6 +82,7 @@ import { LoopbackEdge } from './components/LoopbackEdge'
 import {
   DELETE_KEY_CODES,
   programToEdges,
+  withoutReplacedOutgoingEdges,
   type EditorEdge,
 } from './lib/editorEdges'
 import {
@@ -965,10 +966,18 @@ function App() {
         const branchLabel =
           branchLabelFromHandle(connection.sourceHandle) ??
           (sourceNode ? nextBranchLabel(sourceNode, currentEdges) : undefined)
+        const retainedEdges = sourceNode
+          ? withoutReplacedOutgoingEdges(
+              currentEdges,
+              sourceNode.id,
+              sourceNode.data.nodeType,
+              branchLabel,
+            )
+          : currentEdges
 
         const edge: EditorEdge = {
           ...connection,
-          id: attachmentEdgeId ?? nextEdgeId(connection, currentEdges),
+          id: attachmentEdgeId ?? nextEdgeId(connection, retainedEdges),
           source: connection.source,
           target: connection.target,
           sourceHandle:
@@ -983,7 +992,7 @@ function App() {
           label: branchLabel,
         }
 
-        return addEdge(edge, currentEdges)
+        return addEdge(edge, retainedEdges)
       })
 
       if (attachmentEdgeId) {
@@ -2101,8 +2110,11 @@ function App() {
                 <dd>unary - · 0 Inputs</dd>
               </div>
               <div>
-                <dt>__add__ · __sub__ · __mul__ · __truediv__</dt>
-                <dd>+ · - · * · / · 1 Input</dd>
+                <dt>
+                  __add__ · __sub__ · __mul__ · __truediv__ · __floordiv__ ·
+                  __mod__
+                </dt>
+                <dd>+ · - · * · / · // · % · 1 Input</dd>
               </div>
               <div>
                 <dt>__eq__ · __ne__ · __lt__ · __le__ · __gt__ · __ge__</dt>

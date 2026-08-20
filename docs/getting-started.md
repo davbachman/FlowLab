@@ -27,6 +27,7 @@ The Examples menu contains eight complete programs that can be edited and run as
 
 - FlowLab starts with a blank canvas. Select a block in the left palette, then click the canvas to place it. Edit the text directly inside any block.
 - Drag between block handles to make wires. Function and Method roots begin executable flows. Class handles attach Methods.
+- Multiple wires may enter an executable block. Starting a new wire from an occupied output replaces that output's old wire; `true` and `false` branch outputs are replaced independently, while Class Method attachments accumulate.
 - If, While, and For diamonds use either side for the `true` or loop-body branch and the bottom for the `false` or exit branch. FlowLab labels those wires and routes loop-back wires automatically.
 - Left-click selects one block. Shift-, Ctrl-, or Cmd-click extends the selection, and left-drag on empty canvas makes a selection window. Drag any selected block to move the selection.
 - Select a block and drag either blue grip at its left or right edge to expand its width for long code. Width changes can be undone and are preserved when the program is saved.
