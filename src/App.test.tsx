@@ -56,8 +56,28 @@ type TestUser = ReturnType<typeof userEvent.setup>
 
 function toolbarMenu(name: string): HTMLElement {
   return screen.getByRole('menu', {
-    name: new RegExp(`^${name}$`, 'i'),
+    name: toolbarAccessibleName(name),
   })
+}
+
+function toolbarTrigger(name: string): HTMLElement {
+  return within(
+    screen.getByRole('navigation', { name: /Application menus/i }),
+  ).getByRole('button', {
+    name: toolbarAccessibleName(name),
+  })
+}
+
+function toolbarAccessibleName(name: string): RegExp {
+  return new RegExp(`^${name}${name.toLowerCase() === 'run' ? '(?: menu)?' : ''}$`, 'i')
+}
+
+function runtimeSidebar(): HTMLElement {
+  return screen.getByLabelText(/Runtime sidebar/i)
+}
+
+function executionButton(name: RegExp): HTMLElement {
+  return within(runtimeSidebar()).getByRole('button', { name })
 }
 
 function functionSignaturesFor(
@@ -78,11 +98,7 @@ async function chooseToolbarAction(
   menuName: string,
   actionName: string,
 ): Promise<void> {
-  await user.click(
-    screen.getByRole('button', {
-      name: new RegExp(`^${menuName}$`, 'i'),
-    }),
-  )
+  await user.click(toolbarTrigger(menuName))
   await user.click(
     within(toolbarMenu(menuName)).getByRole('menuitem', {
       name: new RegExp(`^${actionName}$`, 'i'),
@@ -523,6 +539,7 @@ describe('App', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^File$/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Edit$/i })).toBeInTheDocument()
+    expect(toolbarTrigger('Run')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /^Examples$/i }),
     ).toBeInTheDocument()
@@ -532,7 +549,7 @@ describe('App', () => {
     expect(screen.getByLabelText(/Imports list/i)).toBeInTheDocument()
   })
 
-  it('shows the exact FlowLab, File, and Examples disclosure menus exclusively', async () => {
+  it('shows the application disclosure menus exclusively in toolbar order', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -545,14 +562,28 @@ describe('App', () => {
     const fileTrigger = within(menuBar).getByRole('button', {
       name: /^File$/i,
     })
+    const editTrigger = within(menuBar).getByRole('button', {
+      name: /^Edit$/i,
+    })
+    const runTrigger = toolbarTrigger('Run')
     const examplesTrigger = within(menuBar).getByRole('button', {
       name: /^Examples$/i,
     })
+
+    expect(within(menuBar).getAllByRole('button')).toEqual([
+      flowLabTrigger,
+      fileTrigger,
+      editTrigger,
+      runTrigger,
+      examplesTrigger,
+    ])
 
     expect(within(flowLabTrigger).getByText('FlowLab').tagName).toBe('STRONG')
     expect(flowLabTrigger).toHaveAttribute('aria-haspopup', 'menu')
     expect(flowLabTrigger).toHaveAttribute('aria-expanded', 'false')
     expect(fileTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(editTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(runTrigger).toHaveAttribute('aria-expanded', 'false')
     expect(examplesTrigger).toHaveAttribute('aria-expanded', 'false')
 
     await user.click(flowLabTrigger)
@@ -576,17 +607,30 @@ describe('App', () => {
     ).not.toBeInTheDocument()
     expect(flowLabTrigger).toHaveAttribute('aria-expanded', 'false')
     expect(fileTrigger).toHaveAttribute('aria-expanded', 'true')
+    const fileMenu = toolbarMenu('File')
+    expect(within(fileMenu).getAllByRole('menuitem')).toHaveLength(3)
     expect(
-      within(toolbarMenu('File'))
-        .getAllByRole('menuitem')
-        .map((button) => button.textContent),
-    ).toEqual(['New', 'Save', 'Load'])
+      within(fileMenu).getByRole('menuitem', { name: /^New$/i }),
+    ).toBeInTheDocument()
+    expect(
+      within(fileMenu).getByRole('menuitem', { name: /^Save$/i }),
+    ).toBeInTheDocument()
+    expect(
+      within(fileMenu).getByRole('menuitem', { name: /^Load$/i }),
+    ).toBeInTheDocument()
 
-    await user.click(examplesTrigger)
+    await user.click(runTrigger)
     expect(
       screen.queryByRole('menu', { name: /^File$/i }),
     ).not.toBeInTheDocument()
     expect(fileTrigger).toHaveAttribute('aria-expanded', 'false')
+    expect(runTrigger).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(examplesTrigger)
+    expect(
+      screen.queryByRole('menu', { name: /^Run(?: menu)?$/i }),
+    ).not.toBeInTheDocument()
+    expect(runTrigger).toHaveAttribute('aria-expanded', 'false')
     expect(examplesTrigger).toHaveAttribute('aria-expanded', 'true')
     expect(
       within(toolbarMenu('Examples'))
@@ -602,6 +646,158 @@ describe('App', () => {
       'Bank Account Class',
       'Turtle Polygon',
     ])
+  })
+
+  it('duplicates execution controls in the Run menu with shortcut hints', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    await user.click(toolbarTrigger('Run'))
+    const runMenu = toolbarMenu('Run')
+    const items = within(runMenu).getAllByRole('menuitem')
+
+    expect(items).toHaveLength(4)
+    expect(items[0]).toHaveTextContent(/Reset\s*(?:⇧⌘R|Ctrl\+Shift\+R)/i)
+    expect(items[0]).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Meta+Shift+R Control+Shift+R',
+    )
+    expect(items[1]).toHaveTextContent(/Step\s*(?:Shift\+|⇧)Space/i)
+    expect(items[1]).toHaveAttribute('aria-keyshortcuts', 'Shift+Space')
+    expect(items[2]).toHaveTextContent(/^Auto Step$/i)
+    expect(items[3]).toHaveTextContent(/Run\s*(?:Shift\+|⇧)Enter/i)
+    expect(items[3]).toHaveAttribute('aria-keyshortcuts', 'Shift+Enter')
+    for (const item of items) {
+      expect(item).toBeEnabled()
+    }
+
+    await user.click(items[0])
+    expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+
+    await chooseToolbarAction(user, 'Run', 'Step')
+    expect(screen.getByTestId('flow-node-input-n')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+
+    await chooseToolbarAction(user, 'Run', 'Auto Step')
+    expect(executionButton(/^Pause$/i)).toBeInTheDocument()
+    await user.click(executionButton(/^Pause$/i))
+
+    await chooseToolbarAction(user, 'Run', 'Run')
+
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      '6',
+    )
+    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+    await waitFor(() => expect(toolbarTrigger('Run')).toHaveFocus())
+  })
+
+  it('runs, resets, and steps with Shift+Enter, Ctrl+Shift+R, and Shift+Space', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    const stepsStatus = within(runtimeSidebar())
+      .getByText(/^Steps$/i)
+      .closest('div')
+
+    expect(
+      fireEvent.keyDown(window, { key: 'Enter', shiftKey: true }),
+    ).toBe(false)
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      '6',
+    )
+    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+
+    expect(
+      fireEvent.keyDown(window, { key: 'r', ctrlKey: true, shiftKey: true }),
+    ).toBe(false)
+    expect(stepsStatus).toHaveTextContent('0')
+    expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+
+    expect(
+      fireEvent.keyDown(window, {
+        key: ' ',
+        code: 'Space',
+        shiftKey: true,
+      }),
+    ).toBe(false)
+    expect(stepsStatus).toHaveTextContent('1')
+    expect(screen.getByTestId('flow-node-input-n')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+  })
+
+  it('leaves the browser New and Save shortcuts unclaimed', async () => {
+    const user = userEvent.setup()
+    const openedWindow = { opener: window } as unknown as Window
+    const open = vi.spyOn(window, 'open').mockReturnValue(openedWindow)
+    const showSaveFilePicker = vi.fn<TestSaveFilePicker>()
+    ;(window as TestWindowWithFilePickers).showSaveFilePicker = showSaveFilePicker
+
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    await user.click(toolbarTrigger('File'))
+    const fileMenu = toolbarMenu('File')
+    const newItem = within(fileMenu).getByRole('menuitem', { name: /^New$/i })
+    const saveItem = within(fileMenu).getByRole('menuitem', {
+      name: /^Save$/i,
+    })
+    expect(newItem).toHaveTextContent(/^New$/i)
+    expect(newItem).not.toHaveAttribute('aria-keyshortcuts')
+    expect(saveItem).toHaveTextContent(/^Save$/i)
+    expect(saveItem).not.toHaveAttribute('aria-keyshortcuts')
+    await user.keyboard('{Escape}')
+
+    expect(fireEvent.keyDown(window, { key: 's', ctrlKey: true })).toBe(true)
+    expect(showSaveFilePicker).not.toHaveBeenCalled()
+
+    expect(fireEvent.keyDown(window, { key: 'n', metaKey: true })).toBe(true)
+    expect(open).not.toHaveBeenCalled()
+    expect(openedWindow.opener).toBe(window)
+    expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
+  })
+
+  it('copies and pastes from the Edit menu and shows platform shortcuts', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    fireEvent.click(screen.getByTestId('flow-node-main'))
+
+    await user.click(toolbarTrigger('Edit'))
+    let editMenu = toolbarMenu('Edit')
+    const copy = within(editMenu).getByRole('menuitem', {
+      name: /^Copy(?:\s|$)/i,
+    })
+    const paste = within(editMenu).getByRole('menuitem', {
+      name: /^Paste(?:\s|$)/i,
+    })
+
+    expect(copy).toHaveTextContent(/Copy\s*(?:⌘C|Ctrl\+C)/i)
+    expect(paste).toHaveTextContent(/Paste\s*(?:⌘V|Ctrl\+V)/i)
+
+    await user.click(copy)
+    expect(screen.getByText('1 block copied.')).toBeInTheDocument()
+
+    await user.click(toolbarTrigger('Edit'))
+    editMenu = toolbarMenu('Edit')
+    await user.click(
+      within(editMenu).getByRole('menuitem', { name: /^Paste(?:\s|$)/i }),
+    )
+
+    expect(await screen.findByTestId('flow-node-main-copy')).toBeInTheDocument()
+    expect(screen.getAllByDisplayValue('main')).toHaveLength(2)
   })
 
   it('shows the exact About copy, links, and emphasis and restores focus when closed', async () => {
@@ -947,7 +1143,7 @@ describe('App', () => {
     await user.type(initialTotal, 'total <- helper(5)')
     await user.clear(screen.getByLabelText(/Input queue/i))
     await user.type(screen.getByLabelText(/Input queue/i), '0')
-    await user.click(screen.getByRole('button', { name: /Run/i }))
+    await user.click(executionButton(/^Run$/i))
 
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
@@ -1071,7 +1267,7 @@ describe('App', () => {
       'xy',
     )
 
-    await user.click(screen.getByRole('button', { name: /^Run$/i }))
+    await user.click(executionButton(/^Run$/i))
 
     const output = screen.getByRole('region', { name: /Output/i })
     expect(within(output).getByText('Point(7, 2)')).toBeInTheDocument()
@@ -1148,7 +1344,7 @@ describe('App', () => {
     render(<App />)
 
     await chooseToolbarAction(user, 'Examples', 'Object')
-    await user.click(screen.getByRole('button', { name: /^Reset$/i }))
+    await user.click(executionButton(/^Reset$/i))
 
     const flowStatus = screen.getByText('Flow').closest('div')
     const methodNode = screen.getByTestId('flow-node-point-move')
@@ -1156,7 +1352,7 @@ describe('App', () => {
     expect(flowStatus).toHaveTextContent('main')
 
     for (let step = 0; step < 3; step += 1) {
-      await user.click(screen.getByRole('button', { name: /^Step$/i }))
+      await user.click(executionButton(/^Step$/i))
     }
 
     expect(flowStatus).toHaveTextContent('Point.move')
@@ -1164,8 +1360,10 @@ describe('App', () => {
     expect(methodNode).toHaveAttribute('aria-current', 'step')
   })
 
-  it('starts a new blank program from File > New', async () => {
+  it('opens File > New in a separate tab without changing this program', async () => {
     const user = userEvent.setup()
+    const openedWindow = { opener: window } as unknown as Window
+    const open = vi.spyOn(window, 'open').mockReturnValue(openedWindow)
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
@@ -1174,10 +1372,11 @@ describe('App', () => {
 
     await chooseToolbarAction(user, 'File', 'New')
 
-    expect(screen.queryByTestId('flow-node-main')).not.toBeInTheDocument()
-    expect(screen.queryByDisplayValue('total <- 0')).not.toBeInTheDocument()
+    expect(open).toHaveBeenCalledWith(window.location.href, '_blank')
+    expect(openedWindow.opener).toBeNull()
+    expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
     expect(screen.getByLabelText(/Input queue/i)).toHaveValue('3')
-    expect(screen.getByText(/exactly one main Function/i)).toBeInTheDocument()
   })
 
   it('lets students edit flowchart node text', async () => {
@@ -1507,7 +1706,7 @@ describe('App', () => {
 
     await user.clear(screen.getByLabelText(/Input queue/i))
     await user.type(screen.getByLabelText(/Input queue/i), '3')
-    await user.click(screen.getByRole('button', { name: /Run/i }))
+    await user.click(executionButton(/^Run$/i))
 
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
@@ -1515,7 +1714,7 @@ describe('App', () => {
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
   })
 
-  it('runs turtle Call blocks and renders the drawing in the sidebar', async () => {
+  it('enlarges the Turtle canvas and keeps Shift+Enter active in the overlay', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -1528,13 +1727,31 @@ describe('App', () => {
     )
 
     await screen.findByDisplayValue('forward(100)')
-    await user.click(screen.getByRole('button', { name: /Run/i }))
+    const turtle = screen.getByRole('region', { name: /^Turtle$/i })
+    const collapsedCanvas = within(turtle).getByTestId('turtle-canvas')
 
-    const turtle = screen.getByRole('region', { name: /Turtle/i })
-    expect(within(turtle).getByTestId('turtle-canvas')).toBeInTheDocument()
-    expect(within(turtle).getAllByTestId('turtle-segment')).toHaveLength(2)
-    expect(within(turtle).getByTestId('turtle-marker').tagName).toBe('polygon')
+    await user.dblClick(collapsedCanvas)
+
+    const dialog = screen.getByRole('dialog', {
+      name: /^Turtle canvas enlarged$/i,
+    })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(within(dialog).getByRole('button', { name: /^Close$/i })).toHaveFocus()
+
+    expect(
+      fireEvent.keyDown(window, { key: 'Enter', shiftKey: true }),
+    ).toBe(false)
+
+    expect(within(dialog).getByTestId('turtle-canvas')).toBeInTheDocument()
+    expect(within(dialog).getAllByTestId('turtle-segment')).toHaveLength(2)
+    expect(within(dialog).getByTestId('turtle-marker').tagName).toBe('polygon')
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('dialog', { name: /^Turtle canvas enlarged$/i }),
+    ).not.toBeInTheDocument()
+    await waitFor(() => expect(collapsedCanvas).toHaveFocus())
   })
 
   it('loads URL text from the text native library and resumes running', async () => {
@@ -1560,7 +1777,7 @@ describe('App', () => {
       'page <- text_from_url("https://example.edu/page.txt")',
     )
     await screen.findByText(/Native libraries: text/i)
-    await user.click(screen.getByRole('button', { name: /Run/i }))
+    await user.click(executionButton(/^Run$/i))
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1574,7 +1791,7 @@ describe('App', () => {
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
   })
 
-  it('renders imshow output and downloads imsave output as PNG', async () => {
+  it('renders, enlarges, and downloads imshow output as PNG', async () => {
     const createImageData = vi.fn((width: number, height: number) => ({
       data: new Uint8ClampedArray(width * height * 4),
     }))
@@ -1599,10 +1816,11 @@ describe('App', () => {
     )
 
     await screen.findByText(/Native libraries: image/i)
-    await user.click(screen.getByRole('button', { name: /Run/i }))
+    await user.click(executionButton(/^Run$/i))
 
     const panel = screen.getByRole('region', { name: /^Image$/i })
-    expect(within(panel).getByTestId('image-canvas')).toBeInTheDocument()
+    const imageCanvas = within(panel).getByTestId('image-canvas')
+    expect(imageCanvas).toBeInTheDocument()
     expect(panel).toHaveTextContent('Image #1 · 2 × 1')
     expect(screen.getByRole('region', { name: /Variables/i })).toHaveTextContent(
       'Image #1 (2 × 1)',
@@ -1611,6 +1829,19 @@ describe('App', () => {
     expect(putImageData).toHaveBeenCalled()
     expect(screen.getByText(/Image saved as flowlab-image\.png/i)).toBeInTheDocument()
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+
+    await user.dblClick(imageCanvas)
+    const dialog = screen.getByRole('dialog', {
+      name: /^Image canvas enlarged$/i,
+    })
+    expect(dialog).toHaveAttribute('aria-modal', 'true')
+    expect(within(dialog).getByTestId('image-canvas')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: /^Close$/i }))
+    expect(
+      screen.queryByRole('dialog', { name: /^Image canvas enlarged$/i }),
+    ).not.toBeInTheDocument()
+    await waitFor(() => expect(imageCanvas).toHaveFocus())
   })
 
   it('pans the turtle canvas with a right-click drag', async () => {
@@ -1736,6 +1967,63 @@ describe('App', () => {
     expect(sidebar).toHaveStyle({ width: '500px' })
   })
 
+  it('drags Turtle and Image panels to new vertical sidebar positions', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.type(screen.getByLabelText(/Imports list/i), 'turtle\nimage')
+    await screen.findByRole('region', { name: /^Turtle$/i })
+    await screen.findByRole('region', { name: /^Image$/i })
+
+    const sidebar = runtimeSidebar()
+    const turtleSlot = sidebar.querySelector<HTMLElement>(
+      '[data-runtime-panel-id="turtle"]',
+    )
+    const imageSlot = sidebar.querySelector<HTMLElement>(
+      '[data-runtime-panel-id="image"]',
+    )
+    const outputSlot = sidebar.querySelector<HTMLElement>(
+      '[data-runtime-panel-id="output"]',
+    )
+
+    expect(turtleSlot).not.toBeNull()
+    expect(imageSlot).not.toBeNull()
+    expect(outputSlot).not.toBeNull()
+
+    const turtleHeader = within(turtleSlot as HTMLElement).getByTitle(
+      /Drag to reposition the Turtle panel/i,
+    )
+    const imageHeader = within(imageSlot as HTMLElement).getByTitle(
+      /Drag to reposition the Image panel/i,
+    )
+    expect(turtleHeader).toHaveAttribute('draggable', 'true')
+    expect(imageHeader).toHaveAttribute('draggable', 'true')
+
+    let transferredPanel = ''
+    const dataTransfer = {
+      dropEffect: 'none',
+      effectAllowed: 'all',
+      getData: vi.fn(() => transferredPanel),
+      setData: vi.fn((_type: string, value: string) => {
+        transferredPanel = value
+      }),
+    } as unknown as DataTransfer
+
+    fireEvent.dragStart(turtleHeader, { dataTransfer })
+    fireEvent.dragOver(outputSlot as HTMLElement, { dataTransfer })
+    fireEvent.drop(outputSlot as HTMLElement, { dataTransfer })
+    fireEvent.dragEnd(turtleHeader, { dataTransfer })
+
+    const panelOrder = Array.from(
+      sidebar.querySelectorAll<HTMLElement>('[data-runtime-panel-id]'),
+      (panel) => panel.dataset.runtimePanelId,
+    )
+    expect(panelOrder.indexOf('turtle')).toBeGreaterThan(
+      panelOrder.indexOf('variables'),
+    )
+    expect(screen.getByText('Turtle panel moved.')).toBeInTheDocument()
+  })
+
   it('keeps execution controls in a sticky sidebar header', () => {
     render(<App />)
 
@@ -1744,16 +2032,16 @@ describe('App', () => {
 
     expect(executionBar).toBeInTheDocument()
     expect(executionBar).toContainElement(
-      screen.getByRole('button', { name: /^Reset$/i }),
+      within(sidebar).getByRole('button', { name: /^Reset$/i }),
     )
     expect(executionBar).toContainElement(
-      screen.getByRole('button', { name: /^Step$/i }),
+      within(sidebar).getByRole('button', { name: /^Step$/i }),
     )
     expect(executionBar).toContainElement(
-      screen.getByRole('button', { name: /^Auto Step$/i }),
+      within(sidebar).getByRole('button', { name: /^Auto Step$/i }),
     )
     expect(executionBar).toContainElement(
-      screen.getByRole('button', { name: /^Run$/i }),
+      within(sidebar).getByRole('button', { name: /^Run$/i }),
     )
     expect(executionBar).toContainElement(
       screen.getByRole('slider', { name: /^Auto Step speed$/i }),
@@ -1771,7 +2059,7 @@ describe('App', () => {
     )
 
     await screen.findByDisplayValue('"hello\\ngoodbye"')
-    await user.click(screen.getByRole('button', { name: /Run/i }))
+    await user.click(executionButton(/^Run$/i))
 
     const output = screen.getByRole('region', { name: /Output/i })
     const outputLine = output.querySelector('.console-line')
@@ -1792,7 +2080,7 @@ describe('App', () => {
     )
 
     await screen.findByDisplayValue('x <- ask() + 1')
-    await user.click(screen.getByRole('button', { name: /Run/i }))
+    await user.click(executionButton(/^Run$/i))
 
     const dialog = await screen.findByRole('dialog', {
       name: /Input requested/i,
@@ -1817,7 +2105,7 @@ describe('App', () => {
 
     await user.clear(screen.getByLabelText(/Input queue/i))
     await user.type(screen.getByLabelText(/Input queue/i), '3')
-    await user.click(screen.getByRole('button', { name: /Run/i }))
+    await user.click(executionButton(/^Run$/i))
 
     const variables = screen.getByLabelText(/Variables/i)
 
@@ -1840,7 +2128,7 @@ describe('App', () => {
     )
 
     await screen.findByDisplayValue(/line one/)
-    await user.click(screen.getByRole('button', { name: /Run/i }))
+    await user.click(executionButton(/^Run$/i))
 
     const variables = screen.getByLabelText(/Variables/i)
     const value = within(variables).getByText((_, element) => {
@@ -1859,7 +2147,7 @@ describe('App', () => {
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
-    await user.click(screen.getByRole('button', { name: /Reset/i }))
+    await user.click(executionButton(/^Reset$/i))
 
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
       'data-current',
@@ -1872,7 +2160,7 @@ describe('App', () => {
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
-    await user.click(screen.getByRole('button', { name: /Reset/i }))
+    await user.click(executionButton(/^Reset$/i))
 
     const currentNode = screen.getByTestId('flow-node-main')
     expect(currentNode).toHaveAttribute('aria-current', 'step')
@@ -1891,11 +2179,11 @@ describe('App', () => {
     ).getByText(/^Steps$/i).closest('div')
     const speed = screen.getByRole('slider', { name: /^Auto Step speed$/i })
 
-    fireEvent.click(screen.getByRole('button', { name: /^Auto Step$/i }))
+    fireEvent.click(executionButton(/^Auto Step$/i))
 
-    expect(screen.getByRole('button', { name: /^Pause$/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Step$/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /^Run$/i })).toBeDisabled()
+    expect(executionButton(/^Pause$/i)).toBeInTheDocument()
+    expect(executionButton(/^Step$/i)).toBeDisabled()
+    expect(executionButton(/^Run$/i)).toBeDisabled()
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
       'data-current',
       'true',
@@ -1910,17 +2198,17 @@ describe('App', () => {
       'true',
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /^Pause$/i }))
+    fireEvent.click(executionButton(/^Pause$/i))
     act(() => vi.advanceTimersByTime(2_000))
 
     expect(stepsStatus).toHaveTextContent('1')
-    expect(screen.getByRole('button', { name: /^Auto Step$/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /^Step$/i })).toBeEnabled()
-    expect(screen.getByRole('button', { name: /^Run$/i })).toBeEnabled()
+    expect(executionButton(/^Auto Step$/i)).toBeEnabled()
+    expect(executionButton(/^Step$/i)).toBeEnabled()
+    expect(executionButton(/^Run$/i)).toBeEnabled()
 
     fireEvent.change(speed, { target: { value: '4' } })
     expect(screen.getByText('4 steps/s')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /^Auto Step$/i }))
+    fireEvent.click(executionButton(/^Auto Step$/i))
 
     act(() => vi.advanceTimersByTime(249))
     expect(stepsStatus).toHaveTextContent('1')
@@ -1933,7 +2221,7 @@ describe('App', () => {
     }
 
     expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /^Auto Step$/i })).toBeEnabled()
+    expect(executionButton(/^Auto Step$/i)).toBeEnabled()
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
     )
@@ -1950,7 +2238,7 @@ describe('App', () => {
     await screen.findByDisplayValue('x <- ask() + 1')
 
     vi.useFakeTimers()
-    fireEvent.click(screen.getByRole('button', { name: /^Auto Step$/i }))
+    fireEvent.click(executionButton(/^Auto Step$/i))
 
     act(() => vi.advanceTimersByTime(500))
     act(() => vi.advanceTimersByTime(500))
@@ -1965,7 +2253,7 @@ describe('App', () => {
     fireEvent.submit(dialog)
 
     expect(screen.queryByRole('dialog', { name: /Input requested/i })).toBeNull()
-    expect(screen.getByRole('button', { name: /^Pause$/i })).toBeInTheDocument()
+    expect(executionButton(/^Pause$/i)).toBeInTheDocument()
     expect(screen.getByRole('region', { name: /Output/i })).not.toHaveTextContent(
       '7',
     )
@@ -1992,9 +2280,9 @@ describe('App', () => {
     expect(screen.getByLabelText(/Current document/i)).toHaveTextContent(
       'helper-call',
     )
-    await user.click(screen.getByRole('button', { name: /Reset/i }))
-    await user.click(screen.getByRole('button', { name: /^Step$/i }))
-    await user.click(screen.getByRole('button', { name: /^Step$/i }))
+    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Step$/i))
+    await user.click(executionButton(/^Step$/i))
 
     expect(screen.getByTestId('flow-node-helper')).toHaveAttribute(
       'data-current',

@@ -85,7 +85,7 @@ Pixel coordinates are zero-based: `(0, 0)` is the upper-left corner, `x` increas
 
 Images have identity and are shown in Variables as labels such as `Image #1 (640 × 480)`. Assignment creates an alias, so after `copy <- photo`, calling `set_pixel(copy, ...)` also changes `photo`. Use `image_to_pixels` followed by `image_from_pixels` when a separate Image is needed.
 
-`imread` pauses execution while the browser downloads and decodes the file. The server must allow the browser request, including any required cross-origin permissions. An Image may contain at most 16,777,216 pixels. The Image panel remains empty until `imshow` is called.
+`imread` pauses execution while the browser downloads and decodes the file. The server must allow the browser request, including any required cross-origin permissions. An Image may contain at most 16,777,216 pixels. The Image panel remains empty until `imshow` is called. Drag the panel by its heading to reposition it in the runtime sidebar, or double-click a displayed image to enlarge it over the app.
 
 Example:
 
@@ -115,7 +115,7 @@ Enter `turtle` in Imports to show the Turtle drawing panel and enable these call
 
 The turtle starts at `(0, 0)`, facing right, with its pen down. Put commands in Call blocks or Process lines to use them for their drawing side effects; if used in a larger expression they return `0`.
 
-Step mode updates the drawing as each containing Call or Process block executes. Right-drag the Turtle panel to pan it, use Ctrl+wheel or a trackpad pinch to zoom, or pinch with two touch pointers.
+Step mode updates the drawing as each containing Call or Process block executes. Right-drag the Turtle canvas to pan it, use Ctrl+wheel or a trackpad pinch to zoom, or pinch with two touch pointers. Drag the panel by its heading to reposition it in the runtime sidebar, or double-click the canvas to enlarge it over the app.
 
 ---
 

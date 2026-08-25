@@ -70,9 +70,10 @@ Choose Edit > Split Process while exactly one Process block is selected to turn 
 - Step executes one visible block at a time and continues the current execution. Function and method calls enter the called flowchart.
 - Auto Step repeatedly steps at the speed selected beneath the controls. Use Pause to preserve the current position.
 - Run starts fresh and continues immediately until the program returns, waits for input, pauses for a text or image load, or reports an error.
+- Use Shift+Cmd/Ctrl+R to Reset, Shift+Space to Step, and Shift+Enter to Run. The same commands are available from the Run menu.
 - Text/image loads and `ask()` submissions resume Run or Auto Step in the mode that started them.
 - The Console reports execution status, executed-block count, and the active Flow name. It also shows runtime errors, Output lines, current variables, expandable object fields, and stable identities such as `Point #1`.
-- The current node is highlighted while stepping. Long multiline variable previews are shortened in the sidebar. Imported `image` and `turtle` libraries add their visual panels to the runtime sidebar.
+- The current node is highlighted while stepping. Long multiline variable previews are shortened in the sidebar. Imported `image` and `turtle` libraries add draggable visual panels to the runtime sidebar. Drag either panel by its heading to reposition it, or double-click its canvas to enlarge it over the app.
 - FlowLab stops runaway execution after 1,000,000 executed blocks or 100 active nested calls.
 
 ## Use input
@@ -87,8 +88,9 @@ Choose Edit > Split Process while exactly one Process block is selected to turn 
 ## Menus and layout
 
 - The FlowLab menu contains About and Instructions. Instructions opens the documentation in a separate tab.
-- The File menu contains New, Save, and Load. See [Saving and loading](saving-and-loading.md).
-- The Edit menu contains Combine into Process and Split Process.
+- The File menu contains New, Save, and Load. New opens a separate blank FlowLab tab without changing the current program. See [Saving and loading](saving-and-loading.md).
+- The Edit menu contains Copy, Paste, Combine into Process, and Split Process.
+- The Run menu duplicates Reset, Step, Auto Step, and Run from the Console.
 - The Examples menu contains the eight programs summarized on the [documentation home page](../README.md).
 - The left palette and right runtime sidebar scroll independently. On desktop, drag the divider at the sidebar's left edge to resize it; on narrow screens the workspace stacks vertically.
 

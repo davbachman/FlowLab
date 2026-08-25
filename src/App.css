@@ -68,6 +68,8 @@ button:hover {
 
 button:focus-visible,
 .toolbar-menu-item:focus-visible,
+.image-canvas:focus-visible,
+.turtle-canvas:focus-visible,
 .node-input:focus-visible,
 .execution-speed-control input:focus-visible,
 textarea:focus-visible {
@@ -147,6 +149,19 @@ button:disabled {
 .toolbar-menu-item:focus-visible {
   border-color: transparent;
   background: #edf3ff;
+}
+
+.toolbar-menu-item-with-shortcut {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.toolbar-menu-item-with-shortcut kbd {
+  color: #667085;
+  font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
 }
 
 .toolbar-file-input {
@@ -1112,6 +1127,30 @@ textarea {
   color: #b42318;
 }
 
+.runtime-panel-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.runtime-panel-slot {
+  min-width: 0;
+  border-radius: 7px;
+  transition: box-shadow 120ms ease, background 120ms ease;
+}
+
+.runtime-panel-slot[data-drag-target='true'] {
+  background: #f5f8ff;
+  box-shadow: inset 0 3px 0 #2f6fd6;
+}
+
+.runtime-panel-slot > .variables-panel,
+.runtime-panel-slot > .turtle-panel,
+.runtime-panel-slot > .image-panel,
+.runtime-panel-slot > .output-log {
+  margin-top: 0;
+}
+
 .output-log {
   margin-top: 16px;
 }
@@ -1136,6 +1175,83 @@ textarea {
 .image-panel h3 {
   margin: 0 0 8px;
   font-size: 14px;
+}
+
+.runtime-canvas-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.runtime-canvas-panel-header[draggable='true'] {
+  cursor: grab;
+  user-select: none;
+}
+
+.runtime-canvas-panel-header[draggable='true']:active {
+  cursor: grabbing;
+}
+
+.runtime-canvas-panel-header h3 {
+  margin: 0;
+}
+
+.runtime-panel-drag-hint {
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.canvas-overlay-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(15, 23, 42, 0.62);
+  cursor: zoom-out;
+}
+
+.runtime-canvas-panel-expanded {
+  position: fixed;
+  inset: 28px;
+  z-index: 61;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin: 0;
+  border: 1px solid #c8d0dc;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.34);
+  padding: 16px;
+}
+
+.runtime-canvas-panel-expanded .runtime-canvas-panel-header {
+  flex: none;
+}
+
+.runtime-canvas-panel-expanded .runtime-canvas-panel-header h3 {
+  font-size: 16px;
+}
+
+.runtime-canvas-panel-expanded .turtle-canvas,
+.runtime-canvas-panel-expanded .image-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  aspect-ratio: auto;
+  max-height: none;
+  object-fit: contain;
+}
+
+.runtime-canvas-panel-expanded .image-metadata {
+  flex: none;
 }
 
 .image-canvas {
@@ -1376,6 +1492,11 @@ textarea {
 
   .sidebar-resize-handle {
     display: none;
+  }
+
+  .runtime-canvas-panel-expanded {
+    inset: 12px;
+    padding: 12px;
   }
 
   .palette-buttons {

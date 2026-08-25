@@ -12,7 +12,7 @@
 
 ## Start a new program
 
-File > New removes all blocks and wires while leaving the Imports list and input queue intact. Clear those panels separately when you want an entirely empty session.
+File > New opens a fresh FlowLab instance in a new browser tab and leaves the current program untouched.
 
 ## Save a program
 

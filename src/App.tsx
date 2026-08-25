@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type DragEvent as ReactDragEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent,
@@ -193,12 +194,23 @@ interface ViewportSize {
   height: number
 }
 
-type ToolbarMenuName = 'flowlab' | 'file' | 'edit' | 'examples'
+type ToolbarMenuName = 'flowlab' | 'file' | 'edit' | 'run' | 'examples'
+
+type RuntimePanelId = 'turtle' | 'image' | 'variables' | 'output'
+type ExpandableCanvasId = Extract<RuntimePanelId, 'turtle' | 'image'>
+type CanvasFocusTarget = HTMLElement | SVGSVGElement
+type AppShortcutCommand = 'reset' | 'step' | 'run'
+
+interface ShortcutCommand {
+  enabled: boolean
+  run: () => void
+}
 
 interface ToolbarMenuProps {
   id: ToolbarMenuName
   label: string
   brand?: boolean
+  triggerAriaLabel?: string
   isOpen: boolean
   onOpen: () => void
   onClose: () => void
@@ -313,6 +325,13 @@ const DEFAULT_TURTLE_VIEW: TurtleViewState = { panX: 0, panY: 0, zoom: 1 }
 const MIN_TURTLE_ZOOM = 0.25
 const MAX_TURTLE_ZOOM = 8
 const TURTLE_WHEEL_ZOOM_INTENSITY = 0.004
+const DEFAULT_RUNTIME_PANEL_ORDER: RuntimePanelId[] = [
+  'turtle',
+  'image',
+  'variables',
+  'output',
+]
+const RUNTIME_PANEL_DRAG_MIME = 'application/x-flowlab-runtime-panel'
 const EMPTY_IMPORT_RESOLUTION: ImportResolution = {
   files: [],
   nativeLibraries: [],
@@ -383,6 +402,13 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [sidebarResizeDrag, setSidebarResizeDrag] =
     useState<SidebarResizeDrag | null>(null)
+  const [runtimePanelOrder, setRuntimePanelOrder] = useState<RuntimePanelId[]>(
+    DEFAULT_RUNTIME_PANEL_ORDER,
+  )
+  const [draggedRuntimePanel, setDraggedRuntimePanel] =
+    useState<ExpandableCanvasId | null>(null)
+  const [expandedCanvas, setExpandedCanvas] =
+    useState<ExpandableCanvasId | null>(null)
   const [message, setMessage] = useState('')
   const [openToolbarMenu, setOpenToolbarMenu] =
     useState<ToolbarMenuName | null>(null)
@@ -400,6 +426,11 @@ function App() {
   const askResumeModeRef = useRef<'step' | 'auto-step' | 'run'>('step')
   const fitViewAfterLoadRef = useRef(false)
   const toolbarRef = useRef<HTMLElement | null>(null)
+  const expandedCanvasTriggerRef = useRef<CanvasFocusTarget | null>(null)
+  const draggedRuntimePanelRef = useRef<ExpandableCanvasId | null>(null)
+  const shortcutCommandsRef = useRef<
+    Partial<Record<AppShortcutCommand, ShortcutCommand>>
+  >({})
   const importFileInputRef = useRef<HTMLInputElement | null>(null)
   const processedImageSaveRequestsRef = useRef(
     new WeakSet<ImageSaveRequest>(),
@@ -423,6 +454,21 @@ function App() {
       document.getElementById('flowlab-menu-trigger')?.focus()
     })
   }, [])
+
+  const closeExpandedCanvas = useCallback(() => {
+    const trigger = expandedCanvasTriggerRef.current
+    setExpandedCanvas(null)
+    window.requestAnimationFrame(() => trigger?.focus())
+  }, [])
+
+  const expandCanvas = useCallback(
+    (canvas: ExpandableCanvasId, trigger: CanvasFocusTarget) => {
+      expandedCanvasTriggerRef.current = trigger
+      setDraggedRuntimePanel(null)
+      setExpandedCanvas(canvas)
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!openToolbarMenu) {
@@ -476,6 +522,23 @@ function App() {
     return () =>
       document.removeEventListener('keydown', closeFunctionReferenceOnEscape)
   }, [functionReferenceOpen, closeFunctionReferenceDialog])
+
+  useEffect(() => {
+    if (!expandedCanvas) {
+      return
+    }
+
+    function closeExpandedCanvasOnEscape(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeExpandedCanvas()
+      }
+    }
+
+    document.addEventListener('keydown', closeExpandedCanvasOnEscape)
+    return () =>
+      document.removeEventListener('keydown', closeExpandedCanvasOnEscape)
+  }, [closeExpandedCanvas, expandedCanvas])
 
   useEffect(() => {
     nodesRef.current = nodes
@@ -838,6 +901,13 @@ function App() {
   const currentNodeId = execution?.currentNodeId ?? null
   const executionIsBusy =
     execution?.status === 'asking' || execution?.status === 'loading'
+  const canResetExecution = validation.valid && !executionIsBusy
+  const canStepExecution =
+    validation.valid && !executionIsBusy && !autoStepIsActive
+  const canToggleAutoStep =
+    validation.valid && (!executionIsBusy || autoStepIsActive)
+  const canRunExecution =
+    validation.valid && !executionIsBusy && !autoStepIsActive
   const showExecutionInputQueue =
     execution !== null && execution.status !== 'halted' && execution.status !== 'error'
   const visibleTurtleState = useMemo(
@@ -851,6 +921,11 @@ function App() {
       (hasImageLibrary ? initialImageRuntimeState() : null),
     [execution?.image, hasImageLibrary],
   )
+  const activeExpandedCanvas =
+    (expandedCanvas === 'turtle' && visibleTurtleState) ||
+    (expandedCanvas === 'image' && visibleImageState)
+      ? expandedCanvas
+      : null
   const visibleInputQueueText = showExecutionInputQueue
     ? formatInputQueue(execution.inputQueue)
     : inputQueueText
@@ -1167,14 +1242,16 @@ function App() {
     setMessage(example.message)
   }
 
-  function clearCanvas(): void {
-    pushHistorySnapshot()
-    setNodes([])
-    setEdges([])
-    setDocumentName(DEFAULT_DOCUMENT_NAME)
-    setExecution(null)
-    setPendingNodeType(null)
-    setMessage('Canvas cleared.')
+  function openNewFlowLab(): void {
+    const newWindow = window.open(window.location.href, '_blank')
+
+    if (!newWindow) {
+      setMessage('The new FlowLab tab was blocked by the browser.')
+      return
+    }
+
+    newWindow.opener = null
+    setMessage('Opened a new FlowLab tab.')
   }
 
   function resetExecution(): void {
@@ -1252,9 +1329,69 @@ function App() {
     })
   }
 
+  function startRuntimePanelDrag(
+    event: ReactDragEvent<HTMLElement>,
+    panel: ExpandableCanvasId,
+  ): void {
+    if (activeExpandedCanvas) {
+      event.preventDefault()
+      return
+    }
+
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData(RUNTIME_PANEL_DRAG_MIME, panel)
+    draggedRuntimePanelRef.current = panel
+    setDraggedRuntimePanel(panel)
+  }
+
+  function allowRuntimePanelDrop(
+    event: ReactDragEvent<HTMLDivElement>,
+    target: RuntimePanelId,
+  ): void {
+    const source = draggedRuntimePanelRef.current ?? draggedRuntimePanel
+    if (!source || source === target) {
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+  }
+
+  function dropRuntimePanel(
+    event: ReactDragEvent<HTMLDivElement>,
+    target: RuntimePanelId,
+  ): void {
+    const transferredPanel = event.dataTransfer.getData(
+      RUNTIME_PANEL_DRAG_MIME,
+    )
+    const source = isExpandableCanvasId(transferredPanel)
+      ? transferredPanel
+      : draggedRuntimePanelRef.current ?? draggedRuntimePanel
+
+    if (!source || source === target) {
+      draggedRuntimePanelRef.current = null
+      setDraggedRuntimePanel(null)
+      return
+    }
+
+    event.preventDefault()
+    setRuntimePanelOrder((currentOrder) =>
+      moveRuntimePanel(currentOrder, source, target),
+    )
+    draggedRuntimePanelRef.current = null
+    setDraggedRuntimePanel(null)
+    setMessage(`${runtimePanelLabel(source)} panel moved.`)
+  }
+
+  function finishRuntimePanelDrag(): void {
+    draggedRuntimePanelRef.current = null
+    setDraggedRuntimePanel(null)
+  }
+
   function updateImportNames(text: string): void {
     setImportNamesText(text)
     setExecution(null)
+    setExpandedCanvas(null)
 
     if (text.trim()) {
       setImportsLoading(true)
@@ -1577,11 +1714,46 @@ function App() {
   }, [pushHistorySnapshot])
 
   useEffect(() => {
+    shortcutCommandsRef.current = {
+      reset: { enabled: canResetExecution, run: resetExecution },
+      step: { enabled: canStepExecution, run: stepProgram },
+      run: { enabled: canRunExecution, run: runProgram },
+    }
+  })
+
+  useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       const key = event.key.toLowerCase()
 
+      if (hasBlockingShortcutDialog()) {
+        return
+      }
+
+      const primaryModifier = event.metaKey || event.ctrlKey
+      const shiftOnly =
+        event.shiftKey && !primaryModifier && !event.altKey
+      const shiftedPrimaryModifier =
+        primaryModifier && event.shiftKey && !event.altKey
+      const shortcutCommand: AppShortcutCommand | null =
+        key === 'enter' && shiftOnly
+          ? 'run'
+          : (key === ' ' || key === 'spacebar') && shiftOnly
+            ? 'step'
+            : key === 'r' && shiftedPrimaryModifier
+              ? 'reset'
+              : null
+
+      if (shortcutCommand) {
+        event.preventDefault()
+        setOpenToolbarMenu(null)
+        const command = shortcutCommandsRef.current[shortcutCommand]
+        if (command?.enabled) {
+          command.run()
+        }
+        return
+      }
+
       if (
-        document.querySelector('[aria-modal="true"]') ||
         isEditableShortcutTarget(event.target) ||
         event.altKey ||
         !(event.metaKey || event.ctrlKey)
@@ -1795,6 +1967,8 @@ function App() {
       return
     }
 
+    setExpandedCanvas(null)
+
     try {
       const parsed = normalizeImportedProgram(JSON.parse(await file.text()))
       const savedImportsText =
@@ -1926,7 +2100,7 @@ function App() {
               className="toolbar-menu-item"
               data-menu-item
               role="menuitem"
-              onClick={() => runToolbarAction('file', clearCanvas)}
+              onClick={() => runToolbarAction('file', openNewFlowLab)}
             >
               New
             </button>
@@ -1963,6 +2137,28 @@ function App() {
           >
             <button
               type="button"
+              className="toolbar-menu-item toolbar-menu-item-with-shortcut"
+              data-menu-item
+              role="menuitem"
+              aria-keyshortcuts="Meta+C Control+C"
+              onClick={() => runToolbarAction('edit', copySelection)}
+            >
+              <span>Copy</span>
+              <kbd aria-hidden="true">{primaryShortcutLabel('C')}</kbd>
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item toolbar-menu-item-with-shortcut"
+              data-menu-item
+              role="menuitem"
+              aria-keyshortcuts="Meta+V Control+V"
+              onClick={() => runToolbarAction('edit', pasteSelection)}
+            >
+              <span>Paste</span>
+              <kbd aria-hidden="true">{primaryShortcutLabel('V')}</kbd>
+            </button>
+            <button
+              type="button"
               className="toolbar-menu-item"
               data-menu-item
               role="menuitem"
@@ -1982,6 +2178,62 @@ function App() {
               onClick={() => runToolbarAction('edit', splitSelectedProcess)}
             >
               Split Process
+            </button>
+          </ToolbarMenu>
+
+          <ToolbarMenu
+            id="run"
+            label="Run"
+            triggerAriaLabel="Run menu"
+            isOpen={openToolbarMenu === 'run'}
+            onOpen={() => setOpenToolbarMenu('run')}
+            onClose={() => setOpenToolbarMenu(null)}
+          >
+            <button
+              type="button"
+              className="toolbar-menu-item toolbar-menu-item-with-shortcut"
+              data-menu-item
+              role="menuitem"
+              aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
+              disabled={!canResetExecution}
+              onClick={() => runToolbarAction('run', resetExecution)}
+            >
+              <span>Reset</span>
+              <kbd aria-hidden="true">{shiftedPrimaryShortcutLabel('R')}</kbd>
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item toolbar-menu-item-with-shortcut"
+              data-menu-item
+              role="menuitem"
+              aria-keyshortcuts="Shift+Space"
+              disabled={!canStepExecution}
+              onClick={() => runToolbarAction('run', stepProgram)}
+            >
+              <span>Step</span>
+              <kbd aria-hidden="true">⇧Space</kbd>
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              disabled={!canToggleAutoStep}
+              onClick={() => runToolbarAction('run', toggleAutoStepProgram)}
+            >
+              {autoStepIsActive ? 'Pause' : 'Auto Step'}
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item toolbar-menu-item-with-shortcut"
+              data-menu-item
+              role="menuitem"
+              aria-keyshortcuts="Shift+Enter"
+              disabled={!canRunExecution}
+              onClick={() => runToolbarAction('run', runProgram)}
+            >
+              <span>Run</span>
+              <kbd aria-hidden="true">⇧Enter</kbd>
             </button>
           </ToolbarMenu>
 
@@ -2255,27 +2507,27 @@ function App() {
             <h2>Console</h2>
             <div className="execution-buttons">
               <button
+                id="reset-execution-button"
                 type="button"
                 onClick={resetExecution}
-                disabled={!validation.valid || executionIsBusy}
+                aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
+                disabled={!canResetExecution}
               >
                 Reset
               </button>
               <button
+                id="step-execution-button"
                 type="button"
                 onClick={stepProgram}
-                disabled={
-                  !validation.valid || executionIsBusy || autoStepIsActive
-                }
+                aria-keyshortcuts="Shift+Space"
+                disabled={!canStepExecution}
               >
                 Step
               </button>
               <button
                 type="button"
                 onClick={toggleAutoStepProgram}
-                disabled={
-                  !validation.valid || (executionIsBusy && !autoStepIsActive)
-                }
+                disabled={!canToggleAutoStep}
                 title={
                   autoStepIsActive
                     ? 'Pause automatic stepping'
@@ -2285,11 +2537,11 @@ function App() {
                 {autoStepIsActive ? 'Pause' : 'Auto Step'}
               </button>
               <button
+                id="run-execution-button"
                 type="button"
                 onClick={runProgram}
-                disabled={
-                  !validation.valid || executionIsBusy || autoStepIsActive
-                }
+                aria-keyshortcuts="Shift+Enter"
+                disabled={!canRunExecution}
               >
                 Run
               </button>
@@ -2350,49 +2602,105 @@ function App() {
           {message ? <p className="notice">{message}</p> : null}
           {execution?.error ? <p className="runtime-error">{execution.error}</p> : null}
 
-          {visibleTurtleState ? (
-            <TurtlePanel turtle={visibleTurtleState} />
-          ) : null}
+          <div className="runtime-panel-list">
+            {runtimePanelOrder.map((panelId) => {
+              const panel =
+                panelId === 'turtle' ? (
+                  visibleTurtleState ? (
+                    <TurtlePanel
+                      turtle={visibleTurtleState}
+                      expanded={activeExpandedCanvas === 'turtle'}
+                      onExpand={(trigger) => expandCanvas('turtle', trigger)}
+                      onClose={closeExpandedCanvas}
+                      onDragStart={(event) =>
+                        startRuntimePanelDrag(event, 'turtle')
+                      }
+                      onDragEnd={finishRuntimePanelDrag}
+                    />
+                  ) : null
+                ) : panelId === 'image' ? (
+                  visibleImageState ? (
+                    <ImagePanel
+                      imageState={visibleImageState}
+                      expanded={activeExpandedCanvas === 'image'}
+                      onExpand={(trigger) => expandCanvas('image', trigger)}
+                      onClose={closeExpandedCanvas}
+                      onDragStart={(event) =>
+                        startRuntimePanelDrag(event, 'image')
+                      }
+                      onDragEnd={finishRuntimePanelDrag}
+                    />
+                  ) : null
+                ) : panelId === 'variables' ? (
+                  <section className="variables-panel" aria-label="Variables">
+                    <h3>Variables</h3>
+                    {variableEntries.length ? (
+                      <dl className="variable-list">
+                        {variableEntries.map(([name, value]) => (
+                          <div className="variable-row" key={name}>
+                            <dt>{name}</dt>
+                            <dd>
+                              <VariableValue
+                                value={value}
+                                objectHeap={execution?.objectHeap ?? {}}
+                              />
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : (
+                      <p className="empty-variables">No variables yet</p>
+                    )}
+                  </section>
+                ) : (
+                  <section className="output-log" aria-label="Output">
+                    <h3>Output</h3>
+                    {execution?.output.length ? (
+                      execution.output.map((line, index) => (
+                        <div className="console-line" key={`${line}-${index}`}>
+                          {renderConsoleLine(line)}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="empty-output">No output yet</p>
+                    )}
+                  </section>
+                )
 
-          {visibleImageState ? (
-            <ImagePanel imageState={visibleImageState} />
-          ) : null}
+              if (!panel) {
+                return null
+              }
 
-          <section className="variables-panel" aria-label="Variables">
-            <h3>Variables</h3>
-            {variableEntries.length ? (
-              <dl className="variable-list">
-                {variableEntries.map(([name, value]) => (
-                  <div className="variable-row" key={name}>
-                    <dt>{name}</dt>
-                    <dd>
-                      <VariableValue
-                        value={value}
-                        objectHeap={execution?.objectHeap ?? {}}
-                      />
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <p className="empty-variables">No variables yet</p>
-            )}
-          </section>
-
-          <section className="output-log" aria-label="Output">
-            <h3>Output</h3>
-            {execution?.output.length ? (
-              execution.output.map((line, index) => (
-                <div className="console-line" key={`${line}-${index}`}>
-                  {renderConsoleLine(line)}
+              return (
+                <div
+                  className="runtime-panel-slot"
+                  data-runtime-panel-id={panelId}
+                  data-drag-target={
+                    draggedRuntimePanel && draggedRuntimePanel !== panelId
+                      ? 'true'
+                      : undefined
+                  }
+                  key={panelId}
+                  onDragOver={(event) =>
+                    allowRuntimePanelDrop(event, panelId)
+                  }
+                  onDrop={(event) => dropRuntimePanel(event, panelId)}
+                >
+                  {panel}
                 </div>
-              ))
-            ) : (
-              <p className="empty-output">No output yet</p>
-            )}
-          </section>
+              )
+            })}
+          </div>
         </aside>
       </section>
+      {activeExpandedCanvas ? (
+        <div
+          className="canvas-overlay-backdrop"
+          data-app-shortcuts-enabled
+          aria-hidden="true"
+          onPointerDown={closeExpandedCanvas}
+        />
+      ) : null}
       {aboutOpen ? (
         <div
           className="modal-backdrop"
@@ -2630,6 +2938,7 @@ function ToolbarMenu({
   id,
   label,
   brand = false,
+  triggerAriaLabel,
   isOpen,
   onOpen,
   onClose,
@@ -2723,8 +3032,9 @@ function ToolbarMenu({
         ref={triggerRef}
         id={triggerId}
         type="button"
-        className={`toolbar-menu-trigger${brand ? ' toolbar-menu-brand' : ''}`}
-        aria-haspopup="menu"
+      className={`toolbar-menu-trigger${brand ? ' toolbar-menu-brand' : ''}`}
+      aria-label={triggerAriaLabel}
+      aria-haspopup="menu"
         aria-expanded={isOpen}
         aria-controls={panelId}
         onClick={() => (isOpen ? onClose() : onOpen())}
@@ -3061,7 +3371,22 @@ function VariableValue({
   )
 }
 
-function ImagePanel({ imageState }: { imageState: ImageRuntimeState }) {
+interface RuntimeCanvasPanelProps {
+  expanded: boolean
+  onExpand: (trigger: CanvasFocusTarget) => void
+  onClose: () => void
+  onDragStart: (event: ReactDragEvent<HTMLElement>) => void
+  onDragEnd: () => void
+}
+
+function ImagePanel({
+  imageState,
+  expanded,
+  onExpand,
+  onClose,
+  onDragStart,
+  onDragEnd,
+}: RuntimeCanvasPanelProps & { imageState: ImageRuntimeState }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const image = displayedImageData(imageState)
 
@@ -3075,8 +3400,37 @@ function ImagePanel({ imageState }: { imageState: ImageRuntimeState }) {
   }, [image])
 
   return (
-    <section className="image-panel" aria-label="Image">
-      <h3>Image</h3>
+    <section
+      className={`image-panel${
+        expanded ? ' runtime-canvas-panel-expanded' : ''
+      }`}
+      aria-label={expanded ? undefined : 'Image'}
+      aria-labelledby={expanded ? 'expanded-image-title' : undefined}
+      aria-modal={expanded ? 'true' : undefined}
+      data-app-shortcuts-enabled={expanded ? true : undefined}
+      role={expanded ? 'dialog' : undefined}
+      onKeyDown={expanded ? trapDialogFocus : undefined}
+    >
+      <header
+        className="runtime-canvas-panel-header"
+        draggable={!expanded}
+        title={expanded ? undefined : 'Drag to reposition the Image panel'}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      >
+        <h3 id={expanded ? 'expanded-image-title' : undefined}>
+          {expanded ? 'Image canvas enlarged' : 'Image'}
+        </h3>
+        {expanded ? (
+          <button type="button" autoFocus onClick={onClose}>
+            Close
+          </button>
+        ) : (
+          <span className="runtime-panel-drag-hint" aria-hidden="true">
+            Drag ⠿
+          </span>
+        )}
+      </header>
       {image ? (
         <>
           <canvas
@@ -3084,8 +3438,16 @@ function ImagePanel({ imageState }: { imageState: ImageRuntimeState }) {
             className="image-canvas"
             data-testid="image-canvas"
             aria-label="Displayed image"
+            title={expanded ? undefined : 'Double-click to enlarge'}
+            tabIndex={0}
+            draggable={false}
             width={image.width}
             height={image.height}
+            onDoubleClick={(event) => {
+              if (!expanded) {
+                onExpand(event.currentTarget)
+              }
+            }}
           />
           <p className="image-metadata">
             Image #{image.id} · {image.width} × {image.height}
@@ -3098,7 +3460,14 @@ function ImagePanel({ imageState }: { imageState: ImageRuntimeState }) {
   )
 }
 
-function TurtlePanel({ turtle }: { turtle: TurtleState }) {
+function TurtlePanel({
+  turtle,
+  expanded,
+  onExpand,
+  onClose,
+  onDragStart,
+  onDragEnd,
+}: RuntimeCanvasPanelProps & { turtle: TurtleState }) {
   const baseViewBox = useMemo(() => turtleViewBoxBounds(turtle), [turtle])
   const [view, setView] = useState<TurtleViewState>(DEFAULT_TURTLE_VIEW)
   const [panDrag, setPanDrag] = useState<TurtlePanDrag | null>(null)
@@ -3269,8 +3638,37 @@ function TurtlePanel({ turtle }: { turtle: TurtleState }) {
   }
 
   return (
-    <section className="turtle-panel" aria-label="Turtle">
-      <h3>Turtle</h3>
+    <section
+      className={`turtle-panel${
+        expanded ? ' runtime-canvas-panel-expanded' : ''
+      }`}
+      aria-label={expanded ? undefined : 'Turtle'}
+      aria-labelledby={expanded ? 'expanded-turtle-title' : undefined}
+      aria-modal={expanded ? 'true' : undefined}
+      data-app-shortcuts-enabled={expanded ? true : undefined}
+      role={expanded ? 'dialog' : undefined}
+      onKeyDown={expanded ? trapDialogFocus : undefined}
+    >
+      <header
+        className="runtime-canvas-panel-header"
+        draggable={!expanded}
+        title={expanded ? undefined : 'Drag to reposition the Turtle panel'}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      >
+        <h3 id={expanded ? 'expanded-turtle-title' : undefined}>
+          {expanded ? 'Turtle canvas enlarged' : 'Turtle'}
+        </h3>
+        {expanded ? (
+          <button type="button" autoFocus onClick={onClose}>
+            Close
+          </button>
+        ) : (
+          <span className="runtime-panel-drag-hint" aria-hidden="true">
+            Drag ⠿
+          </span>
+        )}
+      </header>
       <svg
         ref={turtleCanvasRef}
         className="turtle-canvas"
@@ -3279,12 +3677,19 @@ function TurtlePanel({ turtle }: { turtle: TurtleState }) {
         viewBox={viewBox}
         role="img"
         aria-label="Turtle drawing"
+        tabIndex={0}
         onContextMenu={(event) => event.preventDefault()}
+        onDoubleClick={(event) => {
+          if (!expanded) {
+            onExpand(event.currentTarget)
+          }
+        }}
         onPointerDown={startTurtlePointer}
         onPointerMove={moveTurtlePointer}
         onPointerUp={finishTurtlePointer}
         onPointerCancel={finishTurtlePointer}
       >
+        {!expanded ? <title>Double-click to enlarge</title> : null}
         <rect className="turtle-canvas-background" x="-10000" y="-10000" width="20000" height="20000" />
         <line className="turtle-axis" x1="-10000" y1="0" x2="10000" y2="0" />
         <line className="turtle-axis" x1="0" y1="-10000" x2="0" y2="10000" />
@@ -3570,6 +3975,51 @@ function selectedProcessNode(nodes: EditorNode[]): EditorNode | null {
     selectedNodes[0].data.nodeType === 'process'
     ? selectedNodes[0]
     : null
+}
+
+function primaryShortcutLabel(key: string): string {
+  const applePlatform = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  return applePlatform ? `⌘${key}` : `Ctrl+${key}`
+}
+
+function shiftedPrimaryShortcutLabel(key: string): string {
+  const applePlatform = /Mac|iPhone|iPad|iPod/i.test(navigator.userAgent)
+  return applePlatform ? `⇧⌘${key}` : `Ctrl+Shift+${key}`
+}
+
+function hasBlockingShortcutDialog(): boolean {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>('[aria-modal="true"]'),
+  ).some((dialog) => !dialog.hasAttribute('data-app-shortcuts-enabled'))
+}
+
+function isExpandableCanvasId(value: string): value is ExpandableCanvasId {
+  return value === 'turtle' || value === 'image'
+}
+
+function runtimePanelLabel(panel: RuntimePanelId): string {
+  return panel[0].toUpperCase() + panel.slice(1)
+}
+
+function moveRuntimePanel(
+  order: RuntimePanelId[],
+  source: ExpandableCanvasId,
+  target: RuntimePanelId,
+): RuntimePanelId[] {
+  const sourceIndex = order.indexOf(source)
+  const targetIndex = order.indexOf(target)
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return order
+  }
+
+  const nextOrder = order.filter((panel) => panel !== source)
+  const nextTargetIndex = nextOrder.indexOf(target)
+  const insertIndex = sourceIndex < targetIndex
+    ? nextTargetIndex + 1
+    : nextTargetIndex
+
+  nextOrder.splice(insertIndex, 0, source)
+  return nextOrder
 }
 
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
