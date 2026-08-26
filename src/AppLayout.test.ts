@@ -138,6 +138,13 @@ describe('app layout scrolling', () => {
       'clip-path': 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
       transform: 'none',
     })
+    expect(
+      declarationsFor(
+        '.flow-node-width-custom.flow-node-if .node-content,\n.flow-node-width-custom.flow-node-while .node-content,\n.flow-node-width-custom.flow-node-for .node-content',
+      ),
+    ).toMatchObject({
+      width: 'min(calc(100% - 64px), 540px)',
+    })
   })
 
   it('draws Input and Output as unskewed-content parallelograms', () => {

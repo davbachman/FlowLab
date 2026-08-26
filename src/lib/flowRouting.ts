@@ -6,6 +6,7 @@ import type {
   ProgramNode,
 } from './types'
 import { isBranchNodeType } from './types'
+import { classifyBackEdges } from './flowLayout'
 
 export const WHILE_TRUE_HANDLE = 'while-true'
 export const WHILE_TRUE_RIGHT_HANDLE = 'while-true-right'
@@ -33,6 +34,7 @@ const BLOCK_SOURCE_HANDLE_Y_OFFSET = 82
 const DECISION_SOURCE_HANDLE_Y_OFFSET = 137
 const FUNCTION_SOURCE_HANDLE_Y_OFFSET = 46
 const TOP_TARGET_HANDLE_Y_OFFSET = -6
+const backEdgeIdsByProgram = new WeakMap<Program, ReadonlySet<string>>()
 
 export function branchLabelFromHandle(
   sourceHandle: string | null | undefined,
@@ -234,17 +236,19 @@ export function getLoopbackPath(
 }
 
 function isLoopBackToDecision(program: Program, edge: ProgramEdge): boolean {
-  const sourceNode = program.nodes.find((node) => node.id === edge.source)
   const targetNode = program.nodes.find((node) => node.id === edge.target)
 
-  if (!sourceNode || !targetNode) {
+  if (!targetNode || !isBranchNodeType(targetNode.type)) {
     return false
   }
 
-  const targetsDecision = isBranchNodeType(targetNode.type)
-  const returnsFromBelow = sourceNode.position.y > targetNode.position.y
+  let backEdgeIds = backEdgeIdsByProgram.get(program)
+  if (!backEdgeIds) {
+    backEdgeIds = classifyBackEdges(program)
+    backEdgeIdsByProgram.set(program, backEdgeIds)
+  }
 
-  return targetsDecision && returnsFromBelow
+  return backEdgeIds.has(edge.id)
 }
 
 function findNearestIncomingNodeAboveTarget(

@@ -399,8 +399,6 @@ class ImageLoadSuspension extends Error {
   }
 }
 
-class ProcessStatementExecutionError extends Error {}
-
 export function createExecution(
   program: Program,
   inputQueue: string[],
@@ -854,21 +852,11 @@ function executeProcessStatement(
       process,
     })
   } catch (error) {
-    if (error instanceof ProcessStatementExecutionError) {
-      throw error
-    }
-
-    throw new ProcessStatementExecutionError(
-      processStatementError(node, statement, error),
-    )
+    return fail(state, processStatementError(node, statement, error))
   }
 }
 
 function pendingNodeError(pendingNode: PendingNode, error: unknown): string {
-  if (error instanceof ProcessStatementExecutionError) {
-    return error.message
-  }
-
   if (
     (pendingNode.kind === 'assignment' || pendingNode.kind === 'call') &&
     pendingNode.process

@@ -3,6 +3,7 @@ import { programToEdges } from './editorEdges'
 import {
   CLASS_METHOD_NEW_HANDLE,
   classMethodHandleId,
+  edgeTypeForProgramEdge,
   METHOD_OWNER_HANDLE,
   sourceHandleForProgramEdge,
   targetHandleForProgramEdge,
@@ -65,5 +66,52 @@ describe('Class to Method routing', () => {
 
     expect(attachment.sourceHandle).toBe(CLASS_METHOD_NEW_HANDLE)
     expect(attachment.targetHandle).toBe(METHOD_OWNER_HANDLE)
+  })
+})
+
+describe('loop-back routing', () => {
+  it('uses structural control flow instead of stale node coordinates', () => {
+    const loopProgram: Program = {
+      version: 1,
+      nodes: [
+        {
+          id: 'body',
+          type: 'process',
+          text: 'x <- x + 1',
+          position: { x: 0, y: -500 },
+        },
+        {
+          id: 'loop',
+          type: 'while',
+          text: 'x < 3',
+          position: { x: 0, y: 900 },
+        },
+        {
+          id: 'main',
+          type: 'function',
+          text: 'main',
+          position: { x: 0, y: 600 },
+        },
+        {
+          id: 'end',
+          type: 'return',
+          text: 'x',
+          position: { x: 0, y: 0 },
+        },
+      ],
+      edges: [
+        { id: 'entry', source: 'main', target: 'loop' },
+        { id: 'body-edge', source: 'loop', target: 'body', label: 'true' },
+        { id: 'back', source: 'body', target: 'loop' },
+        { id: 'exit', source: 'loop', target: 'end', label: 'false' },
+      ],
+    }
+
+    expect(edgeTypeForProgramEdge(loopProgram, loopProgram.edges[2])).toBe(
+      'loopback',
+    )
+    expect(edgeTypeForProgramEdge(loopProgram, loopProgram.edges[1])).toBe(
+      'smoothstep',
+    )
   })
 })

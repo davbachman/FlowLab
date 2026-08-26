@@ -416,6 +416,39 @@ describe('interpreter', () => {
 
     expect(finalState.status).toBe('error')
     expect(finalState.error).toMatch(/Process node "process", line 2/i)
+    expect(finalState.environment).toEqual({ x: 1 })
+    expect(finalState.currentNodeId).toBe('process')
+    expect(finalState.steps).toBe(2)
+  })
+
+  it('keeps completed Process statements when a later statement fails after ask()', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        {
+          id: 'process',
+          type: 'process',
+          text: 'x <- ask()\ny <- x + 1\nz <- missing + y',
+          position: { x: 0, y: 100 },
+        },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 200 } },
+      ],
+      edges: [
+        { id: 'e1', source: 'main', target: 'process' },
+        { id: 'e2', source: 'process', target: 'end' },
+      ],
+    }
+
+    const asking = runExecution(createExecution(program, []))
+    const finalState = answerAskExecution(asking, '4')
+
+    expect(asking.status).toBe('asking')
+    expect(finalState.status).toBe('error')
+    expect(finalState.error).toMatch(/Process node "process", line 3/i)
+    expect(finalState.environment).toEqual({ x: 4, y: 5 })
+    expect(finalState.currentNodeId).toBe('process')
+    expect(finalState.steps).toBe(2)
   })
 
   it('starts execution at the main Function even when another function appears first', () => {

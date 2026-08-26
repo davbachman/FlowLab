@@ -452,6 +452,78 @@ const objectProgramWithTwoMethods: Program = {
   ],
 }
 
+const cleanupUiProgram: Program = {
+  version: 1,
+  nodes: [
+    {
+      id: 'cleanup-main',
+      type: 'function',
+      text: 'main',
+      width: 230,
+      position: { x: 680, y: 480 },
+    },
+    {
+      id: 'cleanup-process-a',
+      type: 'process',
+      text: 'x <- 1',
+      comment: 'First preserved comment',
+      width: 410,
+      position: { x: 120, y: 80 },
+    },
+    {
+      id: 'cleanup-process-b',
+      type: 'process',
+      text: 'y <- x + 1',
+      comment: 'Second preserved comment',
+      width: 520,
+      position: { x: 760, y: 120 },
+    },
+    {
+      id: 'cleanup-output',
+      type: 'output',
+      text: 'y',
+      width: 260,
+      position: { x: 40, y: 640 },
+    },
+    {
+      id: 'cleanup-return',
+      type: 'return',
+      text: 'y',
+      position: { x: 900, y: 700 },
+    },
+  ],
+  edges: [
+    {
+      id: 'cleanup-main-to-a',
+      source: 'cleanup-main',
+      target: 'cleanup-process-a',
+    },
+    {
+      id: 'cleanup-a-to-b',
+      source: 'cleanup-process-a',
+      target: 'cleanup-process-b',
+    },
+    {
+      id: 'cleanup-b-to-output',
+      source: 'cleanup-process-b',
+      target: 'cleanup-output',
+    },
+    {
+      id: 'cleanup-output-to-return',
+      source: 'cleanup-output',
+      target: 'cleanup-return',
+    },
+  ],
+}
+
+function graphOnly(program: Program): Program {
+  return {
+    version: program.version,
+    nodes: program.nodes,
+    edges: program.edges,
+  }
+}
+
 describe('App', () => {
   afterEach(() => {
     delete (window as TestWindowWithFilePickers).showSaveFilePicker
@@ -798,6 +870,44 @@ describe('App', () => {
 
     expect(await screen.findByTestId('flow-node-main-copy')).toBeInTheDocument()
     expect(screen.getAllByDisplayValue('main')).toHaveLength(2)
+  })
+
+  it('exposes Clean up code with a tooltip and disables it without a program or during execution', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(toolbarTrigger('Edit'))
+    let cleanup = within(toolbarMenu('Edit')).getByRole('menuitem', {
+      name: /^Clean up code$/i,
+    })
+
+    expect(cleanup).toHaveAccessibleName('Clean up code')
+    expect(cleanup).toBeDisabled()
+    expect(cleanup.getAttribute('title')).toMatch(/\S/)
+
+    await user.keyboard('{Escape}')
+    importProgramFromFileMenu(
+      new File([JSON.stringify(cleanupUiProgram)], 'cleanup-ui.json', {
+        type: 'application/json',
+      }),
+    )
+    await screen.findByDisplayValue('y <- x + 1')
+
+    await user.click(toolbarTrigger('Edit'))
+    cleanup = within(toolbarMenu('Edit')).getByRole('menuitem', {
+      name: /^Clean up code$/i,
+    })
+    expect(cleanup).toBeEnabled()
+    await user.keyboard('{Escape}')
+
+    vi.useFakeTimers()
+    fireEvent.click(executionButton(/^Auto Step$/i))
+    fireEvent.click(toolbarTrigger('Edit'))
+
+    cleanup = within(toolbarMenu('Edit')).getByRole('menuitem', {
+      name: /^Clean up code$/i,
+    })
+    expect(cleanup).toBeDisabled()
   })
 
   it('shows the exact About copy, links, and emphasis and restores focus when closed', async () => {
@@ -2589,6 +2699,177 @@ describe('App', () => {
         /Process text/i,
       ),
     ).toHaveValue('total <- total + n\nn <- n - 1')
+  })
+
+  it('cleans up as one undoable operation and restores the exact graph and selection on undo and redo', async () => {
+    const user = userEvent.setup()
+    const savedBlobs: Blob[] = []
+    const write = vi.fn<(value: Blob) => Promise<void>>(async (value) => {
+      savedBlobs.push(value)
+    })
+    const close = vi.fn<() => Promise<void>>(async () => {})
+    const createWritable = vi.fn(async () => ({ write, close }))
+    const showSaveFilePicker = vi.fn<TestSaveFilePicker>(async () => ({
+      name: 'cleanup-ui.json',
+      createWritable,
+    }))
+    ;(window as TestWindowWithFilePickers).showSaveFilePicker = showSaveFilePicker
+
+    async function saveCurrentGraph(): Promise<Program> {
+      const expectedWriteCount = savedBlobs.length + 1
+      await chooseToolbarAction(user, 'File', 'Save')
+      await waitFor(() =>
+        expect(write).toHaveBeenCalledTimes(expectedWriteCount),
+      )
+      return graphOnly(
+        JSON.parse(
+          await (savedBlobs.at(-1) as Blob).text(),
+        ) as Program,
+      )
+    }
+
+    render(<App />)
+    importProgramFromFileMenu(
+      new File([JSON.stringify(cleanupUiProgram)], 'cleanup-ui.json', {
+        type: 'application/json',
+      }),
+    )
+    await screen.findByDisplayValue('y <- x + 1')
+
+    fireEvent.click(screen.getByTestId('flow-node-cleanup-process-b'))
+    fireEvent.click(screen.getByTestId('flow-node-cleanup-output'), {
+      metaKey: true,
+    })
+
+    expect(
+      screen
+        .getByTestId('flow-node-cleanup-process-b')
+        .closest('.react-flow__node'),
+    ).toHaveClass('selected')
+    expect(
+      screen
+        .getByTestId('flow-node-cleanup-output')
+        .closest('.react-flow__node'),
+    ).toHaveClass('selected')
+
+    const originalGraph = await saveCurrentGraph()
+    expect(originalGraph).toEqual(cleanupUiProgram)
+
+    await chooseToolbarAction(user, 'Edit', 'Clean up code')
+
+    expect(
+      screen.queryByTestId('flow-node-cleanup-process-b'),
+    ).not.toBeInTheDocument()
+    const survivor = screen.getByTestId('flow-node-cleanup-process-a')
+    expect(within(survivor).getByLabelText(/Process text/i)).toHaveValue(
+      'x <- 1\ny <- x + 1',
+    )
+    expect(survivor).toHaveTextContent('First preserved comment')
+    expect(survivor).toHaveTextContent('Second preserved comment')
+    expect(survivor.closest('.react-flow__node')).toHaveClass('selected')
+    expect(
+      screen
+        .getByTestId('flow-node-cleanup-output')
+        .closest('.react-flow__node'),
+    ).toHaveClass('selected')
+
+    const cleanedGraph = await saveCurrentGraph()
+    expect(cleanedGraph.edges).toContainEqual({
+      id: 'cleanup-b-to-output',
+      source: 'cleanup-process-a',
+      target: 'cleanup-output',
+    })
+    expect(cleanedGraph.edges.map((edge) => edge.id)).not.toContain(
+      'cleanup-a-to-b',
+    )
+
+    fireEvent.keyDown(window, { key: 'z', metaKey: true })
+
+    await screen.findByTestId('flow-node-cleanup-process-b')
+    expect(await saveCurrentGraph()).toEqual(originalGraph)
+    expect(
+      screen
+        .getByTestId('flow-node-cleanup-process-b')
+        .closest('.react-flow__node'),
+    ).toHaveClass('selected')
+    expect(
+      screen
+        .getByTestId('flow-node-cleanup-output')
+        .closest('.react-flow__node'),
+    ).toHaveClass('selected')
+    expect(
+      screen
+        .getByTestId('flow-node-cleanup-process-a')
+        .closest('.react-flow__node'),
+    ).not.toHaveClass('selected')
+
+    fireEvent.keyDown(window, { key: 'z', metaKey: true, shiftKey: true })
+
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('flow-node-cleanup-process-b'),
+      ).not.toBeInTheDocument(),
+    )
+    expect(await saveCurrentGraph()).toEqual(cleanedGraph)
+    expect(
+      screen
+        .getByTestId('flow-node-cleanup-process-a')
+        .closest('.react-flow__node'),
+    ).toHaveClass('selected')
+    expect(
+      screen
+        .getByTestId('flow-node-cleanup-output')
+        .closest('.react-flow__node'),
+    ).toHaveClass('selected')
+  })
+
+  it('does not add history or alter the saved graph when cleanup is already complete', async () => {
+    const user = userEvent.setup()
+    const savedBlobs: Blob[] = []
+    const write = vi.fn<(value: Blob) => Promise<void>>(async (value) => {
+      savedBlobs.push(value)
+    })
+    const close = vi.fn<() => Promise<void>>(async () => {})
+    const createWritable = vi.fn(async () => ({ write, close }))
+    ;(window as TestWindowWithFilePickers).showSaveFilePicker =
+      vi.fn<TestSaveFilePicker>(async () => ({
+        name: 'cleanup-ui.json',
+        createWritable,
+      }))
+
+    async function saveCurrentGraph(): Promise<Program> {
+      const expectedWriteCount = savedBlobs.length + 1
+      await chooseToolbarAction(user, 'File', 'Save')
+      await waitFor(() =>
+        expect(write).toHaveBeenCalledTimes(expectedWriteCount),
+      )
+      return graphOnly(
+        JSON.parse(
+          await (savedBlobs.at(-1) as Blob).text(),
+        ) as Program,
+      )
+    }
+
+    render(<App />)
+    importProgramFromFileMenu(
+      new File([JSON.stringify(cleanupUiProgram)], 'cleanup-ui.json', {
+        type: 'application/json',
+      }),
+    )
+    await screen.findByDisplayValue('y <- x + 1')
+
+    await chooseToolbarAction(user, 'Edit', 'Clean up code')
+    const onceCleaned = await saveCurrentGraph()
+
+    await chooseToolbarAction(user, 'Edit', 'Clean up code')
+    expect(await saveCurrentGraph()).toEqual(onceCleaned)
+
+    fireEvent.keyDown(window, { key: 'z', metaKey: true })
+
+    expect(
+      await screen.findByTestId('flow-node-cleanup-process-b'),
+    ).toBeInTheDocument()
+    expect(await saveCurrentGraph()).toEqual(cleanupUiProgram)
   })
 
   it('selects a palette block and places it on the next canvas click', async () => {

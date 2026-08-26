@@ -31,7 +31,7 @@ The Examples menu contains eight complete programs that can be edited and run as
 - If, While, and For diamonds use either side for the `true` or loop-body branch and the bottom for the `false` or exit branch. FlowLab labels those wires and routes loop-back wires automatically.
 - Left-click selects one block. Shift-, Ctrl-, or Cmd-click extends the selection, and left-drag on empty canvas makes a selection window. Drag any selected block to move the selection.
 - Select a block and drag either blue grip at its left or right edge to expand its width for long code. Width changes can be undone and are preserved when the program is saved.
-- Use Ctrl/Cmd+C to copy selected blocks and their internal wires, Ctrl/Cmd+V to paste, and Ctrl/Cmd+Z to undo. Backspace or Delete removes selected blocks or wires.
+- Use Ctrl/Cmd+C to copy selected blocks and their internal wires, Ctrl/Cmd+V to paste, Ctrl/Cmd+Z to undo, and Shift+Ctrl/Cmd+Z to redo. Backspace or Delete removes selected blocks or wires.
 - Right-click a block to add, edit, or remove a comment. Comments appear inside the block and are preserved when the program is saved.
 - Right-drag or scroll to pan the main canvas. Use the canvas controls or pinch gestures to zoom, and use Fit View to frame the whole program.
 
@@ -55,6 +55,8 @@ To condense an existing flow:
 3. Edit the resulting multiline block if needed.
 
 Choose Edit > Split Process while exactly one Process block is selected to turn its lines back into individual Assignment and Call blocks. Existing Assignment and Call blocks remain supported for programs where separate visual steps are clearer.
+
+Choose Edit > Clean up code to safely merge short, adjacent Process blocks and arrange the complete flowchart. Cleanup keeps branches, loop backs, Functions, Classes, and Methods in distinct visual lanes; it is applied as one undoable change and leaves unsafe or malformed Process pairs separate.
 
 ## Validate a program
 
@@ -89,7 +91,7 @@ Choose Edit > Split Process while exactly one Process block is selected to turn 
 
 - The FlowLab menu contains About and Instructions. Instructions opens the documentation in a separate tab.
 - The File menu contains New, Save, and Load. New opens a separate blank FlowLab tab without changing the current program. See [Saving and loading](saving-and-loading.md).
-- The Edit menu contains Copy, Paste, Combine into Process, and Split Process.
+- The Edit menu contains Undo, Redo, Copy, Paste, Combine into Process, Split Process, and Clean up code.
 - The Run menu duplicates Reset, Step, Auto Step, and Run from the Console.
 - The Examples menu contains the eight programs summarized on the [documentation home page](../README.md).
 - The left palette and right runtime sidebar scroll independently. On desktop, drag the divider at the sidebar's left edge to resize it; on narrow screens the workspace stacks vertically.

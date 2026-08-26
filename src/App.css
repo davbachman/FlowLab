@@ -852,6 +852,12 @@ button:disabled {
   width: 100%;
 }
 
+.flow-node-width-custom.flow-node-if .node-content,
+.flow-node-width-custom.flow-node-while .node-content,
+.flow-node-width-custom.flow-node-for .node-content {
+  width: min(calc(100% - 64px), 540px);
+}
+
 .flow-node-width-custom.flow-node-if::before,
 .flow-node-width-custom.flow-node-while::before,
 .flow-node-width-custom.flow-node-for::before {

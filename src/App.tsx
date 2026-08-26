@@ -80,6 +80,9 @@ import {
   type TurtleState,
 } from './lib/turtle'
 import { LoopbackEdge } from './components/LoopbackEdge'
+import { cleanUpProgram } from './lib/codeCleanup'
+import { minimumFlowNodeWidth } from './lib/flowLayout'
+import { combineNodesIntoProcess } from './lib/processConsolidation'
 import {
   DELETE_KEY_CODES,
   programToEdges,
@@ -305,6 +308,7 @@ const EXPORT_FILE_TYPES: SaveFilePickerOptions['types'] = [
 
 const CANVAS_DRAG_BUTTONS = [2] satisfies number[]
 const INITIAL_CANVAS_VIEWPORT = { x: 0, y: 0, zoom: 0.85 }
+const MIN_CANVAS_ZOOM = 0.1
 const COPY_PASTE_OFFSET = { x: 36, y: 36 }
 const PROCESS_SPLIT_VERTICAL_GAP = 112
 const HISTORY_LIMIT = 80
@@ -423,6 +427,7 @@ function App() {
   const edgesRef = useRef(edges)
   const clipboardRef = useRef<CanvasSnapshot | null>(null)
   const historyRef = useRef<CanvasSnapshot[]>([])
+  const redoHistoryRef = useRef<CanvasSnapshot[]>([])
   const askResumeModeRef = useRef<'step' | 'auto-step' | 'run'>('step')
   const fitViewAfterLoadRef = useRef(false)
   const toolbarRef = useRef<HTMLElement | null>(null)
@@ -816,6 +821,7 @@ function App() {
       ...historyRef.current.slice(-(HISTORY_LIMIT - 1)),
       snapshot,
     ]
+    redoHistoryRef.current = []
   }, [])
 
   const recordCanvasChangeStart = useCallback(() => {
@@ -908,6 +914,11 @@ function App() {
     validation.valid && (!executionIsBusy || autoStepIsActive)
   const canRunExecution =
     validation.valid && !executionIsBusy && !autoStepIsActive
+  const cleanupIsDisabled =
+    nodes.length === 0 ||
+    (execution !== null &&
+      execution.status !== 'halted' &&
+      execution.status !== 'error')
   const showExecutionInputQueue =
     execution !== null && execution.status !== 'halted' && execution.status !== 'error'
   const visibleTurtleState = useMemo(
@@ -1415,12 +1426,17 @@ function App() {
 
   const selectClickedNode = useCallback((event: MouseEvent, node: EditorNode) => {
     const shouldExtendSelection = event.metaKey || event.ctrlKey || event.shiftKey
+    const previouslySelectedIds = new Set(
+      nodesRef.current
+        .filter((currentNode) => currentNode.selected)
+        .map((currentNode) => currentNode.id),
+    )
 
     setNodes((currentNodes) => {
       const nextNodes = currentNodes.map((currentNode) => ({
         ...currentNode,
         selected: shouldExtendSelection
-          ? currentNode.id === node.id || Boolean(currentNode.selected)
+          ? currentNode.id === node.id || previouslySelectedIds.has(currentNode.id)
           : currentNode.id === node.id,
       }))
 
@@ -1546,9 +1562,70 @@ function App() {
     }
 
     historyRef.current = historyRef.current.slice(0, -1)
+    redoHistoryRef.current = appendCanvasHistorySnapshot(
+      redoHistoryRef.current,
+      cloneCanvasSnapshot({
+        nodes: nodesRef.current,
+        edges: edgesRef.current,
+      }),
+    )
     restoreCanvasSnapshot(previousSnapshot)
     setMessage('Undo.')
   }, [restoreCanvasSnapshot])
+
+  const redoCanvasChange = useCallback(() => {
+    const nextSnapshot = redoHistoryRef.current.at(-1)
+
+    if (!nextSnapshot) {
+      setMessage('Nothing to redo.')
+      return
+    }
+
+    redoHistoryRef.current = redoHistoryRef.current.slice(0, -1)
+    historyRef.current = appendCanvasHistorySnapshot(
+      historyRef.current,
+      cloneCanvasSnapshot({
+        nodes: nodesRef.current,
+        edges: edgesRef.current,
+      }),
+    )
+    restoreCanvasSnapshot(nextSnapshot)
+    setMessage('Redo.')
+  }, [restoreCanvasSnapshot])
+
+  const cleanUpCode = useCallback(() => {
+    const currentNodes = nodesRef.current
+    const currentEdges = edgesRef.current
+    const result = cleanUpProgram(toProgram(currentNodes, currentEdges))
+
+    if (!result.changed) {
+      setMessage('The flowchart is already clean.')
+      return
+    }
+
+    pushHistorySnapshot()
+    const nextCanvas = programToEditorCanvas(
+      result.program,
+      currentNodes,
+      currentEdges,
+      result.absorbedNodeIds,
+      true,
+    )
+    nodesRef.current = nextCanvas.nodes
+    edgesRef.current = nextCanvas.edges
+    fitViewAfterLoadRef.current = true
+    setNodes(nextCanvas.nodes)
+    setEdges(nextCanvas.edges)
+    setExecution(null)
+    setPendingNodeType(null)
+    setMessage(
+      result.mergedNodeCount > 0
+        ? `Flowchart cleaned up; ${result.mergedNodeCount} adjacent Process block${
+            result.mergedNodeCount === 1 ? '' : 's'
+          } merged.`
+        : 'Flowchart cleaned up.',
+    )
+  }, [pushHistorySnapshot])
 
   const combineSelectionIntoProcess = useCallback(() => {
     const chain = selectedLinearNodeChain(nodesRef.current, edgesRef.current)
@@ -1560,60 +1637,27 @@ function App() {
       return
     }
 
-    pushHistorySnapshot()
-    const entryNode = chain[0]
-    const exitNode = chain.at(-1) as EditorNode
-    const selectedNodeIds = new Set(chain.map((node) => node.id))
-    const comments = chain
-      .map((node) => node.data.comment?.trim())
-      .filter((comment): comment is string => Boolean(comment))
-    const processNode: EditorNode = {
-      ...entryNode,
-      width:
-        entryNode.width === undefined
-          ? undefined
-          : Math.max(entryNode.width, minimumNodeWidth('process')),
-      measured: undefined,
-      selected: true,
-      data: {
-        ...entryNode.data,
-        nodeType: 'process',
-        text: chain
-          .map((node) => node.data.text.trim())
-          .filter(Boolean)
-          .join('\n'),
-        comment: comments.length ? comments.join('\n\n') : undefined,
-      },
+    const currentNodes = nodesRef.current
+    const currentEdges = edgesRef.current
+    const result = combineNodesIntoProcess(
+      toProgram(currentNodes, currentEdges),
+      chain.map((node) => node.id),
+    )
+
+    if (result.mergedNodeCount === 0) {
+      setMessage('Those blocks cannot be combined safely.')
+      return
     }
-    const nextNodes = nodesRef.current.flatMap((node) => {
-      if (node.id === entryNode.id) {
-        return [processNode]
-      }
 
-      return selectedNodeIds.has(node.id) ? [] : [{ ...node, selected: false }]
-    })
-    const nextEdges = edgesRef.current.flatMap((edge) => {
-      const sourceIsSelected = selectedNodeIds.has(edge.source)
-      const targetIsSelected = selectedNodeIds.has(edge.target)
-
-      if (sourceIsSelected && targetIsSelected) {
-        return []
-      }
-
-      if (edge.source === exitNode.id) {
-        return [
-          {
-            ...edge,
-            source: entryNode.id,
-            sourceHandle: null,
-            selected: false,
-          },
-        ]
-      }
-
-      return [{ ...edge, selected: false }]
-    })
-
+    pushHistorySnapshot()
+    const nextCanvas = programToEditorCanvas(
+      result.program,
+      currentNodes,
+      currentEdges,
+      result.absorbedNodeIds,
+    )
+    const nextNodes = nextCanvas.nodes
+    const nextEdges = nextCanvas.edges
     nodesRef.current = nextNodes
     edgesRef.current = nextEdges
     setNodes(nextNodes)
@@ -1770,13 +1814,16 @@ function App() {
       } else if (key === 'z' && !event.shiftKey) {
         event.preventDefault()
         undoCanvasChange()
+      } else if (key === 'z' && event.shiftKey) {
+        event.preventDefault()
+        redoCanvasChange()
       }
     }
 
     window.addEventListener('keydown', onKeyDown)
 
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [copySelection, pasteSelection, undoCanvasChange])
+  }, [copySelection, pasteSelection, redoCanvasChange, undoCanvasChange])
 
   async function exportJson(): Promise<void> {
     const exportedProgram = programWithSavedRuntimeState(
@@ -2140,6 +2187,28 @@ function App() {
               className="toolbar-menu-item toolbar-menu-item-with-shortcut"
               data-menu-item
               role="menuitem"
+              aria-keyshortcuts="Meta+Z Control+Z"
+              onClick={() => runToolbarAction('edit', undoCanvasChange)}
+            >
+              <span>Undo</span>
+              <kbd aria-hidden="true">{primaryShortcutLabel('Z')}</kbd>
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item toolbar-menu-item-with-shortcut"
+              data-menu-item
+              role="menuitem"
+              aria-keyshortcuts="Meta+Shift+Z Control+Shift+Z"
+              onClick={() => runToolbarAction('edit', redoCanvasChange)}
+            >
+              <span>Redo</span>
+              <kbd aria-hidden="true">{shiftedPrimaryShortcutLabel('Z')}</kbd>
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item toolbar-menu-item-with-shortcut"
+              data-menu-item
+              role="menuitem"
               aria-keyshortcuts="Meta+C Control+C"
               onClick={() => runToolbarAction('edit', copySelection)}
             >
@@ -2178,6 +2247,17 @@ function App() {
               onClick={() => runToolbarAction('edit', splitSelectedProcess)}
             >
               Split Process
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              title="Safely combine sequential Process blocks and arrange the flowchart"
+              disabled={cleanupIsDisabled}
+              onClick={() => runToolbarAction('edit', cleanUpCode)}
+            >
+              Clean up code
             </button>
           </ToolbarMenu>
 
@@ -2479,6 +2559,7 @@ function App() {
             panOnDrag={CANVAS_DRAG_BUTTONS}
             panOnScroll
             defaultViewport={INITIAL_CANVAS_VIEWPORT}
+            minZoom={MIN_CANVAS_ZOOM}
             connectionLineType={ConnectionLineType.SmoothStep}
             defaultEdgeOptions={{ type: 'smoothstep' }}
           >
@@ -3843,6 +3924,7 @@ function cloneCanvasSnapshot(snapshot: CanvasSnapshot): CanvasSnapshot {
     nodes: snapshot.nodes.map((node) => ({
       ...node,
       position: { ...node.position },
+      ...(node.measured ? { measured: { ...node.measured } } : {}),
       data: { ...node.data },
     })),
     edges: snapshot.edges.map((edge) => ({
@@ -3850,6 +3932,13 @@ function cloneCanvasSnapshot(snapshot: CanvasSnapshot): CanvasSnapshot {
       data: edge.data ? { ...edge.data } : undefined,
     })),
   }
+}
+
+function appendCanvasHistorySnapshot(
+  history: CanvasSnapshot[],
+  snapshot: CanvasSnapshot,
+): CanvasSnapshot[] {
+  return [...history.slice(-(HISTORY_LIMIT - 1)), snapshot]
 }
 
 function offsetPosition(
@@ -4057,6 +4146,64 @@ function programToNodes(program: Program): EditorNode[] {
   })
 }
 
+function programToEditorCanvas(
+  program: Program,
+  currentNodes: EditorNode[],
+  currentEdges: EditorEdge[],
+  absorbedNodeIds: ReadonlyMap<string, string> = new Map(),
+  resetTrueBranchHandles = false,
+): CanvasSnapshot {
+  const currentNodesById = new Map(
+    currentNodes.map((node) => [node.id, node]),
+  )
+  const selectedNodeIds = new Set<string>()
+
+  for (const node of currentNodes) {
+    if (node.selected) {
+      selectedNodeIds.add(absorbedNodeIds.get(node.id) ?? node.id)
+    }
+  }
+
+  const serializedNodes = programToNodes(program)
+  const nextNodes = serializedNodes.map((serializedNode) => {
+    const currentNode = currentNodesById.get(serializedNode.id)
+    if (!currentNode) {
+      return {
+        ...serializedNode,
+        selected: selectedNodeIds.has(serializedNode.id),
+      }
+    }
+
+    const contentChanged =
+      currentNode.data.nodeType !== serializedNode.data.nodeType ||
+      currentNode.data.text !== serializedNode.data.text ||
+      currentNode.data.comment !== serializedNode.data.comment ||
+      currentNode.width !== serializedNode.width
+    return {
+      ...currentNode,
+      ...serializedNode,
+      ...(contentChanged ? { measured: undefined } : {}),
+      selected: selectedNodeIds.has(serializedNode.id),
+      data: {
+        ...currentNode.data,
+        ...serializedNode.data,
+      },
+    }
+  })
+
+  return {
+    nodes: nextNodes,
+    edges: programToEdges(
+      program,
+      currentEdges.map((edge) =>
+        resetTrueBranchHandles && edge.label === 'true'
+          ? { ...edge, sourceHandle: null }
+          : edge,
+      ),
+    ),
+  }
+}
+
 function toProgram(nodes: EditorNode[], edges: EditorEdge[]): Program {
   return {
     version: 1,
@@ -4110,23 +4257,7 @@ function minimumNodeWidth(
   nodeType: FlowNodeType,
   attachedMethodCount = 0,
 ): number {
-  if (isBranchNodeType(nodeType)) {
-    return 188
-  }
-
-  if (nodeType === 'class') {
-    return classNodeContentWidth(attachedMethodCount) + 24
-  }
-
-  if (nodeType === 'process') {
-    return 284
-  }
-
-  if (nodeType === 'assignment') {
-    return 214
-  }
-
-  return 194
+  return minimumFlowNodeWidth(nodeType, attachedMethodCount)
 }
 
 function programWithSavedRuntimeState(
