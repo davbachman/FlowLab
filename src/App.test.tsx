@@ -232,6 +232,14 @@ const helperCallProgram: Program = {
   ],
 }
 
+const waitingHelperCallProgram: Program = {
+  ...helperCallProgram,
+  inputQueue: '99',
+  nodes: helperCallProgram.nodes.map((node) =>
+    node.id === 'init' ? { ...node, text: 'total <- helper()' } : node,
+  ),
+}
+
 const importedHelperProgram: Program = {
   version: 1,
   nodes: [
@@ -321,6 +329,40 @@ const askProgram: Program = {
     { id: 'e1', source: 'main', target: 'ask' },
     { id: 'e2', source: 'ask', target: 'output' },
     { id: 'e3', source: 'output', target: 'return' },
+  ],
+}
+
+const sequentialInputProgram: Program = {
+  version: 1,
+  nodes: [
+    { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    { id: 'input-a', type: 'input', text: 'a', position: { x: 0, y: 100 } },
+    { id: 'input-b', type: 'input', text: 'b', position: { x: 0, y: 200 } },
+    {
+      id: 'combine-inputs',
+      type: 'assignment',
+      text: 'combined <- a * 10 + b',
+      position: { x: 0, y: 300 },
+    },
+    {
+      id: 'output-combined',
+      type: 'output',
+      text: 'combined',
+      position: { x: 0, y: 400 },
+    },
+    {
+      id: 'return-combined',
+      type: 'return',
+      text: 'combined',
+      position: { x: 0, y: 500 },
+    },
+  ],
+  edges: [
+    { id: 'e1', source: 'main', target: 'input-a' },
+    { id: 'e2', source: 'input-a', target: 'input-b' },
+    { id: 'e3', source: 'input-b', target: 'combine-inputs' },
+    { id: 'e4', source: 'combine-inputs', target: 'output-combined' },
+    { id: 'e5', source: 'output-combined', target: 'return-combined' },
   ],
 }
 
@@ -1824,6 +1866,228 @@ describe('App', () => {
     expect(screen.getByText(/Halted/i)).toBeInTheDocument()
   })
 
+  it('makes the input queue editable again after resetting an active program', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    await user.click(executionButton(/^Step$/i))
+    expect(screen.getByText(/^Running$/i)).toBeInTheDocument()
+    expect(
+      within(runtimeSidebar()).getByText(/^Steps$/i).closest('div'),
+    ).toHaveTextContent('1')
+
+    await user.click(executionButton(/^Reset$/i))
+
+    const inputQueue = screen.getByLabelText(/Input queue/i)
+    expect(screen.getByText(/^Running$/i)).toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+    expect(inputQueue).not.toHaveAttribute('readonly')
+
+    await user.clear(inputQueue)
+    await user.type(inputQueue, '4')
+    expect(inputQueue).toHaveValue('4')
+
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      '10',
+    )
+    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+  })
+
+  it('locks the input queue immediately when Auto Step starts from Reset', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    await user.click(executionButton(/^Reset$/i))
+
+    const inputQueue = screen.getByLabelText(/Input queue/i)
+    const stepsStatus = within(runtimeSidebar())
+      .getByText(/^Steps$/i)
+      .closest('div')
+    expect(inputQueue).not.toHaveAttribute('readonly')
+    expect(stepsStatus).toHaveTextContent('0')
+
+    vi.useFakeTimers()
+    fireEvent.click(executionButton(/^Auto Step$/i))
+
+    expect(executionButton(/^Pause$/i)).toBeInTheDocument()
+    expect(inputQueue).toHaveAttribute('readonly')
+    expect(stepsStatus).toHaveTextContent('0')
+  })
+
+  it(
+    'accepts queued input while waiting and resumes from the current Input node',
+    async () => {
+      const user = userEvent.setup()
+      render(<App />)
+      await chooseToolbarAction(user, 'Examples', 'Basic')
+
+      const inputQueue = screen.getByLabelText(/Input queue/i)
+      await user.clear(inputQueue)
+      await user.click(executionButton(/^Run$/i))
+
+      expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
+      expect(screen.getByTestId('flow-node-input-n')).toHaveAttribute(
+        'aria-current',
+        'step',
+      )
+      expect(inputQueue).not.toHaveAttribute('readonly')
+
+      await user.type(inputQueue, '3')
+      expect(inputQueue).toHaveValue('3')
+      await user.click(executionButton(/^Step$/i))
+
+      expect(screen.getByTestId('flow-node-init-total')).toHaveAttribute(
+        'aria-current',
+        'step',
+      )
+      expect(screen.getByText(/^Running$/i)).toBeInTheDocument()
+      expect(
+        within(runtimeSidebar()).getByText(/^Steps$/i).closest('div'),
+      ).toHaveTextContent('3')
+      const variables = screen.getByLabelText(/Variables/i)
+      expect(variables).toHaveTextContent('n')
+      expect(variables).toHaveTextContent('3')
+      expect(inputQueue).toHaveAttribute('readonly')
+    },
+  )
+
+  it('retains root input typed while waiting when Run starts fresh', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    const inputQueue = screen.getByLabelText(/Input queue/i)
+    await user.clear(inputQueue)
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
+
+    await user.type(inputQueue, '3')
+    await user.click(executionButton(/^Run$/i))
+
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      '6',
+    )
+    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+  })
+
+  it('preserves root inputs supplied across separate waits in their original order', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    importProgramFromFileMenu(
+      new File(
+        [JSON.stringify(sequentialInputProgram)],
+        'sequential-inputs.json',
+        { type: 'application/json' },
+      ),
+    )
+    await screen.findByDisplayValue('combined <- a * 10 + b')
+
+    const inputQueue = screen.getByLabelText(/Input queue/i)
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByTestId('flow-node-input-a')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+
+    await user.type(inputQueue, '4')
+    await user.click(executionButton(/^Step$/i))
+    await user.click(executionButton(/^Step$/i))
+    expect(screen.getByTestId('flow-node-input-b')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+    expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
+
+    await user.type(inputQueue, '5')
+    await user.click(executionButton(/^Step$/i))
+    expect(screen.getByTestId('flow-node-combine-inputs')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+
+    await user.click(executionButton(/^Reset$/i))
+    expect(
+      (inputQueue as HTMLTextAreaElement).value
+        .split(/\r?\n/)
+        .filter((line) => line.length > 0),
+    ).toEqual(['4', '5'])
+
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
+      '45',
+    )
+    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+  })
+
+  it('resumes Auto Step in place after input is supplied while waiting', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+
+    const inputQueue = screen.getByLabelText(/Input queue/i)
+    await user.clear(inputQueue)
+    await user.click(executionButton(/^Run$/i))
+    await user.type(inputQueue, '2')
+
+    vi.useFakeTimers()
+    fireEvent.click(executionButton(/^Auto Step$/i))
+    expect(screen.getByText(/^Running$/i)).toBeInTheDocument()
+    expect(executionButton(/^Pause$/i)).toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(500))
+
+    expect(screen.getByTestId('flow-node-init-total')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+    expect(
+      within(runtimeSidebar()).getByText(/^Steps$/i).closest('div'),
+    ).toHaveTextContent('3')
+    expect(screen.getByLabelText(/Variables/i)).toHaveTextContent('2')
+  })
+
+  it('supplies a waiting helper queue without replacing the saved main queue', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    importProgramFromFileMenu(
+      new File(
+        [JSON.stringify(waitingHelperCallProgram)],
+        'waiting-helper.json',
+        { type: 'application/json' },
+      ),
+    )
+    await screen.findByDisplayValue('total <- helper()')
+
+    await user.click(executionButton(/^Run$/i))
+    const inputQueue = screen.getByLabelText(/Input queue/i)
+    expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-input-list')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+
+    fireEvent.change(inputQueue, {
+      target: { value: '[1, 2, 3]\n"hello"\n7' },
+    })
+    await user.click(executionButton(/^Step$/i))
+
+    expect(screen.getByTestId('flow-node-input-word')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+    expect(inputQueue).toHaveValue('"hello"\n7')
+    expect(inputQueue).toHaveAttribute('readonly')
+
+    await user.click(executionButton(/^Reset$/i))
+    expect(inputQueue).toHaveValue('99')
+    expect(inputQueue).not.toHaveAttribute('readonly')
+  })
+
   it('enlarges the Turtle canvas and keeps Shift+Enter active in the overlay', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -2398,9 +2662,11 @@ describe('App', () => {
       'data-current',
       'true',
     )
-    expect(screen.getByLabelText(/Input queue/i)).toHaveValue(
+    const inputQueue = screen.getByLabelText(/Input queue/i)
+    expect(inputQueue).toHaveValue(
       '[1, 2, 3]\n"hello"\n7',
     )
+    expect(inputQueue).toHaveAttribute('readonly')
   })
 
   it('renders While blocks as diamonds with the true branch from the side', async () => {

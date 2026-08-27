@@ -484,6 +484,21 @@ export function createExecution(
   }
 }
 
+/**
+ * Replaces the active executable scope's input queue using the same parsing
+ * rules as execution startup. The caller controls when the execution resumes;
+ * a waiting state deliberately stays waiting while the user is still typing.
+ */
+export function replaceExecutionInputQueue(
+  state: ExecutionState,
+  rawValues: readonly string[],
+): ExecutionState {
+  return {
+    ...state,
+    inputQueue: rawValues.map(parseInputValue),
+  }
+}
+
 export function runExecution(state: ExecutionState): ExecutionState {
   let nextState = state
 
@@ -2709,18 +2724,26 @@ function parseInputValue(rawValue: string): RuntimeValue {
     (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
     (trimmed.startsWith('{') && trimmed.endsWith('}'))
   ) {
-    const evaluated = evaluateExpression(trimmed, {})
-    return Array.isArray(evaluated) || isRuntimeDictionary(evaluated)
-      ? evaluated
-      : rawValue
+    try {
+      const evaluated = evaluateExpression(trimmed, {})
+      return Array.isArray(evaluated) || isRuntimeDictionary(evaluated)
+        ? evaluated
+        : rawValue
+    } catch {
+      return rawValue
+    }
   }
 
   if (
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {
-    const evaluated = evaluateExpression(trimmed, {})
-    return typeof evaluated === 'string' ? evaluated : trimmed
+    try {
+      const evaluated = evaluateExpression(trimmed, {})
+      return typeof evaluated === 'string' ? evaluated : trimmed
+    } catch {
+      return rawValue
+    }
   }
 
   return rawValue

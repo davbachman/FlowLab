@@ -69,6 +69,7 @@ Choose Edit > Clean up code to safely merge short, adjacent Process blocks and a
 ## Run and inspect a program
 
 - Reset creates a fresh execution at `main` without advancing it.
+- The input queue remains editable immediately after Reset. If execution is waiting at an Input block, add one or more values to the queue and choose Step or Auto Step to continue from that block.
 - Step executes one visible block at a time and continues the current execution. Function and method calls enter the called flowchart.
 - Auto Step repeatedly steps at the speed selected beneath the controls. Use Pause to preserve the current position.
 - Run starts fresh and continues immediately until the program returns, waits for input, pauses for a text or image load, or reports an error.

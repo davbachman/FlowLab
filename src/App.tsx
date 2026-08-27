@@ -44,6 +44,7 @@ import {
   createExecution,
   failImageLoadExecution,
   failTextLoadExecution,
+  replaceExecutionInputQueue,
   runExecution,
   stepExecution,
   type ExecutionState,
@@ -138,6 +139,17 @@ type EditorNode = Node<FlowNodeData, 'flowNode'>
 interface CanvasSnapshot {
   nodes: EditorNode[]
   edges: EditorEdge[]
+}
+
+interface WaitingInputQueueDraft {
+  rootProgram: ExecutionState['rootProgram']
+  scopeProgram: ExecutionState['program']
+  currentNodeId: ExecutionState['currentNodeId']
+  steps: number
+  callStack: ExecutionState['callStack']
+  environment: ExecutionState['environment']
+  text: string
+  rootQueueBase: string | null
 }
 
 interface TurtleViewState {
@@ -382,6 +394,8 @@ function App() {
   const [nodes, setNodes] = useState<EditorNode[]>([])
   const [edges, setEdges] = useState<EditorEdge[]>([])
   const [inputQueueText, setInputQueueText] = useState('')
+  const [waitingInputQueueDraft, setWaitingInputQueueDraft] =
+    useState<WaitingInputQueueDraft | null>(null)
   const [documentName, setDocumentName] = useState(DEFAULT_DOCUMENT_NAME)
   const [filenameInput, setFilenameInput] = useState('')
   const [filenameRequest, setFilenameRequest] = useState<FilenameRequest | null>(
@@ -921,6 +935,23 @@ function App() {
       execution.status !== 'error')
   const showExecutionInputQueue =
     execution !== null && execution.status !== 'halted' && execution.status !== 'error'
+  const inputQueueIsAtFreshRoot =
+    isFreshRootExecution(execution) && !autoStepIsActive
+  const inputQueueIsWaiting = execution?.status === 'waiting'
+  const inputQueueIsEditable =
+    !showExecutionInputQueue || inputQueueIsAtFreshRoot || inputQueueIsWaiting
+  const activeWaitingInputQueueDraft =
+    isWaitingInputQueueDraftForExecution(waitingInputQueueDraft, execution)
+      ? waitingInputQueueDraft
+      : null
+  const effectiveInputQueueText =
+    activeWaitingInputQueueDraft?.rootQueueBase !== null &&
+    activeWaitingInputQueueDraft?.rootQueueBase !== undefined
+      ? appendInputQueueText(
+          activeWaitingInputQueueDraft.rootQueueBase,
+          activeWaitingInputQueueDraft.text,
+        )
+      : inputQueueText
   const visibleTurtleState = useMemo(
     () =>
       execution?.turtle ?? (hasTurtleLibrary ? initialTurtleState() : null),
@@ -937,9 +968,16 @@ function App() {
     (expandedCanvas === 'image' && visibleImageState)
       ? expandedCanvas
       : null
-  const visibleInputQueueText = showExecutionInputQueue
-    ? formatInputQueue(execution.inputQueue)
-    : inputQueueText
+  const visibleInputQueueText = execution?.status === 'waiting'
+    ? activeWaitingInputQueueDraft?.text ??
+      formatInputQueue(execution.inputQueue)
+    : inputQueueIsAtFreshRoot
+      ? inputQueueText
+      : execution &&
+          execution.status !== 'halted' &&
+          execution.status !== 'error'
+        ? formatInputQueue(execution.inputQueue)
+        : inputQueueText
   const renderEdges = useMemo(() => programToEdges(program, edges), [program, edges])
   const exportFileName = useMemo(
     () => fileNameForDocument(documentName),
@@ -1268,26 +1306,81 @@ function App() {
   function resetExecution(): void {
     setMessage('')
     setAutoStepEnabled(false)
+    setInputQueueText(effectiveInputQueueText)
+    setWaitingInputQueueDraft(null)
     askResumeModeRef.current = 'step'
     setExecution(
-      createExecution(program, parseInputQueue(inputQueueText), {
+      createExecution(program, parseInputQueue(effectiveInputQueueText), {
         importedPrograms,
         nativeLibraries: nativeLibraryNames,
       }),
     )
   }
 
+  function updateInputQueue(nextText: string): void {
+    if (execution?.status === 'waiting') {
+      const rootQueueBase =
+        activeWaitingInputQueueDraft?.rootQueueBase ??
+        (isRootExecutionScope(execution) ? inputQueueText : null)
+      setWaitingInputQueueDraft({
+        rootProgram: execution.rootProgram,
+        scopeProgram: execution.program,
+        currentNodeId: execution.currentNodeId,
+        steps: execution.steps,
+        callStack: execution.callStack,
+        environment: execution.environment,
+        text: nextText,
+        rootQueueBase,
+      })
+      if (rootQueueBase !== null) {
+        setInputQueueText(appendInputQueueText(rootQueueBase, nextText))
+      }
+      return
+    }
+
+    if (!showExecutionInputQueue || inputQueueIsAtFreshRoot) {
+      setInputQueueText(nextText)
+    }
+  }
+
+  function executionWithEditedInputQueue(
+    currentExecution: ExecutionState,
+  ): ExecutionState {
+    if (currentExecution.status === 'waiting') {
+      const waitingText =
+        isWaitingInputQueueDraftForExecution(
+          waitingInputQueueDraft,
+          currentExecution,
+        )
+          ? waitingInputQueueDraft.text
+          : formatInputQueue(currentExecution.inputQueue)
+      return replaceExecutionInputQueue(
+        currentExecution,
+        parseInputQueue(waitingText),
+      )
+    }
+
+    return isFreshRootExecution(currentExecution)
+      ? replaceExecutionInputQueue(
+          currentExecution,
+          parseInputQueue(inputQueueText),
+        )
+      : currentExecution
+  }
+
   function stepProgram(): void {
     setMessage('')
     setAutoStepEnabled(false)
+    setInputQueueText(effectiveInputQueueText)
+    setWaitingInputQueueDraft(null)
     askResumeModeRef.current = 'step'
     setExecution((currentExecution) => {
-      const activeExecution =
-        currentExecution ??
-        createExecution(program, parseInputQueue(inputQueueText), {
-          importedPrograms,
-          nativeLibraries: nativeLibraryNames,
-        })
+      const activeExecution = currentExecution
+        ? executionWithEditedInputQueue(currentExecution)
+        : createExecution(program, parseInputQueue(inputQueueText), {
+            importedPrograms,
+            nativeLibraries: nativeLibraryNames,
+          })
       return stepExecution(activeExecution)
     })
   }
@@ -1295,10 +1388,12 @@ function App() {
   function runProgram(): void {
     setMessage('')
     setAutoStepEnabled(false)
+    setInputQueueText(effectiveInputQueueText)
+    setWaitingInputQueueDraft(null)
     askResumeModeRef.current = 'run'
     const initialExecution = createExecution(
       program,
-      parseInputQueue(inputQueueText),
+      parseInputQueue(effectiveInputQueueText),
       { importedPrograms, nativeLibraries: nativeLibraryNames },
     )
     setExecution(runExecution(initialExecution))
@@ -1313,15 +1408,47 @@ function App() {
       return
     }
 
+    const waitingInputValues =
+      execution?.status === 'waiting'
+        ? parseInputQueue(
+            isWaitingInputQueueDraftForExecution(
+              waitingInputQueueDraft,
+              execution,
+            )
+              ? waitingInputQueueDraft.text
+              : formatInputQueue(execution.inputQueue),
+          )
+        : []
+    if (execution?.status === 'waiting' && waitingInputValues.length === 0) {
+      setMessage('Enter an input queue value before continuing.')
+      return
+    }
+
+    setWaitingInputQueueDraft(null)
+    setInputQueueText(effectiveInputQueueText)
     askResumeModeRef.current = 'auto-step'
     setExecution((currentExecution) => {
+      if (currentExecution?.status === 'waiting') {
+        const suppliedExecution = replaceExecutionInputQueue(
+          currentExecution,
+          isWaitingInputQueueDraftForExecution(
+            waitingInputQueueDraft,
+            currentExecution,
+          )
+            ? parseInputQueue(waitingInputQueueDraft.text)
+            : parseInputQueue(formatInputQueue(currentExecution.inputQueue)),
+        )
+        return suppliedExecution.inputQueue.length
+          ? { ...suppliedExecution, status: 'running' }
+          : suppliedExecution
+      }
+
       if (
         currentExecution &&
         currentExecution.status !== 'halted' &&
-        currentExecution.status !== 'error' &&
-        currentExecution.status !== 'waiting'
+        currentExecution.status !== 'error'
       ) {
-        return currentExecution
+        return executionWithEditedInputQueue(currentExecution)
       }
 
       return createExecution(program, parseInputQueue(inputQueueText), {
@@ -1829,7 +1956,7 @@ function App() {
     const exportedProgram = programWithSavedRuntimeState(
       program,
       importNamesText,
-      inputQueueText,
+      effectiveInputQueueText,
     )
     const blob = programJsonBlob(exportedProgram)
     const saveFilePicker = (window as WindowWithFilePickers).showSaveFilePicker
@@ -2655,12 +2782,8 @@ function App() {
           <textarea
             id="input-queue"
             value={visibleInputQueueText}
-            onChange={(event) => {
-              if (!showExecutionInputQueue) {
-                setInputQueueText(event.target.value)
-              }
-            }}
-            readOnly={showExecutionInputQueue}
+            onChange={(event) => updateInputQueue(event.target.value)}
+            readOnly={!inputQueueIsEditable}
             rows={5}
             spellCheck={false}
           />
@@ -4472,6 +4595,54 @@ function parseInputQueue(text: string): string[] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
+}
+
+function appendInputQueueText(base: string, addition: string): string {
+  const normalizedBase = base.trimEnd()
+  const normalizedAddition = addition.trimStart()
+
+  if (!normalizedBase) {
+    return addition
+  }
+
+  if (!normalizedAddition) {
+    return normalizedBase
+  }
+
+  return `${normalizedBase}\n${normalizedAddition}`
+}
+
+function isWaitingInputQueueDraftForExecution(
+  draft: WaitingInputQueueDraft | null,
+  execution: ExecutionState | null,
+): draft is WaitingInputQueueDraft {
+  return Boolean(
+    draft &&
+      execution?.status === 'waiting' &&
+      draft.rootProgram === execution.rootProgram &&
+      draft.scopeProgram === execution.program &&
+      draft.currentNodeId === execution.currentNodeId &&
+      draft.steps === execution.steps &&
+      draft.callStack === execution.callStack &&
+      draft.environment === execution.environment,
+  )
+}
+
+function isRootExecutionScope(execution: ExecutionState): boolean {
+  return (
+    execution.program === execution.rootProgram && execution.callStack.length === 0
+  )
+}
+
+function isFreshRootExecution(
+  execution: ExecutionState | null,
+): boolean {
+  return Boolean(
+    execution &&
+      execution.status === 'running' &&
+      execution.steps === 0 &&
+      isRootExecutionScope(execution),
+  )
 }
 
 function formatInputQueue(values: RuntimeValue[]): string {

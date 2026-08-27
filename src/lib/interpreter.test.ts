@@ -5,6 +5,7 @@ import {
   completeTextLoadExecution,
   createExecution,
   failImageLoadExecution,
+  replaceExecutionInputQueue,
   runExecution,
   stepExecution,
 } from './interpreter'
@@ -549,6 +550,44 @@ describe('interpreter', () => {
     expect(state.status).toBe('waiting')
     expect(state.currentNodeId).toBe('input')
     expect(state.output).toEqual([])
+  })
+
+  it('replaces a waiting scope input queue without restarting execution', () => {
+    let state = runExecution(createExecution(sumProgram, []))
+
+    expect(state.status).toBe('waiting')
+    expect(state.steps).toBe(2)
+
+    state = replaceExecutionInputQueue(state, [
+      '4',
+      'True',
+      '"hello"',
+      '[missing]',
+      '{"key": missing}',
+    ])
+
+    expect(state.status).toBe('waiting')
+    expect(state.currentNodeId).toBe('input')
+    expect(state.steps).toBe(2)
+    expect(state.inputQueue).toEqual([
+      4,
+      true,
+      'hello',
+      '[missing]',
+      '{"key": missing}',
+    ])
+
+    state = stepExecution(state)
+    expect(state.status).toBe('running')
+    expect(state.currentNodeId).toBe('init')
+    expect(state.steps).toBe(3)
+    expect(state.environment.n).toBe(4)
+    expect(state.inputQueue).toEqual([
+      true,
+      'hello',
+      '[missing]',
+      '{"key": missing}',
+    ])
   })
 
   it('chooses false branches for If nodes', () => {
