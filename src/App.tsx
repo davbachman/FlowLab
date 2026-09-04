@@ -3870,7 +3870,20 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
       }
     >
       {data.isWidthCustomized && isBranchNodeType(data.nodeType) ? (
-        <span className="flow-node-custom-diamond" aria-hidden="true" />
+        <span className="flow-node-custom-diamond" aria-hidden="true">
+          <svg
+            className="flow-node-custom-diamond-svg"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            focusable="false"
+          >
+            <polygon
+              className="flow-node-custom-diamond-shape"
+              points="50,0 100,50 50,100 0,50"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+        </span>
       ) : null}
       {selected ? (
         <>

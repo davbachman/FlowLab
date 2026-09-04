@@ -135,7 +135,7 @@ describe('app layout scrolling', () => {
     })
   })
 
-  it('renders the resized branch halo from an unclipped shape wrapper', () => {
+  it('renders the resized branch outline separately from its halo', () => {
     const shapeWrapper = declarationsFor('.flow-node-custom-diamond')
 
     expect(shapeWrapper).toMatchObject({
@@ -145,13 +145,23 @@ describe('app layout scrolling', () => {
     })
     expect(shapeWrapper).not.toHaveProperty('clip-path')
     expect(
-      declarationsFor(
-        '.flow-node-custom-diamond::before,\n.flow-node-custom-diamond::after',
-      ),
+      declarationsFor('.flow-node-custom-diamond-svg'),
     ).toMatchObject({
-      position: 'absolute',
-      'clip-path': 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
+      display: 'block',
+      width: '100%',
+      height: '100%',
+      overflow: 'visible',
     })
+
+    const diamondShape = declarationsFor('.flow-node-custom-diamond-shape')
+    expect(diamondShape).toMatchObject({
+      fill: '#f7fbff',
+      stroke: '#2f6fd6',
+      'stroke-linejoin': 'round',
+      'stroke-width': '2px',
+      'vector-effect': 'non-scaling-stroke',
+    })
+    expect(diamondShape).not.toHaveProperty('filter')
 
     const currentShapeWrapper = declarationsFor(
       ".flow-node-width-custom[data-current='true'] > .flow-node-custom-diamond,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond",
@@ -160,16 +170,14 @@ describe('app layout scrolling', () => {
       'drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 6px rgba(245, 158, 11, 0.72)) drop-shadow(0 12px 12px rgba(146, 64, 14, 0.22))',
     )
     expect(currentShapeWrapper).not.toHaveProperty('clip-path')
-    const currentOuterDiamond = declarationsFor(
-      ".flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond::before,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond::before",
+    const currentDiamondShape = declarationsFor(
+      ".flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-shape,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-shape",
     )
-    expect(currentOuterDiamond).toMatchObject({ background: '#d97706' })
-    expect(currentOuterDiamond).not.toHaveProperty('filter')
-    expect(
-      declarationsFor(
-        ".flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond::after,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond::after",
-      ),
-    ).toMatchObject({ background: '#fffbeb' })
+    expect(currentDiamondShape).toMatchObject({
+      fill: '#fffbeb',
+      stroke: '#d97706',
+    })
+    expect(currentDiamondShape).not.toHaveProperty('filter')
   })
 
   it('stretches custom block widths and limits resize grips to the horizontal axis', () => {
@@ -192,16 +200,6 @@ describe('app layout scrolling', () => {
       ),
     ).toMatchObject({
       content: 'none',
-    })
-    expect(
-      declarationsFor('.flow-node-custom-diamond::before'),
-    ).toMatchObject({
-      inset: '0',
-      background: '#2f6fd6',
-    })
-    expect(declarationsFor('.flow-node-custom-diamond::after')).toMatchObject({
-      inset: '2px 3px',
-      background: '#f7fbff',
     })
     expect(
       declarationsFor(

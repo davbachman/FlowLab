@@ -2679,8 +2679,23 @@ describe('App', () => {
     expect(ifNode).toHaveClass('flow-node-width-custom')
     expect(ifNode.closest('.react-flow__node')).toHaveStyle({ width: '380px' })
     const customDiamond = ifNode.querySelector('.flow-node-custom-diamond')
+    const customDiamondSvg = customDiamond?.querySelector(
+      '.flow-node-custom-diamond-svg',
+    )
+    const customDiamondShape = customDiamond?.querySelector(
+      '.flow-node-custom-diamond-shape',
+    )
     expect(customDiamond).toBeInTheDocument()
     expect(customDiamond).toHaveAttribute('aria-hidden', 'true')
+    expect(customDiamondSvg).toHaveAttribute('preserveAspectRatio', 'none')
+    expect(customDiamondShape).toHaveAttribute(
+      'points',
+      '50,0 100,50 50,100 0,50',
+    )
+    expect(customDiamondShape).toHaveAttribute(
+      'vector-effect',
+      'non-scaling-stroke',
+    )
 
     await user.click(executionButton(/^Reset$/i))
     await user.click(executionButton(/^Step$/i))

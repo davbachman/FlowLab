@@ -1040,22 +1040,19 @@ button:disabled {
   filter: drop-shadow(0 8px 9px rgba(15, 23, 42, 0.12));
 }
 
-.flow-node-custom-diamond::before,
-.flow-node-custom-diamond::after {
-  content: '';
-  position: absolute;
-  z-index: 0;
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+.flow-node-custom-diamond-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 
-.flow-node-custom-diamond::before {
-  inset: 0;
-  background: #2f6fd6;
-}
-
-.flow-node-custom-diamond::after {
-  inset: 2px 3px;
-  background: #f7fbff;
+.flow-node-custom-diamond-shape {
+  fill: #f7fbff;
+  stroke: #2f6fd6;
+  stroke-linejoin: round;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
 }
 
 .react-flow__node.selected
@@ -1082,19 +1079,14 @@ button:disabled {
 }
 
 .flow-node-width-custom[data-current='true']
-  > .flow-node-custom-diamond::before,
+  > .flow-node-custom-diamond
+  .flow-node-custom-diamond-shape,
 .react-flow__node.selected
   .flow-node-width-custom[data-current='true']
-  > .flow-node-custom-diamond::before {
-  background: #d97706;
-}
-
-.flow-node-width-custom[data-current='true']
-  > .flow-node-custom-diamond::after,
-.react-flow__node.selected
-  .flow-node-width-custom[data-current='true']
-  > .flow-node-custom-diamond::after {
-  background: #fffbeb;
+  > .flow-node-custom-diamond
+  .flow-node-custom-diamond-shape {
+  fill: #fffbeb;
+  stroke: #d97706;
 }
 
 .node-textarea {
