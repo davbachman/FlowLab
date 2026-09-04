@@ -25,7 +25,7 @@ The Examples menu contains eight complete programs that can be edited and run as
 
 ## Work with the canvas
 
-- FlowLab starts with a blank canvas. Select a block in the left palette, then click the canvas to place it. Edit the text directly inside any block.
+- FlowLab starts with a blank canvas. Select a block in the left palette, move its preview into position, then click the canvas to place it. You can also double-click an empty part of the canvas, type any block name, and press Enter to start placing the matching block. Matching is case-insensitive and the chooser offers completions as you type. Edit the text directly inside any placed block.
 - Drag between block handles to make wires. Function and Method roots begin executable flows. Class handles attach Methods.
 - Multiple wires may enter an executable block. Starting a new wire from an occupied output replaces that output's old wire; `true` and `false` branch outputs are replaced independently, while Class Method attachments accumulate.
 - If, While, and For diamonds use either side for the `true` or loop-body branch and the bottom for the `false` or exit branch. FlowLab labels those wires and routes loop-back wires automatically.
@@ -33,7 +33,7 @@ The Examples menu contains eight complete programs that can be edited and run as
 - Select a block and drag either blue grip at its left or right edge to expand its width for long code. Width changes can be undone and are preserved when the program is saved.
 - Use Ctrl/Cmd+C to copy selected blocks and their internal wires, Ctrl/Cmd+V to paste, Ctrl/Cmd+Z to undo, and Shift+Ctrl/Cmd+Z to redo. Backspace or Delete removes selected blocks or wires.
 - Right-click a block to add, edit, or remove a comment. Comments appear inside the block and are preserved when the program is saved.
-- Right-drag or scroll to pan the main canvas. Use the canvas controls or pinch gestures to zoom, and use Fit View to frame the whole program.
+- Right-drag to pan the main canvas. Use the mouse wheel, pinch gestures, or the canvas controls to zoom, and use Fit View to frame the whole program.
 
 ## Use Process blocks
 
@@ -95,7 +95,7 @@ Choose Edit > Clean up code to safely merge short, adjacent Process blocks and a
 - The Edit menu contains Undo, Redo, Copy, Paste, Combine into Process, Split Process, and Clean up code.
 - The Run menu duplicates Reset, Step, Auto Step, and Run from the Console.
 - The Examples menu contains the eight programs summarized on the [documentation home page](../README.md).
-- The left palette and right runtime sidebar scroll independently. On desktop, drag the divider at the sidebar's left edge to resize it; on narrow screens the workspace stacks vertically.
+- The left palette and right runtime sidebar scroll independently. On desktop, drag either sidebar divider to resize it. Use the two panel buttons in the top-right toolbar to hide or restore either sidebar; on narrow screens the workspace stacks vertically.
 
 ---
 

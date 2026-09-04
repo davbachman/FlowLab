@@ -87,6 +87,12 @@ describe('app layout scrolling', () => {
       'box-sizing': 'border-box',
       overflow: 'auto',
     })
+    expect(declarationsFor('.palette')).toMatchObject({
+      'overflow-x': 'hidden',
+    })
+    expect(declarationsFor('.sidebar-resize-handle-left')).toMatchObject({
+      right: '0',
+    })
   })
 
   it('keeps current branch-node highlighting clipped to the diamond shape', () => {
@@ -135,9 +141,22 @@ describe('app layout scrolling', () => {
         '.flow-node-width-custom.flow-node-if::before,\n.flow-node-width-custom.flow-node-while::before,\n.flow-node-width-custom.flow-node-for::before',
       ),
     ).toMatchObject({
+      inset: '0 15px',
       'clip-path': 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
       transform: 'none',
     })
+    expect(
+      declarationsFor(
+        '.flow-node-width-custom.flow-node-if::after,\n.flow-node-width-custom.flow-node-while::after,\n.flow-node-width-custom.flow-node-for::after',
+      ),
+    ).toMatchObject({
+      inset: '2px 18px',
+      'clip-path': 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
+    })
+    expect(appCss).toContain('drop-shadow(0 0 2px #ffffff)')
+    expect(appCss).toContain(
+      'drop-shadow(0 0 6px rgba(245, 158, 11, 0.72))',
+    )
     expect(
       declarationsFor(
         '.flow-node-width-custom.flow-node-if .node-content,\n.flow-node-width-custom.flow-node-while .node-content,\n.flow-node-width-custom.flow-node-for .node-content',
@@ -217,7 +236,7 @@ describe('app layout scrolling', () => {
 
     expect(declarationsFor('.workspace', zoomedDesktop)).toMatchObject({
       'grid-template-columns':
-        '220px minmax(320px, 1fr) minmax(340px, var(--runtime-sidebar-width, 420px))',
+        'var(--palette-sidebar-width, 220px) minmax(320px, 1fr) var(--runtime-sidebar-width, 420px)',
     })
     expect(zoomedDesktop).not.toContain('grid-template-rows: auto 60vh auto')
     expect(zoomedDesktop).not.toContain('flex-direction: row')
@@ -229,7 +248,7 @@ describe('app layout scrolling', () => {
     expect(declarationsFor('.workspace', mobile)).toMatchObject({
       'grid-template-columns': '1fr',
       'grid-template-rows':
-        'max-content minmax(360px, 60vh) minmax(320px, 50vh)',
+        'var(--palette-sidebar-row, max-content) var(--canvas-sidebar-row, minmax(360px, 60vh)) var(--runtime-sidebar-row, minmax(320px, 50vh))',
     })
     expect(declarationsFor('.palette', mobile)).toMatchObject({
       'min-height': 'max-content',
@@ -275,8 +294,9 @@ describe('app layout scrolling', () => {
       'flex-direction': 'row',
       'flex-wrap': 'wrap',
     })
-    expect(declarationsFor('.document-name', mobile)).toMatchObject({
-      'flex-basis': '100%',
+    expect(declarationsFor('.topbar-actions', mobile)).toMatchObject({
+      width: '100%',
+      'justify-content': 'space-between',
     })
     expect(
       declarationsFor('.toolbar-menu:last-child .toolbar-menu-panel', mobile),

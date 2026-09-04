@@ -129,6 +129,16 @@ describe('React Flow options', () => {
     })
   })
 
+  it('zooms with the wheel and reserves double click for quick add', () => {
+    render(<App />)
+
+    expect(reactFlowProps.at(-1)).toMatchObject({
+      zoomOnScroll: true,
+      panOnScroll: false,
+      zoomOnDoubleClick: false,
+    })
+  })
+
   it('replaces an occupied logical output when a new wire is connected', async () => {
     const user = userEvent.setup()
     render(<App />)

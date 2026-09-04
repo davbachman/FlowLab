@@ -160,6 +160,25 @@ function placePendingNodeOnPane(pane: Element, x = 440, y = 300): void {
   })
 }
 
+function pendingNodePreviewPosition(): string {
+  const preview = screen.getByTestId('pending-node-preview')
+  const wrapper = preview.closest('.react-flow__node')
+
+  return [preview.getAttribute('style'), wrapper?.getAttribute('style')]
+    .filter(Boolean)
+    .join('|')
+}
+
+function expectSidebarHidden(label: RegExp): void {
+  const sidebar = screen.queryByLabelText(label)
+
+  if (sidebar) {
+    expect(sidebar).not.toBeVisible()
+  } else {
+    expect(sidebar).not.toBeInTheDocument()
+  }
+}
+
 function svgViewBoxNumbers(element: Element): number[] {
   return (element.getAttribute('viewBox') ?? '')
     .split(/\s+/)
@@ -329,6 +348,47 @@ const askProgram: Program = {
     { id: 'e1', source: 'main', target: 'ask' },
     { id: 'e2', source: 'ask', target: 'output' },
     { id: 'e3', source: 'output', target: 'return' },
+  ],
+}
+
+const resizedIfProgram: Program = {
+  version: 1,
+  nodes: [
+    { id: 'wide-main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+    {
+      id: 'wide-if',
+      type: 'if',
+      text: '1 < 2',
+      width: 380,
+      position: { x: 0, y: 120 },
+    },
+    {
+      id: 'wide-true-return',
+      type: 'return',
+      text: '1',
+      position: { x: -180, y: 300 },
+    },
+    {
+      id: 'wide-false-return',
+      type: 'return',
+      text: '0',
+      position: { x: 180, y: 300 },
+    },
+  ],
+  edges: [
+    { id: 'wide-start', source: 'wide-main', target: 'wide-if' },
+    {
+      id: 'wide-true',
+      source: 'wide-if',
+      target: 'wide-true-return',
+      label: 'true',
+    },
+    {
+      id: 'wide-false',
+      source: 'wide-if',
+      target: 'wide-false-return',
+      label: 'false',
+    },
   ],
 }
 
@@ -1205,6 +1265,21 @@ describe('App', () => {
       'style',
       expect.stringContaining('--app-viewport-height: 1040px'),
     )
+  })
+
+  it('uses the compact default palette width at tablet viewports', () => {
+    vi.stubGlobal('visualViewport', {
+      width: 900,
+      height: 760,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })
+
+    render(<App />)
+
+    expect(screen.getByLabelText(/Node palette/i)).toHaveStyle({
+      width: '220px',
+    })
   })
 
   it('starts the blank canvas at a modest default zoom', () => {
@@ -2341,6 +2416,66 @@ describe('App', () => {
     expect(sidebar).toHaveStyle({ width: '500px' })
   })
 
+  it('lets students resize the left sidebar', () => {
+    render(<App />)
+
+    const sidebar = screen.getByLabelText(/Node palette/i)
+    const handle = screen.getByRole('separator', {
+      name: /Resize left sidebar/i,
+    })
+
+    expect(sidebar).toHaveStyle({ width: '260px' })
+    expect(handle).toHaveAttribute('aria-valuenow', '260')
+
+    fireEvent.pointerDown(handle, { clientX: 260, pointerId: 1 })
+    fireEvent.pointerMove(window, { clientX: 340, pointerId: 1 })
+    fireEvent.pointerUp(window, { clientX: 340, pointerId: 1 })
+
+    expect(sidebar).toHaveStyle({ width: '340px' })
+    expect(handle).toHaveAttribute('aria-valuenow', '340')
+  })
+
+  it('hides and restores either sidebar from the header controls', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const workspace = screen.getByLabelText(/Flowchart workspace/i)
+
+    expect(screen.getByLabelText(/Node palette/i)).toBeVisible()
+    expect(screen.getByLabelText(/Runtime sidebar/i)).toBeVisible()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Hide left sidebar$/i }),
+    )
+    expectSidebarHidden(/Node palette/i)
+
+    await user.click(
+      screen.getByRole('button', { name: /^Hide right sidebar$/i }),
+    )
+    expectSidebarHidden(/Runtime sidebar/i)
+    expect(workspace).toHaveAttribute(
+      'style',
+      expect.stringContaining(
+        '--canvas-sidebar-row: minmax(360px, 1fr)',
+      ),
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: /^Show left sidebar$/i }),
+    )
+    expect(screen.getByLabelText(/Node palette/i)).toBeVisible()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Show right sidebar$/i }),
+    )
+    expect(screen.getByLabelText(/Runtime sidebar/i)).toBeVisible()
+    expect(workspace).toHaveAttribute(
+      'style',
+      expect.stringContaining(
+        '--canvas-sidebar-row: minmax(360px, 60vh)',
+      ),
+    )
+  })
+
   it('drags Turtle and Image panels to new vertical sidebar positions', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -2527,6 +2662,27 @@ describe('App', () => {
       'data-current',
       'true',
     )
+  })
+
+  it('keeps a horizontally resized If highlighted during execution', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    importProgramFromFileMenu(
+      new File([JSON.stringify(resizedIfProgram)], 'resized-if.json', {
+        type: 'application/json',
+      }),
+    )
+    await screen.findByDisplayValue('1 < 2')
+
+    const ifNode = screen.getByTestId('flow-node-wide-if')
+    expect(ifNode).toHaveClass('flow-node-width-custom')
+
+    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Step$/i))
+
+    expect(ifNode).toHaveAttribute('data-current', 'true')
+    expect(ifNode).toHaveAttribute('aria-current', 'step')
   })
 
   it('marks the current node semantically without a separate badge', async () => {
@@ -3159,6 +3315,147 @@ describe('App', () => {
     )
   })
 
+  it('previews a palette block under the cursor until the canvas click places it', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    const canvas = screen.getByLabelText(/Visual editor/i)
+    const pane = container.querySelector('.react-flow__pane')
+
+    expect(pane).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^If$/i }))
+
+    fireEvent.mouseMove(canvas, { clientX: 320, clientY: 240 })
+    expect(screen.queryByTestId('flow-node-if-1')).not.toBeInTheDocument()
+    const firstPosition = pendingNodePreviewPosition()
+
+    fireEvent.mouseMove(canvas, { clientX: 520, clientY: 360 })
+    const secondPosition = pendingNodePreviewPosition()
+
+    expect(secondPosition).not.toBe(firstPosition)
+    expect(screen.queryByTestId('flow-node-if-1')).not.toBeInTheDocument()
+
+    placePendingNodeOnPane(pane as Element, 520, 360)
+
+    expect(screen.queryByTestId('pending-node-preview')).not.toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-if-1')).toBeInTheDocument()
+  })
+
+  it('quick-adds a block case-insensitively and previews it before placement', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    const pane = container.querySelector('.react-flow__pane')
+
+    expect(pane).toBeInTheDocument()
+    fireEvent.doubleClick(pane as Element, { clientX: 410, clientY: 260 })
+
+    const dialog = screen.getByRole('dialog', { name: /^Add a block$/i })
+    const input = within(dialog).getByRole('combobox')
+
+    await user.type(input, 'rEt')
+    expect(screen.getByRole('option', { name: /^Return$/i })).toBeInTheDocument()
+    await user.keyboard('{Enter}')
+
+    expect(
+      screen.queryByRole('dialog', { name: /^Add a block$/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByTestId('pending-node-preview')).toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-return-1')).not.toBeInTheDocument()
+
+    placePendingNodeOnPane(pane as Element, 410, 260)
+
+    expect(screen.queryByTestId('pending-node-preview')).not.toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-return-1')).toBeInTheDocument()
+  })
+
+  it('completes a quick-add block name with Tab before placement', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    const pane = container.querySelector('.react-flow__pane')
+
+    expect(pane).toBeInTheDocument()
+    fireEvent.doubleClick(pane as Element, { clientX: 410, clientY: 260 })
+
+    const input = within(
+      screen.getByRole('dialog', { name: /^Add a block$/i }),
+    ).getByRole('combobox')
+    await user.type(input, 'met')
+    await user.keyboard('{Tab}')
+
+    expect(input).toHaveValue('Method')
+    await user.keyboard('{Enter}')
+    expect(screen.getByTestId('pending-node-preview')).toHaveAttribute(
+      'data-node-type',
+      'method',
+    )
+  })
+
+  it('does not open quick add when a node double click is retargeted to the pane', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    const pane = container.querySelector('.react-flow__pane')
+
+    expect(pane).toBeInTheDocument()
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    const node = await screen.findByTestId('flow-node-main')
+    const ownDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      'elementsFromPoint',
+    )
+
+    Object.defineProperty(document, 'elementsFromPoint', {
+      configurable: true,
+      value: vi.fn(() => [node, pane as Element]),
+    })
+
+    try {
+      fireEvent.doubleClick(pane as Element, {
+        clientX: 410,
+        clientY: 260,
+      })
+      expect(
+        screen.queryByRole('dialog', { name: /^Add a block$/i }),
+      ).not.toBeInTheDocument()
+    } finally {
+      if (ownDescriptor) {
+        Object.defineProperty(document, 'elementsFromPoint', ownDescriptor)
+      } else {
+        Reflect.deleteProperty(document, 'elementsFromPoint')
+      }
+    }
+  })
+
+  it('cancels quick add and pending placement with Escape', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    const pane = container.querySelector('.react-flow__pane')
+
+    expect(pane).toBeInTheDocument()
+    fireEvent.doubleClick(pane as Element, { clientX: 410, clientY: 260 })
+    expect(
+      screen.getByRole('dialog', { name: /^Add a block$/i }),
+    ).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(
+      screen.queryByRole('dialog', { name: /^Add a block$/i }),
+    ).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^If$/i }))
+    fireEvent.mouseMove(screen.getByLabelText(/Visual editor/i), {
+      clientX: 320,
+      clientY: 240,
+    })
+    expect(screen.getByTestId('pending-node-preview')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByTestId('pending-node-preview')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^If$/i })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
   it('places Function blocks with editable main text', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
@@ -3293,5 +3590,6 @@ describe('App', () => {
     const editor = within(processNode).getByLabelText(/Process text/i)
     expect(editor.tagName).toBe('TEXTAREA')
     expect(editor).toHaveValue('x <- 1\nsqrt(x)')
+    expect(editor).not.toHaveClass('nowheel')
   })
 })

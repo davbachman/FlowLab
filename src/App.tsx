@@ -25,6 +25,7 @@ import {
   Position,
   ReactFlow,
   useUpdateNodeInternals,
+  ViewportPortal,
   type Connection,
   type EdgeChange,
   type EdgeTypes,
@@ -106,6 +107,7 @@ import {
   type ClassDeclaration,
 } from './lib/statements'
 import {
+  FLOW_NODE_TYPES,
   isBranchLabel,
   isBranchNodeType,
   NODE_TYPE_LABELS,
@@ -200,8 +202,15 @@ interface CommentRequest {
 }
 
 interface SidebarResizeDrag {
+  side: 'left' | 'right'
   startX: number
   startWidth: number
+}
+
+interface QuickAddRequest {
+  clientX: number
+  clientY: number
+  flowPosition: { x: number; y: number }
 }
 
 interface ViewportSize {
@@ -333,6 +342,15 @@ const MULTI_SELECTION_KEY_CODES = [
 const DEFAULT_SIDEBAR_WIDTH = 420
 const MIN_SIDEBAR_WIDTH = 340
 const MAX_SIDEBAR_WIDTH = 720
+const DEFAULT_PALETTE_WIDTH = 260
+const TABLET_DEFAULT_PALETTE_WIDTH = 220
+const MIN_PALETTE_WIDTH = 180
+const MAX_PALETTE_WIDTH = 520
+const SIDEBAR_KEYBOARD_RESIZE_STEP = 16
+const PLACEMENT_DOUBLE_CLICK_GUARD_MS = 500
+const QUICK_ADD_MAX_SUGGESTIONS = 6
+const QUICK_ADD_EXCLUDED_SELECTOR =
+  '.react-flow__node, .react-flow__edge, .react-flow__controls, .react-flow__attribution'
 const DEFAULT_AUTO_STEP_SPEED = 2
 const MIN_AUTO_STEP_SPEED = 1
 const MAX_AUTO_STEP_SPEED = 10
@@ -417,7 +435,12 @@ function App() {
   const [execution, setExecution] = useState<ExecutionState | null>(null)
   const [autoStepEnabled, setAutoStepEnabled] = useState(false)
   const [autoStepSpeed, setAutoStepSpeed] = useState(DEFAULT_AUTO_STEP_SPEED)
+  const [paletteWidth, setPaletteWidth] = useState(() =>
+    defaultPaletteWidthForViewport(viewportSize.width),
+  )
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
+  const [leftSidebarVisible, setLeftSidebarVisible] = useState(true)
+  const [rightSidebarVisible, setRightSidebarVisible] = useState(true)
   const [sidebarResizeDrag, setSidebarResizeDrag] =
     useState<SidebarResizeDrag | null>(null)
   const [runtimePanelOrder, setRuntimePanelOrder] = useState<RuntimePanelId[]>(
@@ -435,6 +458,14 @@ function App() {
   const [pendingNodeType, setPendingNodeType] = useState<FlowNodeType | null>(
     null,
   )
+  const [pendingNodePosition, setPendingNodePosition] = useState<{
+    x: number
+    y: number
+  } | null>(null)
+  const [quickAddRequest, setQuickAddRequest] =
+    useState<QuickAddRequest | null>(null)
+  const [quickAddText, setQuickAddText] = useState('')
+  const [quickAddIndex, setQuickAddIndex] = useState(0)
   const [flowInstance, setFlowInstance] =
     useState<ReactFlowInstance<EditorNode, EditorEdge> | null>(null)
   const nodesRef = useRef(nodes)
@@ -451,6 +482,9 @@ function App() {
     Partial<Record<AppShortcutCommand, ShortcutCommand>>
   >({})
   const importFileInputRef = useRef<HTMLInputElement | null>(null)
+  const quickAddRef = useRef<HTMLFormElement | null>(null)
+  const lastNodePlacementAtRef = useRef(0)
+  const paletteWidthWasResizedRef = useRef(false)
   const processedImageSaveRequestsRef = useRef(
     new WeakSet<ImageSaveRequest>(),
   )
@@ -592,6 +626,12 @@ function App() {
   }, [edges, flowInstance, nodes])
 
   useEffect(() => {
+    if (!paletteWidthWasResizedRef.current) {
+      setPaletteWidth(defaultPaletteWidthForViewport(viewportSize.width))
+    }
+  }, [viewportSize.width])
+
+  useEffect(() => {
     if (!sidebarResizeDrag) {
       return
     }
@@ -599,10 +639,18 @@ function App() {
     const drag = sidebarResizeDrag
 
     function onPointerMove(event: PointerEvent): void {
-      const delta = drag.startX - event.clientX
-      setSidebarWidth(
-        clampSidebarWidth(drag.startWidth + delta),
-      )
+      const horizontalMovement = event.clientX - drag.startX
+
+      if (drag.side === 'left') {
+        paletteWidthWasResizedRef.current = true
+        setPaletteWidth(
+          clampPaletteWidth(drag.startWidth + horizontalMovement),
+        )
+      } else {
+        setSidebarWidth(
+          clampSidebarWidth(drag.startWidth - horizontalMovement),
+        )
+      }
     }
 
     function onPointerUp(): void {
@@ -611,12 +659,57 @@ function App() {
 
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerUp)
 
     return () => {
       window.removeEventListener('pointermove', onPointerMove)
       window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerUp)
     }
   }, [sidebarResizeDrag])
+
+  useEffect(() => {
+    if (!quickAddRequest) {
+      return
+    }
+
+    function closeQuickAddOutside(event: PointerEvent): void {
+      const target = event.target
+      if (
+        target instanceof globalThis.Node &&
+        !quickAddRef.current?.contains(target)
+      ) {
+        setQuickAddRequest(null)
+        setQuickAddText('')
+      }
+    }
+
+    document.addEventListener('pointerdown', closeQuickAddOutside)
+    return () =>
+      document.removeEventListener('pointerdown', closeQuickAddOutside)
+  }, [quickAddRequest])
+
+  useEffect(() => {
+    if (!pendingNodeType && !quickAddRequest) {
+      return
+    }
+
+    function cancelNodePlacementOnEscape(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') {
+        return
+      }
+
+      event.preventDefault()
+      setPendingNodeType(null)
+      setPendingNodePosition(null)
+      setQuickAddRequest(null)
+      setQuickAddText('')
+    }
+
+    document.addEventListener('keydown', cancelNodePlacementOnEscape)
+    return () =>
+      document.removeEventListener('keydown', cancelNodePlacementOnEscape)
+  }, [pendingNodeType, quickAddRequest])
 
   useEffect(() => {
     let cancelled = false
@@ -850,6 +943,8 @@ function App() {
     setEdges(nextSnapshot.edges)
     setExecution(null)
     setPendingNodeType(null)
+    setPendingNodePosition(null)
+    setQuickAddRequest(null)
   }, [])
 
   const program = useMemo(() => toProgram(nodes, edges), [nodes, edges])
@@ -979,6 +1074,7 @@ function App() {
         ? formatInputQueue(execution.inputQueue)
         : inputQueueText
   const renderEdges = useMemo(() => programToEdges(program, edges), [program, edges])
+  const quickAddSuggestions = matchingQuickAddNodeTypes(quickAddText)
   const exportFileName = useMemo(
     () => fileNameForDocument(documentName),
     [documentName],
@@ -1200,8 +1296,31 @@ function App() {
     [edges, nodes],
   )
 
-  function selectNodeType(nodeType: FlowNodeType): void {
+  function beginNodePlacement(
+    nodeType: FlowNodeType,
+    position: { x: number; y: number } | null = null,
+  ): void {
     setPendingNodeType(nodeType)
+    setPendingNodePosition(position)
+    setQuickAddRequest(null)
+    setQuickAddText('')
+    setQuickAddIndex(0)
+  }
+
+  function selectNodeType(nodeType: FlowNodeType): void {
+    beginNodePlacement(nodeType)
+  }
+
+  function screenToFlowPoint(clientX: number, clientY: number): {
+    x: number
+    y: number
+  } {
+    return (
+      flowInstance?.screenToFlowPosition({ x: clientX, y: clientY }) ?? {
+        x: clientX,
+        y: clientY,
+      }
+    )
   }
 
   function addNodeAt(
@@ -1224,18 +1343,112 @@ function App() {
   }
 
   function placePendingNode(event: MouseEvent): void {
-    if (!pendingNodeType) {
+    if (!pendingNodeType || quickAddRequest) {
       return
     }
 
-    const position =
-      flowInstance?.screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      }) ?? { x: event.clientX, y: event.clientY }
+    const position = screenToFlowPoint(event.clientX, event.clientY)
 
     addNodeAt(pendingNodeType, position)
+    lastNodePlacementAtRef.current = Date.now()
+    setMessage(`${NODE_TYPE_LABELS[pendingNodeType]} block placed.`)
     setPendingNodeType(null)
+    setPendingNodePosition(null)
+  }
+
+  function trackPendingNode(event: MouseEvent<HTMLElement>): void {
+    if (!pendingNodeType || quickAddRequest) {
+      return
+    }
+
+    setPendingNodePosition(screenToFlowPoint(event.clientX, event.clientY))
+  }
+
+  function hidePendingNodePreview(): void {
+    setPendingNodePosition(null)
+  }
+
+  function openQuickAdd(event: MouseEvent<HTMLElement>): void {
+    const target = event.target
+    const pointerElements =
+      typeof document.elementsFromPoint === 'function'
+        ? document.elementsFromPoint(event.clientX, event.clientY)
+        : []
+    if (
+      !(target instanceof Element) ||
+      target.closest(QUICK_ADD_EXCLUDED_SELECTOR) ||
+      pointerElements.some((element) =>
+        element.closest(QUICK_ADD_EXCLUDED_SELECTOR),
+      ) ||
+      Date.now() - lastNodePlacementAtRef.current <
+        PLACEMENT_DOUBLE_CLICK_GUARD_MS
+    ) {
+      return
+    }
+
+    event.preventDefault()
+    const flowPosition = screenToFlowPoint(event.clientX, event.clientY)
+    setPendingNodeType(null)
+    setPendingNodePosition(null)
+    setQuickAddText('')
+    setQuickAddIndex(0)
+    setQuickAddRequest({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      flowPosition,
+    })
+  }
+
+  function startQuickAddPlacement(nodeType: FlowNodeType): void {
+    if (!quickAddRequest) {
+      return
+    }
+
+    beginNodePlacement(nodeType, quickAddRequest.flowPosition)
+    setMessage(`${NODE_TYPE_LABELS[nodeType]} ready to place.`)
+  }
+
+  function submitQuickAdd(event: FormEvent): void {
+    event.preventDefault()
+    const nodeType = resolveQuickAddNodeType(
+      quickAddText,
+      quickAddSuggestions[quickAddIndex],
+    )
+
+    if (!nodeType) {
+      setMessage(`No block matches "${quickAddText.trim()}".`)
+      return
+    }
+
+    startQuickAddPlacement(nodeType)
+  }
+
+  function handleQuickAddKeyDown(
+    event: ReactKeyboardEvent<HTMLInputElement>,
+  ): void {
+    if (!quickAddSuggestions.length) {
+      return
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setQuickAddIndex(
+        (currentIndex) =>
+          (currentIndex + 1) % quickAddSuggestions.length,
+      )
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setQuickAddIndex(
+        (currentIndex) =>
+          (currentIndex - 1 + quickAddSuggestions.length) %
+          quickAddSuggestions.length,
+      )
+    } else if (event.key === 'Tab') {
+      event.preventDefault()
+      const completion = quickAddSuggestions[quickAddIndex]
+      setQuickAddText(NODE_TYPE_LABELS[completion])
+      setQuickAddIndex(0)
+    }
   }
 
   function focusToolbarTrigger(menu: ToolbarMenuName): void {
@@ -1288,6 +1501,8 @@ function App() {
     setDocumentName(DEFAULT_DOCUMENT_NAME)
     setExecution(null)
     setPendingNodeType(null)
+    setPendingNodePosition(null)
+    setQuickAddRequest(null)
     setMessage(example.message)
   }
 
@@ -1459,12 +1674,62 @@ function App() {
     setAutoStepEnabled(true)
   }
 
-  function startSidebarResize(event: ReactPointerEvent<HTMLDivElement>): void {
+  function startSidebarResize(
+    side: SidebarResizeDrag['side'],
+    event: ReactPointerEvent<HTMLDivElement>,
+  ): void {
     event.preventDefault()
+    event.currentTarget.focus()
     setSidebarResizeDrag({
+      side,
       startX: event.clientX,
-      startWidth: sidebarWidth,
+      startWidth: side === 'left' ? paletteWidth : sidebarWidth,
     })
+  }
+
+  function resizeSidebarFromKeyboard(
+    side: SidebarResizeDrag['side'],
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ): void {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return
+    }
+
+    event.preventDefault()
+    const horizontalMovement =
+      event.key === 'ArrowRight'
+        ? SIDEBAR_KEYBOARD_RESIZE_STEP
+        : -SIDEBAR_KEYBOARD_RESIZE_STEP
+
+    if (side === 'left') {
+      paletteWidthWasResizedRef.current = true
+      setPaletteWidth((width) =>
+        clampPaletteWidth(width + horizontalMovement),
+      )
+    } else {
+      setSidebarWidth((width) =>
+        clampSidebarWidth(width - horizontalMovement),
+      )
+    }
+  }
+
+  function toggleLeftSidebar(): void {
+    setLeftSidebarVisible((isVisible) => !isVisible)
+    if (sidebarResizeDrag?.side === 'left') {
+      setSidebarResizeDrag(null)
+    }
+  }
+
+  function toggleRightSidebar(): void {
+    if (rightSidebarVisible) {
+      setExpandedCanvas(null)
+      setDraggedRuntimePanel(null)
+      draggedRuntimePanelRef.current = null
+    }
+    setRightSidebarVisible((isVisible) => !isVisible)
+    if (sidebarResizeDrag?.side === 'right') {
+      setSidebarResizeDrag(null)
+    }
   }
 
   function startRuntimePanelDrag(
@@ -1677,6 +1942,8 @@ function App() {
     })
     setExecution(null)
     setPendingNodeType(null)
+    setPendingNodePosition(null)
+    setQuickAddRequest(null)
     setMessage(`${pastedNodes.length} block${pastedNodes.length === 1 ? '' : 's'} pasted.`)
   }, [pushHistorySnapshot])
 
@@ -1745,6 +2012,8 @@ function App() {
     setEdges(nextCanvas.edges)
     setExecution(null)
     setPendingNodeType(null)
+    setPendingNodePosition(null)
+    setQuickAddRequest(null)
     setMessage(
       result.mergedNodeCount > 0
         ? `Flowchart cleaned up; ${result.mergedNodeCount} adjacent Process block${
@@ -1791,6 +2060,8 @@ function App() {
     setEdges(nextEdges)
     setExecution(null)
     setPendingNodeType(null)
+    setPendingNodePosition(null)
+    setQuickAddRequest(null)
     setMessage(`${chain.length} blocks combined into one Process.`)
   }, [pushHistorySnapshot])
 
@@ -1877,6 +2148,8 @@ function App() {
     setEdges(nextEdges)
     setExecution(null)
     setPendingNodeType(null)
+    setPendingNodePosition(null)
+    setQuickAddRequest(null)
     setMessage(
       `Process split into ${createdNodes.length} block${
         createdNodes.length === 1 ? '' : 's'
@@ -2198,6 +2471,8 @@ function App() {
       setDocumentName(documentNameFromFileName(file.name))
       setExecution(null)
       setPendingNodeType(null)
+      setPendingNodePosition(null)
+      setQuickAddRequest(null)
       setMessage('Program loaded.')
     } catch (error) {
       setMessage(
@@ -2468,9 +2743,44 @@ function App() {
           </ToolbarMenu>
         </nav>
 
-        <span className="document-name" aria-label="Current document">
-          {documentName}
-        </span>
+        <div className="topbar-actions">
+          <span className="document-name" aria-label="Current document">
+            {documentName}
+          </span>
+          <div
+            className="sidebar-visibility-controls"
+            aria-label="Sidebar visibility"
+          >
+            <button
+              type="button"
+              className="sidebar-visibility-button"
+              aria-label={`${leftSidebarVisible ? 'Hide' : 'Show'} left sidebar`}
+              aria-controls="node-palette"
+              aria-expanded={leftSidebarVisible}
+              title={`${leftSidebarVisible ? 'Hide' : 'Show'} left sidebar`}
+              onClick={toggleLeftSidebar}
+            >
+              <SidebarVisibilityIcon
+                side="left"
+                isVisible={leftSidebarVisible}
+              />
+            </button>
+            <button
+              type="button"
+              className="sidebar-visibility-button"
+              aria-label={`${rightSidebarVisible ? 'Hide' : 'Show'} right sidebar`}
+              aria-controls="runtime-sidebar"
+              aria-expanded={rightSidebarVisible}
+              title={`${rightSidebarVisible ? 'Hide' : 'Show'} right sidebar`}
+              onClick={toggleRightSidebar}
+            >
+              <SidebarVisibilityIcon
+                side="right"
+                isVisible={rightSidebarVisible}
+              />
+            </button>
+          </div>
+        </div>
         <input
           ref={importFileInputRef}
           className="toolbar-file-input"
@@ -2489,11 +2799,44 @@ function App() {
         aria-label="Flowchart workspace"
         style={
           {
-            '--runtime-sidebar-width': `${sidebarWidth}px`,
+            '--palette-sidebar-width': leftSidebarVisible
+              ? `${paletteWidth}px`
+              : '0px',
+            '--runtime-sidebar-width': rightSidebarVisible
+              ? `${sidebarWidth}px`
+              : '0px',
+            '--palette-sidebar-row': leftSidebarVisible
+              ? 'max-content'
+              : '0px',
+            '--runtime-sidebar-row': rightSidebarVisible
+              ? 'minmax(320px, 50vh)'
+              : '0px',
+            '--canvas-sidebar-row':
+              !leftSidebarVisible && !rightSidebarVisible
+                ? 'minmax(360px, 1fr)'
+                : 'minmax(360px, 60vh)',
           } as CSSProperties
         }
       >
-        <aside className="palette" aria-label="Node palette">
+        <aside
+          id="node-palette"
+          className="palette"
+          aria-label="Node palette"
+          hidden={!leftSidebarVisible}
+          style={{ width: `${paletteWidth}px` }}
+        >
+          <div
+            className="sidebar-resize-handle sidebar-resize-handle-left"
+            role="separator"
+            aria-label="Resize left sidebar"
+            aria-orientation="vertical"
+            aria-valuemin={MIN_PALETTE_WIDTH}
+            aria-valuemax={MAX_PALETTE_WIDTH}
+            aria-valuenow={paletteWidth}
+            tabIndex={0}
+            onKeyDown={(event) => resizeSidebarFromKeyboard('left', event)}
+            onPointerDown={(event) => startSidebarResize('left', event)}
+          />
           <h2>Nodes</h2>
           <section className="palette-group" aria-labelledby="definitions-heading">
             <h3 id="definitions-heading">Definitions</h3>
@@ -2661,7 +3004,14 @@ function App() {
           </section>
         </aside>
 
-        <section className="canvas-shell" aria-label="Visual editor">
+        <section
+          className="canvas-shell"
+          aria-label="Visual editor"
+          data-node-placement-active={pendingNodeType ? 'true' : 'false'}
+          onMouseMove={trackPendingNode}
+          onMouseLeave={hidePendingNodePreview}
+          onDoubleClick={openQuickAdd}
+        >
           <ReactFlow
             nodes={renderNodes}
             edges={renderEdges}
@@ -2674,6 +3024,7 @@ function App() {
             onInit={setFlowInstance}
             onPaneClick={placePendingNode}
             onNodeClick={selectClickedNode}
+            onNodeDoubleClick={(event) => event.stopPropagation()}
             onNodeContextMenu={openNodeCommentDialog}
             onNodeDragStart={recordCanvasChangeStart}
             onSelectionDragStart={recordCanvasChangeStart}
@@ -2684,7 +3035,9 @@ function App() {
             selectionOnDrag
             selectionMode={SelectionMode.Partial}
             panOnDrag={CANVAS_DRAG_BUTTONS}
-            panOnScroll
+            panOnScroll={false}
+            zoomOnScroll
+            zoomOnDoubleClick={false}
             defaultViewport={INITIAL_CANVAS_VIEWPORT}
             minZoom={MIN_CANVAS_ZOOM}
             connectionLineType={ConnectionLineType.SmoothStep}
@@ -2692,16 +3045,29 @@ function App() {
           >
             <Background color="#d4d9e2" gap={18} />
             <Controls showInteractive={false} />
+            {pendingNodeType && pendingNodePosition ? (
+              <ViewportPortal>
+                <PlacementPreview
+                  nodeType={pendingNodeType}
+                  position={centerNodePosition(
+                    pendingNodeType,
+                    pendingNodePosition,
+                  )}
+                />
+              </ViewportPortal>
+            ) : null}
           </ReactFlow>
         </section>
 
         <aside
+          id="runtime-sidebar"
           className="console-panel"
           aria-label="Runtime sidebar"
+          hidden={!rightSidebarVisible}
           style={{ width: `${sidebarWidth}px` }}
         >
           <div
-            className="sidebar-resize-handle"
+            className="sidebar-resize-handle sidebar-resize-handle-right"
             role="separator"
             aria-label="Resize right sidebar"
             aria-orientation="vertical"
@@ -2709,7 +3075,8 @@ function App() {
             aria-valuemax={MAX_SIDEBAR_WIDTH}
             aria-valuenow={sidebarWidth}
             tabIndex={0}
-            onPointerDown={startSidebarResize}
+            onKeyDown={(event) => resizeSidebarFromKeyboard('right', event)}
+            onPointerDown={(event) => startSidebarResize('right', event)}
           />
           <div className="execution-bar">
             <h2>Console</h2>
@@ -2897,6 +3264,70 @@ function App() {
           </div>
         </aside>
       </section>
+      {quickAddRequest ? (
+        <form
+          ref={quickAddRef}
+          className="quick-add-popover"
+          role="dialog"
+          aria-labelledby="quick-add-title"
+          style={quickAddPopoverStyle(quickAddRequest, viewportSize)}
+          onSubmit={submitQuickAdd}
+          onDoubleClick={(event) => event.stopPropagation()}
+        >
+          <h2 id="quick-add-title">Add a block</h2>
+          <label className="sr-only" htmlFor="quick-add-input">
+            Block name
+          </label>
+          <input
+            id="quick-add-input"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="quick-add-options"
+            aria-expanded={quickAddSuggestions.length > 0}
+            aria-activedescendant={
+              quickAddSuggestions[quickAddIndex]
+                ? `quick-add-option-${quickAddSuggestions[quickAddIndex]}`
+                : undefined
+            }
+            value={quickAddText}
+            placeholder="Type a block name…"
+            autoComplete="off"
+            autoFocus
+            spellCheck={false}
+            onChange={(event) => {
+              setQuickAddText(event.target.value)
+              setQuickAddIndex(0)
+            }}
+            onKeyDown={handleQuickAddKeyDown}
+          />
+          {quickAddSuggestions.length ? (
+            <ul id="quick-add-options" className="quick-add-options" role="listbox">
+              {quickAddSuggestions.map((nodeType, index) => (
+                <li key={nodeType} role="presentation">
+                  <button
+                    id={`quick-add-option-${nodeType}`}
+                    type="button"
+                    role="option"
+                    aria-selected={index === quickAddIndex}
+                    onMouseEnter={() => setQuickAddIndex(index)}
+                    onClick={() => startQuickAddPlacement(nodeType)}
+                  >
+                    {NODE_TYPE_LABELS[nodeType]}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="quick-add-empty" role="status">
+              No matching blocks
+            </p>
+          )}
+          <p className="quick-add-hint">
+            <kbd>↑↓</kbd> choose · <kbd>Tab</kbd> complete · <kbd>Enter</kbd>{' '}
+            place · <kbd>Esc</kbd> close
+          </p>
+        </form>
+      ) : null}
       {activeExpandedCanvas ? (
         <div
           className="canvas-overlay-backdrop"
@@ -3262,6 +3693,81 @@ function ToolbarMenu({
   )
 }
 
+function SidebarVisibilityIcon({
+  side,
+  isVisible,
+}: {
+  side: 'left' | 'right'
+  isVisible: boolean
+}) {
+  const pointsTowardLeft =
+    (side === 'left' && isVisible) || (side === 'right' && !isVisible)
+
+  return (
+    <svg
+      className="sidebar-visibility-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d={side === 'left' ? 'M9 4v16' : 'M15 4v16'} />
+      <path
+        d={
+          pointsTowardLeft
+            ? 'm14 9-3 3 3 3'
+            : 'm10 9 3 3-3 3'
+        }
+      />
+    </svg>
+  )
+}
+
+function PlacementPreview({
+  nodeType,
+  position,
+}: {
+  nodeType: FlowNodeType
+  position: { x: number; y: number }
+}) {
+  const isBranch = isBranchNodeType(nodeType)
+  const isDeclaration = nodeType === 'class'
+  const isInputOutput = nodeType === 'input' || nodeType === 'output'
+
+  return (
+    <div
+      className="placement-preview"
+      data-testid="pending-node-preview"
+      data-node-type={nodeType}
+      aria-hidden="true"
+      style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
+    >
+      <div
+        className={`flow-node flow-node-${nodeType}`}
+        data-shape={
+          isBranch
+            ? 'diamond'
+            : isDeclaration
+              ? 'declaration'
+              : isInputOutput
+                ? 'parallelogram'
+                : 'block'
+        }
+      >
+        <div className="node-content">
+          <div className="node-label">{NODE_TYPE_LABELS[nodeType]}</div>
+          <div
+            className={`node-input placement-preview-value${
+              nodeType === 'process' ? ' placement-preview-value-multiline' : ''
+            }`}
+          >
+            {defaultNodeText(nodeType)}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function trapDialogFocus(event: ReactKeyboardEvent<HTMLDivElement>): void {
   if (event.key !== 'Tab') {
     return
@@ -3405,7 +3911,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
             {isProcess ? (
               <textarea
                 id={`${id}-text`}
-                className="node-input node-textarea nodrag nowheel"
+                className="node-input node-textarea nodrag"
                 value={data.text}
                 rows={Math.max(2, data.text.split(/\r?\n/).length)}
                 onChange={(event) =>
@@ -4042,6 +4548,84 @@ function clampSidebarWidth(width: number): number {
   return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width))
 }
 
+function defaultPaletteWidthForViewport(viewportWidth: number): number {
+  return viewportWidth > 720 && viewportWidth <= 980
+    ? TABLET_DEFAULT_PALETTE_WIDTH
+    : DEFAULT_PALETTE_WIDTH
+}
+
+function clampPaletteWidth(width: number): number {
+  return Math.min(MAX_PALETTE_WIDTH, Math.max(MIN_PALETTE_WIDTH, width))
+}
+
+function matchingQuickAddNodeTypes(query: string): FlowNodeType[] {
+  const normalizedQuery = query.trim().toLowerCase()
+  const matches = FLOW_NODE_TYPES.filter((nodeType) => {
+    if (!normalizedQuery) {
+      return true
+    }
+
+    return (
+      nodeType.toLowerCase().includes(normalizedQuery) ||
+      NODE_TYPE_LABELS[nodeType]
+        .toLowerCase()
+        .includes(normalizedQuery)
+    )
+  })
+
+  return matches
+    .sort((left, right) => {
+      if (!normalizedQuery) {
+        return 0
+      }
+
+      const leftLabel = NODE_TYPE_LABELS[left].toLowerCase()
+      const rightLabel = NODE_TYPE_LABELS[right].toLowerCase()
+      const leftStartsWith = leftLabel.startsWith(normalizedQuery)
+      const rightStartsWith = rightLabel.startsWith(normalizedQuery)
+
+      return Number(rightStartsWith) - Number(leftStartsWith)
+    })
+    .slice(0, QUICK_ADD_MAX_SUGGESTIONS)
+}
+
+function resolveQuickAddNodeType(
+  query: string,
+  highlightedNodeType: FlowNodeType | undefined,
+): FlowNodeType | null {
+  const normalizedQuery = query.trim().toLowerCase()
+  const exactMatch = FLOW_NODE_TYPES.find(
+    (nodeType) =>
+      nodeType.toLowerCase() === normalizedQuery ||
+      NODE_TYPE_LABELS[nodeType].toLowerCase() === normalizedQuery,
+  )
+
+  return exactMatch ?? highlightedNodeType ?? null
+}
+
+function quickAddPopoverStyle(
+  request: QuickAddRequest,
+  viewport: ViewportSize,
+): CSSProperties {
+  const margin = 12
+  const estimatedWidth = 300
+  const estimatedHeight = 340
+
+  return {
+    left: Math.max(
+      margin,
+      Math.min(request.clientX + margin, viewport.width - estimatedWidth - margin),
+    ),
+    top: Math.max(
+      margin,
+      Math.min(
+        request.clientY + margin,
+        viewport.height - estimatedHeight - margin,
+      ),
+    ),
+  }
+}
+
 function cloneCanvasSnapshot(snapshot: CanvasSnapshot): CanvasSnapshot {
   return {
     nodes: snapshot.nodes.map((node) => ({
@@ -4570,12 +5154,12 @@ function centerNodePosition(
   const width = isBranchNodeType(nodeType)
     ? 188
     : nodeType === 'class'
-      ? 200
+      ? 224
       : nodeType === 'process'
-        ? 260
+        ? 284
         : nodeType === 'assignment'
-        ? 190
-        : 170
+        ? 214
+        : 194
   const height = isBranchNodeType(nodeType)
     ? 142
     : nodeType === 'class'
