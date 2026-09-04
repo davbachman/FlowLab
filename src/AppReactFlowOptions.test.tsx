@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
+import { AdaptiveSmoothStepEdge } from './components/AdaptiveSmoothStepEdge'
 import { WHILE_TRUE_RIGHT_HANDLE } from './lib/flowRouting'
 import type { Program } from './lib/types'
 
@@ -127,6 +128,15 @@ describe('React Flow options', () => {
       connectionLineType: 'smoothstep',
       minZoom: 0.1,
     })
+  })
+
+  it('uses adaptive routing for completed smooth-step wires', () => {
+    render(<App />)
+
+    expect(
+      (reactFlowProps.at(-1)?.edgeTypes as Record<string, unknown>)
+        .smoothstep,
+    ).toBe(AdaptiveSmoothStepEdge)
   })
 
   it('zooms with the wheel and reserves double click for quick add', () => {

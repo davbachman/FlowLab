@@ -82,6 +82,7 @@ import {
   type TurtleState,
 } from './lib/turtle'
 import { LoopbackEdge } from './components/LoopbackEdge'
+import { AdaptiveSmoothStepEdge } from './components/AdaptiveSmoothStepEdge'
 import { cleanUpProgram } from './lib/codeCleanup'
 import { minimumFlowNodeWidth } from './lib/flowLayout'
 import { combineNodesIntoProcess } from './lib/processConsolidation'
@@ -280,6 +281,7 @@ const nodeTypes = {
 
 const edgeTypes = {
   loopback: LoopbackEdge,
+  smoothstep: AdaptiveSmoothStepEdge,
 } satisfies EdgeTypes
 
 const DEFAULT_NODE_TEXT: Record<FlowNodeType, string> = {
