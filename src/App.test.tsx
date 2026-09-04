@@ -3331,6 +3331,7 @@ describe('App', () => {
     fireEvent.mouseMove(canvas, { clientX: 520, clientY: 360 })
     const secondPosition = pendingNodePreviewPosition()
 
+    expect(screen.getAllByTestId('pending-node-preview')).toHaveLength(1)
     expect(secondPosition).not.toBe(firstPosition)
     expect(screen.queryByTestId('flow-node-if-1')).not.toBeInTheDocument()
 

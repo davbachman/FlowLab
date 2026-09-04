@@ -95,6 +95,17 @@ describe('app layout scrolling', () => {
     })
   })
 
+  it('avoids filtered compositor trails on the moving block preview', () => {
+    const preview = declarationsFor('.placement-preview')
+
+    expect(preview).toMatchObject({
+      position: 'absolute',
+      'pointer-events': 'none',
+      opacity: '0.72',
+    })
+    expect(preview).not.toHaveProperty('filter')
+  })
+
   it('keeps current branch-node highlighting clipped to the diamond shape', () => {
     expect(
       declarationsFor(

@@ -678,7 +678,6 @@ button:disabled {
   z-index: 1000;
   pointer-events: none;
   opacity: 0.72;
-  filter: drop-shadow(0 10px 10px rgba(15, 23, 42, 0.18));
 }
 
 .placement-preview .flow-node {
