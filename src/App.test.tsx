@@ -2677,6 +2677,10 @@ describe('App', () => {
 
     const ifNode = screen.getByTestId('flow-node-wide-if')
     expect(ifNode).toHaveClass('flow-node-width-custom')
+    expect(ifNode.closest('.react-flow__node')).toHaveStyle({ width: '380px' })
+    const customDiamond = ifNode.querySelector('.flow-node-custom-diamond')
+    expect(customDiamond).toBeInTheDocument()
+    expect(customDiamond).toHaveAttribute('aria-hidden', 'true')
 
     await user.click(executionButton(/^Reset$/i))
     await user.click(executionButton(/^Step$/i))

@@ -11,7 +11,9 @@ function declarationsFor(
   css = appCss,
 ): Record<string, string> {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = css.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`))
+  const match = css.match(
+    new RegExp(`(?:^|})\\s*${escapedSelector}\\s*\\{([^}]*)\\}`),
+  )
 
   if (!match) {
     throw new Error(`Missing CSS rule for ${selector}`)
@@ -133,6 +135,43 @@ describe('app layout scrolling', () => {
     })
   })
 
+  it('renders the resized branch halo from an unclipped shape wrapper', () => {
+    const shapeWrapper = declarationsFor('.flow-node-custom-diamond')
+
+    expect(shapeWrapper).toMatchObject({
+      position: 'absolute',
+      inset: '0 15px',
+      'pointer-events': 'none',
+    })
+    expect(shapeWrapper).not.toHaveProperty('clip-path')
+    expect(
+      declarationsFor(
+        '.flow-node-custom-diamond::before,\n.flow-node-custom-diamond::after',
+      ),
+    ).toMatchObject({
+      position: 'absolute',
+      'clip-path': 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
+    })
+
+    const currentShapeWrapper = declarationsFor(
+      ".flow-node-width-custom[data-current='true'] > .flow-node-custom-diamond,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond",
+    )
+    expect(currentShapeWrapper.filter.replace(/\s+/g, ' ')).toBe(
+      'drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 6px rgba(245, 158, 11, 0.72)) drop-shadow(0 12px 12px rgba(146, 64, 14, 0.22))',
+    )
+    expect(currentShapeWrapper).not.toHaveProperty('clip-path')
+    const currentOuterDiamond = declarationsFor(
+      ".flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond::before,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond::before",
+    )
+    expect(currentOuterDiamond).toMatchObject({ background: '#d97706' })
+    expect(currentOuterDiamond).not.toHaveProperty('filter')
+    expect(
+      declarationsFor(
+        ".flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond::after,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond::after",
+      ),
+    ).toMatchObject({ background: '#fffbeb' })
+  })
+
   it('stretches custom block widths and limits resize grips to the horizontal axis', () => {
     expect(declarationsFor('.flow-node-width-custom')).toMatchObject({
       'box-sizing': 'border-box',
@@ -149,25 +188,21 @@ describe('app layout scrolling', () => {
     })
     expect(
       declarationsFor(
-        '.flow-node-width-custom.flow-node-if::before,\n.flow-node-width-custom.flow-node-while::before,\n.flow-node-width-custom.flow-node-for::before',
+        '.flow-node-width-custom.flow-node-if::before,\n.flow-node-width-custom.flow-node-while::before,\n.flow-node-width-custom.flow-node-for::before,\n.flow-node-width-custom.flow-node-if::after,\n.flow-node-width-custom.flow-node-while::after,\n.flow-node-width-custom.flow-node-for::after',
       ),
     ).toMatchObject({
-      inset: '0 15px',
-      'clip-path': 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
-      transform: 'none',
+      content: 'none',
     })
     expect(
-      declarationsFor(
-        '.flow-node-width-custom.flow-node-if::after,\n.flow-node-width-custom.flow-node-while::after,\n.flow-node-width-custom.flow-node-for::after',
-      ),
+      declarationsFor('.flow-node-custom-diamond::before'),
     ).toMatchObject({
-      inset: '2px 18px',
-      'clip-path': 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
+      inset: '0',
+      background: '#2f6fd6',
     })
-    expect(appCss).toContain('drop-shadow(0 0 2px #ffffff)')
-    expect(appCss).toContain(
-      'drop-shadow(0 0 6px rgba(245, 158, 11, 0.72))',
-    )
+    expect(declarationsFor('.flow-node-custom-diamond::after')).toMatchObject({
+      inset: '2px 3px',
+      background: '#f7fbff',
+    })
     expect(
       declarationsFor(
         '.flow-node-width-custom.flow-node-if .node-content,\n.flow-node-width-custom.flow-node-while .node-content,\n.flow-node-width-custom.flow-node-for .node-content',

@@ -1025,33 +1025,42 @@ button:disabled {
 
 .flow-node-width-custom.flow-node-if::before,
 .flow-node-width-custom.flow-node-while::before,
-.flow-node-width-custom.flow-node-for::before {
-  inset: 0 15px;
-  border: 0;
-  border-radius: 0;
-  background: #2f6fd6;
-  box-shadow: none;
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  filter: drop-shadow(0 8px 9px rgba(15, 23, 42, 0.12));
-  transform: none;
-}
-
+.flow-node-width-custom.flow-node-for::before,
 .flow-node-width-custom.flow-node-if::after,
 .flow-node-width-custom.flow-node-while::after,
 .flow-node-width-custom.flow-node-for::after {
-  content: '';
-  position: absolute;
-  inset: 2px 18px;
-  z-index: 0;
-  background: #f7fbff;
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  pointer-events: none;
+  content: none;
 }
 
-.react-flow__node.selected .flow-node-width-custom.flow-node-if::before,
-.react-flow__node.selected .flow-node-width-custom.flow-node-while::before,
-.react-flow__node.selected .flow-node-width-custom.flow-node-for::before {
+.flow-node-custom-diamond {
+  position: absolute;
+  inset: 0 15px;
+  z-index: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 9px rgba(15, 23, 42, 0.12));
+}
+
+.flow-node-custom-diamond::before,
+.flow-node-custom-diamond::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+.flow-node-custom-diamond::before {
+  inset: 0;
   background: #2f6fd6;
+}
+
+.flow-node-custom-diamond::after {
+  inset: 2px 3px;
+  background: #f7fbff;
+}
+
+.react-flow__node.selected
+  .flow-node-width-custom
+  > .flow-node-custom-diamond {
   filter: drop-shadow(0 0 5px rgba(47, 111, 214, 0.5));
 }
 
@@ -1062,32 +1071,29 @@ button:disabled {
   box-shadow: none;
 }
 
-.flow-node-width-custom.flow-node-if[data-current='true']::before,
-.flow-node-width-custom.flow-node-while[data-current='true']::before,
-.flow-node-width-custom.flow-node-for[data-current='true']::before,
+.flow-node-width-custom[data-current='true'] > .flow-node-custom-diamond,
 .react-flow__node.selected
-  .flow-node-width-custom.flow-node-if[data-current='true']::before,
-.react-flow__node.selected
-  .flow-node-width-custom.flow-node-while[data-current='true']::before,
-.react-flow__node.selected
-  .flow-node-width-custom.flow-node-for[data-current='true']::before {
-  background: #d97706;
-  box-shadow: none;
+  .flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond {
   filter:
     drop-shadow(0 0 2px #ffffff)
     drop-shadow(0 0 6px rgba(245, 158, 11, 0.72))
     drop-shadow(0 12px 12px rgba(146, 64, 14, 0.22));
 }
 
-.flow-node-width-custom.flow-node-if[data-current='true']::after,
-.flow-node-width-custom.flow-node-while[data-current='true']::after,
-.flow-node-width-custom.flow-node-for[data-current='true']::after,
+.flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond::before,
 .react-flow__node.selected
-  .flow-node-width-custom.flow-node-if[data-current='true']::after,
+  .flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond::before {
+  background: #d97706;
+}
+
+.flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond::after,
 .react-flow__node.selected
-  .flow-node-width-custom.flow-node-while[data-current='true']::after,
-.react-flow__node.selected
-  .flow-node-width-custom.flow-node-for[data-current='true']::after {
+  .flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond::after {
   background: #fffbeb;
 }
 

@@ -3869,6 +3869,9 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
           : undefined
       }
     >
+      {data.isWidthCustomized && isBranchNodeType(data.nodeType) ? (
+        <span className="flow-node-custom-diamond" aria-hidden="true" />
+      ) : null}
       {selected ? (
         <>
           <NodeResizeControl
