@@ -3878,6 +3878,21 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
             focusable="false"
           >
             <polygon
+              className="flow-node-custom-diamond-depth"
+              points="50,0 100,50 50,100 0,50"
+              vectorEffect="non-scaling-stroke"
+            />
+            <polygon
+              className="flow-node-custom-diamond-halo"
+              points="50,0 100,50 50,100 0,50"
+              vectorEffect="non-scaling-stroke"
+            />
+            <polygon
+              className="flow-node-custom-diamond-separator"
+              points="50,0 100,50 50,100 0,50"
+              vectorEffect="non-scaling-stroke"
+            />
+            <polygon
               className="flow-node-custom-diamond-shape"
               points="50,0 100,50 50,100 0,50"
               vectorEffect="non-scaling-stroke"

@@ -135,7 +135,7 @@ describe('app layout scrolling', () => {
     })
   })
 
-  it('renders the resized branch outline separately from its halo', () => {
+  it('matches the regular branch highlight with crisp resized SVG layers', () => {
     const shapeWrapper = declarationsFor('.flow-node-custom-diamond')
 
     expect(shapeWrapper).toMatchObject({
@@ -144,6 +144,7 @@ describe('app layout scrolling', () => {
       'pointer-events': 'none',
     })
     expect(shapeWrapper).not.toHaveProperty('clip-path')
+    expect(shapeWrapper).not.toHaveProperty('filter')
     expect(
       declarationsFor('.flow-node-custom-diamond-svg'),
     ).toMatchObject({
@@ -153,23 +154,75 @@ describe('app layout scrolling', () => {
       overflow: 'visible',
     })
 
-    const diamondShape = declarationsFor('.flow-node-custom-diamond-shape')
-    expect(diamondShape).toMatchObject({
-      fill: '#f7fbff',
-      stroke: '#2f6fd6',
+    expect(
+      declarationsFor(
+        '.flow-node-custom-diamond-depth,\n.flow-node-custom-diamond-halo,\n.flow-node-custom-diamond-separator,\n.flow-node-custom-diamond-shape',
+      ),
+    ).toMatchObject({
       'stroke-linejoin': 'round',
-      'stroke-width': '2px',
       'vector-effect': 'non-scaling-stroke',
     })
-    expect(diamondShape).not.toHaveProperty('filter')
 
-    const currentShapeWrapper = declarationsFor(
-      ".flow-node-width-custom[data-current='true'] > .flow-node-custom-diamond,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond",
+    expect(
+      declarationsFor(
+        '.flow-node-custom-diamond-depth,\n.flow-node-custom-diamond-shape',
+      ),
+    ).toMatchObject({
+      fill: '#f7fbff',
+      stroke: '#2f6fd6',
+      'stroke-width': '2px',
+    })
+    expect(
+      declarationsFor('.flow-node-custom-diamond-depth'),
+    ).toMatchObject({
+      filter: 'drop-shadow(0 8px 9px rgba(15, 23, 42, 0.08))',
+    })
+    expect(
+      declarationsFor(
+        '.flow-node-custom-diamond-halo,\n.flow-node-custom-diamond-separator',
+      ),
+    ).toMatchObject({
+      fill: 'none',
+      stroke: 'transparent',
+      'stroke-width': '0',
+    })
+
+    expect(
+      declarationsFor(
+        '.react-flow__node.selected\n  .flow-node-width-custom\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-halo',
+      ),
+    ).toMatchObject({
+      stroke: 'rgba(47, 111, 214, 0.2)',
+      'stroke-width': '10px',
+    })
+
+    const currentDepth = declarationsFor(
+      ".flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-depth,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-depth",
     )
-    expect(currentShapeWrapper.filter.replace(/\s+/g, ' ')).toBe(
-      'drop-shadow(0 0 2px #ffffff) drop-shadow(0 0 6px rgba(245, 158, 11, 0.72)) drop-shadow(0 12px 12px rgba(146, 64, 14, 0.22))',
-    )
-    expect(currentShapeWrapper).not.toHaveProperty('clip-path')
+    expect(currentDepth).toMatchObject({
+      fill: '#fffbeb',
+      stroke: '#d97706',
+      filter: 'drop-shadow(0 14px 14px rgba(146, 64, 14, 0.18))',
+    })
+
+    expect(
+      declarationsFor(
+        ".flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-halo,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-halo",
+      ),
+    ).toMatchObject({
+      stroke: 'rgba(245, 158, 11, 0.42)',
+      'stroke-width': '20px',
+    })
+
+    expect(
+      declarationsFor(
+        ".flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-separator,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-separator",
+      ),
+    ).toMatchObject({
+      stroke: '#ffffff',
+      'stroke-width': '8px',
+    })
+
     const currentDiamondShape = declarationsFor(
       ".flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-shape,\n.react-flow__node.selected\n  .flow-node-width-custom[data-current='true']\n  > .flow-node-custom-diamond\n  .flow-node-custom-diamond-shape",
     )

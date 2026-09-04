@@ -1037,7 +1037,6 @@ button:disabled {
   inset: 0 15px;
   z-index: 0;
   pointer-events: none;
-  filter: drop-shadow(0 8px 9px rgba(15, 23, 42, 0.12));
 }
 
 .flow-node-custom-diamond-svg {
@@ -1047,18 +1046,38 @@ button:disabled {
   overflow: visible;
 }
 
+.flow-node-custom-diamond-depth,
+.flow-node-custom-diamond-halo,
+.flow-node-custom-diamond-separator,
+.flow-node-custom-diamond-shape {
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.flow-node-custom-diamond-depth,
 .flow-node-custom-diamond-shape {
   fill: #f7fbff;
   stroke: #2f6fd6;
-  stroke-linejoin: round;
   stroke-width: 2px;
-  vector-effect: non-scaling-stroke;
+}
+
+.flow-node-custom-diamond-depth {
+  filter: drop-shadow(0 8px 9px rgba(15, 23, 42, 0.08));
+}
+
+.flow-node-custom-diamond-halo,
+.flow-node-custom-diamond-separator {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 0;
 }
 
 .react-flow__node.selected
   .flow-node-width-custom
-  > .flow-node-custom-diamond {
-  filter: drop-shadow(0 0 5px rgba(47, 111, 214, 0.5));
+  > .flow-node-custom-diamond
+  .flow-node-custom-diamond-halo {
+  stroke: rgba(47, 111, 214, 0.2);
+  stroke-width: 10px;
 }
 
 .react-flow__node.selected .flow-node-width-custom.flow-node-if,
@@ -1068,14 +1087,38 @@ button:disabled {
   box-shadow: none;
 }
 
-.flow-node-width-custom[data-current='true'] > .flow-node-custom-diamond,
+.flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond
+  .flow-node-custom-diamond-depth,
 .react-flow__node.selected
   .flow-node-width-custom[data-current='true']
-  > .flow-node-custom-diamond {
-  filter:
-    drop-shadow(0 0 2px #ffffff)
-    drop-shadow(0 0 6px rgba(245, 158, 11, 0.72))
-    drop-shadow(0 12px 12px rgba(146, 64, 14, 0.22));
+  > .flow-node-custom-diamond
+  .flow-node-custom-diamond-depth {
+  fill: #fffbeb;
+  stroke: #d97706;
+  filter: drop-shadow(0 14px 14px rgba(146, 64, 14, 0.18));
+}
+
+.flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond
+  .flow-node-custom-diamond-halo,
+.react-flow__node.selected
+  .flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond
+  .flow-node-custom-diamond-halo {
+  stroke: rgba(245, 158, 11, 0.42);
+  stroke-width: 20px;
+}
+
+.flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond
+  .flow-node-custom-diamond-separator,
+.react-flow__node.selected
+  .flow-node-width-custom[data-current='true']
+  > .flow-node-custom-diamond
+  .flow-node-custom-diamond-separator {
+  stroke: #ffffff;
+  stroke-width: 8px;
 }
 
 .flow-node-width-custom[data-current='true']

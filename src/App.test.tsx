@@ -2682,20 +2682,30 @@ describe('App', () => {
     const customDiamondSvg = customDiamond?.querySelector(
       '.flow-node-custom-diamond-svg',
     )
-    const customDiamondShape = customDiamond?.querySelector(
-      '.flow-node-custom-diamond-shape',
-    )
     expect(customDiamond).toBeInTheDocument()
     expect(customDiamond).toHaveAttribute('aria-hidden', 'true')
     expect(customDiamondSvg).toHaveAttribute('preserveAspectRatio', 'none')
-    expect(customDiamondShape).toHaveAttribute(
-      'points',
-      '50,0 100,50 50,100 0,50',
+    const customDiamondLayers = Array.from(
+      customDiamond?.querySelectorAll('polygon') ?? [],
     )
-    expect(customDiamondShape).toHaveAttribute(
-      'vector-effect',
-      'non-scaling-stroke',
-    )
+    expect(
+      customDiamondLayers.map((layer) => layer.getAttribute('class')),
+    ).toEqual([
+      'flow-node-custom-diamond-depth',
+      'flow-node-custom-diamond-halo',
+      'flow-node-custom-diamond-separator',
+      'flow-node-custom-diamond-shape',
+    ])
+    customDiamondLayers.forEach((layer) => {
+      expect(layer).toHaveAttribute(
+        'points',
+        '50,0 100,50 50,100 0,50',
+      )
+      expect(layer).toHaveAttribute(
+        'vector-effect',
+        'non-scaling-stroke',
+      )
+    })
 
     await user.click(executionButton(/^Reset$/i))
     await user.click(executionButton(/^Step$/i))
