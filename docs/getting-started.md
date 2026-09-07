@@ -78,7 +78,7 @@ Choose Edit > Clean up code to safely merge short, adjacent Process blocks and a
 - Use Shift+Cmd/Ctrl+R to Restart, Shift+Space to Step, and Shift+Enter to Run or Continue. The same commands are available from the Run menu.
 - Text/image loads and `ask()` submissions resume in the execution mode that started them. Stopping an execution prevents it from automatically continuing through subsequent blocks.
 - The Console reports execution status, executed-block count, and the active Flow name. The call-stack breadcrumb shows nested function and method calls, including recursion. The Console also shows runtime errors, Output lines, current variables, expandable object fields, and stable identities such as `Point #1`.
-- The current node is highlighted while stepping. Variables changed by the most recent step are highlighted, and branch feedback shows the evaluated condition and result, such as `n > 0 → True`, along with the selected wire.
+- The current node and the wire used to reach it are highlighted while stepping. The amber wire moves after every block and remains visible while waiting for input or after completion. Restart clears it. Variables changed by the most recent step are highlighted, and branch feedback shows the evaluated condition and result, such as `n > 0 → True`, along with the selected wire.
 - Long multiline variable previews are shortened in the sidebar. Imported `image` and `turtle` libraries add draggable visual panels to the runtime sidebar. Drag either panel by its heading to reposition it, or double-click its canvas to enlarge it over the app.
 - FlowLab stops runaway execution after 1,000,000 executed blocks or 100 active nested calls.
 

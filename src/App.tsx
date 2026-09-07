@@ -1250,11 +1250,14 @@ function App() {
         ? formatInputQueue(execution.inputQueue)
         : inputQueueText
   const renderEdges = useMemo(() => programToEdges(program, edges).map((edge) => {
+    const incomingEdge = execution?.incomingEdge
     const branch = execution?.lastStep?.branch
-    const active = branch?.program === execution?.rootProgram && branch?.edgeId === edge.id
+    const active = incomingEdge?.program === execution?.rootProgram && incomingEdge?.edgeId === edge.id
+    const activeBranch = active && branch?.program === incomingEdge?.program && branch?.edgeId === edge.id
     return {
       ...edge,
-      ...(active ? { label: `${branch.expression} → ${branch.label === 'true' ? 'True' : 'False'}`, style: { ...edge.style, stroke: '#d97706', strokeWidth: 3 }, labelStyle: { fill: '#92400e', fontWeight: 700 } } : {}),
+      ...(active ? { style: { ...edge.style, stroke: '#d97706', strokeWidth: 3 } } : {}),
+      ...(activeBranch ? { label: `${branch.expression} → ${branch.label === 'true' ? 'True' : 'False'}`, labelStyle: { fill: '#92400e', fontWeight: 700 } } : {}),
       interactionWidth: Math.max(edge.interactionWidth ?? 20, 24),
     }
   }), [program, edges, execution])

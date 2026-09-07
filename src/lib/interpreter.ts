@@ -358,6 +358,8 @@ export interface ExecutionState {
   imageRequest?: PendingImageLoad
   returnValue?: RuntimeValue
   error?: string
+  /** The wire actually followed to reach the active block, scoped to its program. */
+  incomingEdge?: { edgeId: string; program: Program }
   /** Feedback from the most recent step, recorded during execution. */
   lastStep?: ExecutionStepFeedback
 }
@@ -811,6 +813,7 @@ function advance(
   return {
     ...state,
     currentNodeId: edge.target,
+    incomingEdge: { edgeId: edge.id, program: state.program },
     status: 'running',
     lastStep: {
       ...feedbackForNode(state, node),
@@ -1359,6 +1362,7 @@ function completeReturn(
       ...state,
       program: callerFrame.program,
       currentNodeId: callerFrame.currentNodeId,
+      incomingEdge: undefined,
       environment: callerFrame.environment,
       receiver: callerFrame.receiver,
       forLoops: callerFrame.forLoops,
@@ -1830,6 +1834,7 @@ function startFunctionCall(
     ...state,
     program: targetProgram,
     currentNodeId: targetFunctionNode.id,
+    incomingEdge: undefined,
     environment,
     receiver,
     forLoops: {},

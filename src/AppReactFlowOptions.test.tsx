@@ -6,6 +6,7 @@ import App from './App'
 import { AdaptiveSmoothStepEdge } from './components/AdaptiveSmoothStepEdge'
 import { WHILE_TRUE_RIGHT_HANDLE } from './lib/flowRouting'
 import type { Program } from './lib/types'
+import type { EditorEdge } from './lib/editorEdges'
 
 const reactFlowProps: Record<string, unknown>[] = []
 const fitView = vi.fn(() => Promise.resolve(true))
@@ -147,6 +148,42 @@ describe('React Flow options', () => {
       panOnScroll: false,
       zoomOnDoubleClick: false,
     })
+  })
+
+  it('highlights the arrival wire after every step and clears it on Restart', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Examples' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Basic' }))
+    const controls = within(screen.getByLabelText('Runtime sidebar'))
+    const renderedEdges = () => reactFlowProps.at(-1)?.edges as EditorEdge[]
+    const highlightedEdges = () => renderedEdges().filter((edge) => edge.style?.stroke === '#d97706')
+    expect(highlightedEdges()).toEqual([])
+
+    for (const [source, target] of [
+      ['main', 'input-n'],
+      ['input-n', 'init-total'],
+      ['init-total', 'while-n'],
+      ['while-n', 'add-n'],
+      ['add-n', 'while-n'],
+    ]) {
+      await user.click(controls.getByRole('button', { name: 'Step' }))
+      expect(highlightedEdges()).toEqual([
+        expect.objectContaining({ source, target, style: expect.objectContaining({ strokeWidth: 3 }) }),
+      ])
+      if (source === 'while-n') {
+        expect(highlightedEdges()[0].label).toBe('n > 0 → True')
+      }
+    }
+    expect(renderedEdges().find((edge) => edge.source === 'while-n' && edge.target === 'add-n')?.label).toBe('true')
+
+    await user.click(controls.getByRole('button', { name: 'Continue' }))
+    await screen.findByText('Completed', { exact: true })
+    expect(highlightedEdges()).toEqual([
+      expect.objectContaining({ source: 'show-total', target: 'return' }),
+    ])
+    await user.click(controls.getByRole('button', { name: 'Restart' }))
+    expect(highlightedEdges()).toEqual([])
   })
 
   it('replaces an occupied logical output when a new wire is connected', async () => {
