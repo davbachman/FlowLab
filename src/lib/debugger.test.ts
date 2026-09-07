@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createStepOverTarget, runExecutionChunk } from './debugger'
+import { runExecutionChunk } from './debugger'
 import {
   answerAskExecution,
   completeTextLoadExecution,
@@ -83,18 +83,18 @@ describe('bounded debugger execution', () => {
     expect(second.state.steps).toBe(first.state.steps + 2)
   })
 
-  it('steps over recursive calls across chunks and reports the caller assignment', () => {
+  it('runs recursive calls across chunks and reports the caller assignment', () => {
     let state = stepExecution(createExecution(recursive, []))
-    const stepOver = createStepOverTarget(state)
-    let result = runExecutionChunk(state, { stepOver, maxSteps: 2 })
+    const breakpoints = new Set(['output'])
+    let result = runExecutionChunk(state, { breakpoints, maxSteps: 2 })
     let deepestStack = 0
     while (result.reason === 'yield') {
       state = result.state
       deepestStack = Math.max(deepestStack, state.callStack.length)
-      result = runExecutionChunk(state, { stepOver, maxSteps: 2 })
+      result = runExecutionChunk(state, { breakpoints, maxSteps: 2 })
     }
     expect(deepestStack).toBeGreaterThan(1)
-    expect(result.reason).toBe('step-over')
+    expect(result.reason).toBe('breakpoint')
     expect(result.state.currentNodeId).toBe('output')
     expect(result.state.environment).toEqual({ result: 24 })
     expect(result.state.output).toEqual([])
@@ -104,30 +104,30 @@ describe('bounded debugger execution', () => {
     expect(result.state.lastStep?.callStack).toEqual(['main'])
   })
 
-  it('honors a breakpoint inside Step Over and can resume the same target', () => {
+  it('honors a breakpoint inside a function call and can continue to completion', () => {
     const state = stepExecution(createExecution(recursive, []))
-    const stepOver = createStepOverTarget(state)
-    const stopped = runExecutionChunk(state, { stepOver, breakpoints: new Set(['condition']) })
+    const stopped = runExecutionChunk(state, { breakpoints: new Set(['condition']) })
     expect(stopped.reason).toBe('breakpoint')
     expect(stopped.state.functionName).toBe('factorial')
-    const resumed = runExecutionChunk(stopped.state, { stepOver, maxSteps: 100 })
-    expect(resumed.reason).toBe('step-over')
+    const resumed = runExecutionChunk(stopped.state, { maxSteps: 100, maxMilliseconds: Infinity })
+    expect(resumed.reason).toBe('completed')
     expect(resumed.state.environment.result).toBe(24)
+    expect(resumed.state.output).toEqual(['24'])
   })
 
-  it('finishes Step Over after ask resumes without executing the next block', () => {
+  it('resumes after ask and pauses at the next breakpoint', () => {
     const source = program([
       ['main', 'function', 'main'], ['ask', 'assignment', 'answer <- ask()'],
       ['output', 'output', 'answer'], ['end', 'return', 'answer'],
     ], [['main', 'ask'], ['ask', 'output'], ['output', 'end']])
     const state = stepExecution(createExecution(source, []))
-    const stepOver = createStepOverTarget(state)
-    const blocked = runExecutionChunk(state, { stepOver })
+    const breakpoints = new Set(['output'])
+    const blocked = runExecutionChunk(state, { breakpoints })
     expect(blocked.reason).toBe('blocked')
     expect(blocked.state.status).toBe('asking')
     const answered = answerAskExecution(blocked.state, '42')
-    const resumed = runExecutionChunk(answered, { stepOver })
-    expect(resumed.reason).toBe('step-over')
+    const resumed = runExecutionChunk(answered, { breakpoints })
+    expect(resumed.reason).toBe('breakpoint')
     expect(resumed.state.currentNodeId).toBe('output')
     expect(resumed.state.output).toEqual([])
     expect(resumed.state.lastStep?.changedVariables).toEqual([
@@ -135,32 +135,34 @@ describe('bounded debugger execution', () => {
     ])
   })
 
-  it('steps over a call containing an async text load before returning to the caller', () => {
+  it('resumes a call containing an async text load before returning to the caller', () => {
     const source = program([
       ['main', 'function', 'main'], ['call', 'assignment', 'result <- load()'],
       ['end', 'return', 'result'], ['load', 'function', 'load'],
       ['load-return', 'return', 'text_from_url("https://example.com/text")'],
     ], [['main', 'call'], ['call', 'end'], ['load', 'load-return']])
     const state = stepExecution(createExecution(source, [], { nativeLibraries: ['text'] }))
-    const stepOver = createStepOverTarget(state)
-    const blocked = runExecutionChunk(state, { stepOver })
+    const breakpoints = new Set(['end'])
+    const blocked = runExecutionChunk(state, { breakpoints })
     expect(blocked.reason).toBe('blocked')
     expect(blocked.state.status).toBe('loading')
-    const resumed = runExecutionChunk(completeTextLoadExecution(blocked.state, 'hello'), { stepOver })
-    expect(resumed.reason).toBe('step-over')
+    const resumed = runExecutionChunk(completeTextLoadExecution(blocked.state, 'hello'), { breakpoints })
+    expect(resumed.reason).toBe('breakpoint')
     expect(resumed.state.currentNodeId).toBe('end')
     expect(resumed.state.environment.result).toBe('hello')
   })
 
-  it('does not mistake queued input for a finished Step Over', () => {
+  it('waits for input and consumes newly queued input before the next breakpoint', () => {
     const source = program([
       ['main', 'function', 'main'], ['input', 'input', 'n'], ['end', 'return', 'n'],
     ], [['main', 'input'], ['input', 'end']])
     const state = stepExecution(createExecution(source, []))
-    const stepOver = createStepOverTarget(state)
-    const blocked = runExecutionChunk(state, { stepOver })
-    const resumed = runExecutionChunk(replaceExecutionInputQueue(blocked.state, ['5']), { stepOver })
-    expect(resumed.reason).toBe('step-over')
+    const breakpoints = new Set(['end'])
+    const blocked = runExecutionChunk(state, { breakpoints })
+    expect(blocked.reason).toBe('blocked')
+    expect(blocked.state.status).toBe('waiting')
+    const resumed = runExecutionChunk(replaceExecutionInputQueue(blocked.state, ['5']), { breakpoints })
+    expect(resumed.reason).toBe('breakpoint')
     expect(resumed.state.environment.n).toBe(5)
     expect(resumed.state.currentNodeId).toBe('end')
   })
@@ -189,15 +191,15 @@ describe('execution feedback', () => {
       ['check', 'log'], ['log', 'check-return'],
     ])
     const state = stepExecution(createExecution(source, []))
-    const result = runExecutionChunk(state, { stepOver: createStepOverTarget(state) })
-    expect(result.reason).toBe('step-over')
+    const result = runExecutionChunk(state, { breakpoints: new Set(['yes']) })
+    expect(result.reason).toBe('breakpoint')
     expect(result.state.output).toEqual(['checked'])
     expect(result.state.lastStep?.nodeId).toBe('condition')
     expect(result.state.lastStep?.branch?.label).toBe('true')
     expect(result.state.lastStep?.branch?.edgeId).toBe('condition-yes')
   })
 
-  it('highlights objects changed inside a stepped-over method without invoking repr', () => {
+  it('records field changes while stepping inside a method', () => {
     const source = program([
       ['main', 'function', 'main'], ['make', 'assignment', 'counter <- Counter(1)'],
       ['call', 'call', 'counter.increment()'], ['end', 'return', 'counter.value'],
@@ -208,10 +210,11 @@ describe('execution feedback', () => {
       ['method', 'increment'], ['increment', 'method-return'],
     ])
     const state = stepExecution(stepExecution(createExecution(source, [])))
-    const result = runExecutionChunk(state, { stepOver: createStepOverTarget(state) })
-    expect(result.reason).toBe('step-over')
-    expect(result.state.objectHeap[1].fields.value).toBe(2)
-    expect(result.state.lastStep?.changedVariables.map((change) => change.name)).toEqual(['counter'])
-    expect(result.state.output).toEqual([])
+    const result = runExecutionChunk(state, { breakpoints: new Set(['increment']) })
+    expect(result.reason).toBe('breakpoint')
+    const stepped = stepExecution(result.state)
+    expect(stepped.objectHeap[1].fields.value).toBe(2)
+    expect(stepped.lastStep?.changedVariables.map((change) => change.name)).toEqual(['self'])
+    expect(stepped.output).toEqual([])
   })
 })

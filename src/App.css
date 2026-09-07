@@ -478,13 +478,6 @@ button:disabled {
   margin: 0 0 10px;
 }
 
-.execution-step-help {
-  margin: 8px 0 0;
-  color: #667085;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .execution-speed-control {
   display: grid;
   gap: 5px;

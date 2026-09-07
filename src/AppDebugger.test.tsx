@@ -168,7 +168,7 @@ describe('debugger controls and feedback', () => {
     fireEvent.click(executionButton('Pause'))
   })
 
-  it('shows nested calls and steps over recursive calls back to the caller', async () => {
+  it('shows nested calls while stepping and continues recursive calls to completion', async () => {
     const source = makeProgram([
       ['main', 'function', 'main'], ['calculate', 'assignment', 'result <- factorial(4)'],
       ['output', 'output', 'result'], ['end', 'return', 'result'],
@@ -186,30 +186,26 @@ describe('debugger controls and feedback', () => {
     const stack = screen.getByRole('navigation', { name: 'Call stack' })
     expect(stack).toHaveTextContent('main')
     expect(stack).toHaveTextContent('factorial')
-    fireEvent.click(executionButton('Restart'))
-    fireEvent.click(executionButton('Step'))
-    fireEvent.click(executionButton('Run Block'))
-    await screen.findByText('Block complete', { exact: true })
-    expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step')
-    expect(output()).toHaveTextContent('No output yet')
+    fireEvent.click(executionButton('Continue'))
+    await screen.findByText('Completed', { exact: true })
+    expect(output()).toHaveTextContent('24')
     const variable = within(screen.getByRole('region', { name: 'Variables' })).getByText('result', { exact: true }).closest('.variable-row')
-    expect(variable).toHaveClass('variable-row-changed')
     expect(variable).toHaveTextContent('24')
     expect(screen.getByRole('navigation', { name: 'Call stack' })).not.toHaveTextContent('factorial')
   })
 
-  it('preserves Run Block through an input dialog and pauses before output', async () => {
+  it('preserves manual stepping through an input dialog and pauses before output', async () => {
     render(<App />)
     await loadProgram(makeProgram([
       ['main', 'function', 'main'], ['ask', 'assignment', 'answer <- ask()'],
       ['output', 'output', 'answer'], ['end', 'return', 'answer'],
     ], [['main', 'ask'], ['ask', 'output'], ['output', 'end']]))
     fireEvent.click(executionButton('Step'))
-    fireEvent.click(executionButton('Run Block'))
+    fireEvent.click(executionButton('Step'))
     const dialog = await screen.findByRole('dialog', { name: 'Input requested' })
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Input' }), { target: { value: '42' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }))
-    await screen.findByText('Block complete', { exact: true })
+    await screen.findByText('Paused', { exact: true })
     expect(output()).toHaveTextContent('No output yet')
     expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step')
     fireEvent.click(executionButton('Continue'))
@@ -217,7 +213,7 @@ describe('debugger controls and feedback', () => {
     expect(output()).toHaveTextContent('42')
   })
 
-  it('preserves Run Block through a native text load and resumes with Continue', async () => {
+  it('preserves manual stepping through a native text load and resumes with Continue', async () => {
     let finishFetch: ((value: unknown) => void) | undefined
     vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { finishFetch = resolve })))
     render(<App />)
@@ -229,12 +225,12 @@ describe('debugger controls and feedback', () => {
       imports: 'text',
     })
     fireEvent.click(executionButton('Step'))
-    fireEvent.click(executionButton('Run Block'))
+    fireEvent.click(executionButton('Step'))
     await screen.findByText('Loading', { exact: true })
     await act(async () => {
       finishFetch?.({ ok: true, status: 200, text: async () => 'Loaded text' })
     })
-    await screen.findByText('Block complete', { exact: true })
+    await screen.findByText('Paused', { exact: true })
     expect(output()).toHaveTextContent('No output yet')
     fireEvent.click(executionButton('Continue'))
     await screen.findByText('Completed', { exact: true })

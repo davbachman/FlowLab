@@ -130,7 +130,7 @@ import {
 } from './lib/drafts'
 import { initialRecoveryState, recoveryStorage } from './lib/documentRecovery'
 import { validationFeedbackForProgram, type ValidationFeedback } from './lib/validationFeedback'
-import { createStepOverTarget, runExecutionChunk, type StepOverTarget } from './lib/debugger'
+import { runExecutionChunk } from './lib/debugger'
 import { canInsertOnEdge, connectNewNode, insertNodeOnEdge, CONNECTED_NODE_TYPES, WIRE_INSERT_NODE_TYPES } from './lib/wireInsertion'
 import './App.css'
 
@@ -527,7 +527,6 @@ function App() {
   const currentDraftRef = useRef<RecoveryDraft | null>(null)
   const retainedDraftsRef = useRef(new Map<string, RecoveryDraft>())
   const documentLoadRequestRef = useRef(0)
-  const stepOverTargetRef = useRef<StepOverTarget | undefined>(undefined)
   const skipBreakpointRef = useRef(false)
   const toolbarRef = useRef<HTMLElement | null>(null)
   const expandedCanvasTriggerRef = useRef<CanvasFocusTarget | null>(null)
@@ -985,15 +984,12 @@ function App() {
     const timer = window.setTimeout(() => {
       const result = runExecutionChunk(execution, {
         breakpoints,
-        stepOver: stepOverTargetRef.current,
       })
       setExecution(result.state)
       if (result.reason !== 'yield' && result.state.status !== 'asking' && result.state.status !== 'loading') {
         setRunEnabled(false)
       }
       if (result.reason === 'breakpoint') setPauseReason('Breakpoint')
-      if (result.reason === 'step-over') setPauseReason('Block complete')
-      if (['completed', 'step-over', 'breakpoint'].includes(result.reason)) stepOverTargetRef.current = undefined
     }, 0)
     return () => window.clearTimeout(timer)
   }, [breakpoints, execution, runEnabled])
@@ -1816,7 +1812,6 @@ function App() {
     setAutoStepEnabled(false)
     setRunEnabled(false)
     setPauseReason('')
-    stepOverTargetRef.current = undefined
     skipBreakpointRef.current = false
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
@@ -1884,7 +1879,6 @@ function App() {
     setAutoStepEnabled(false)
     setRunEnabled(false)
     setPauseReason('')
-    stepOverTargetRef.current = undefined
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
     setExecution((currentExecution) => {
@@ -1898,7 +1892,7 @@ function App() {
     })
   }
 
-  function startContinuousExecution(stepOver = false): void {
+  function runProgram(): void {
     setMessage('')
     setPauseReason('')
     setAutoStepEnabled(false)
@@ -1917,42 +1911,26 @@ function App() {
       }
       initialExecution = { ...initialExecution, status: 'running' }
     }
-    stepOverTargetRef.current = stepOver
-      ? createStepOverTarget(initialExecution)
-      : execution?.status === 'waiting' ? stepOverTargetRef.current : undefined
     const result = runExecutionChunk(initialExecution, {
       breakpoints,
       skipCurrentBreakpoint: canContinueExecution,
-      stepOver: stepOverTargetRef.current,
     })
     skipBreakpointRef.current = false
     setExecution(result.state)
     setRunEnabled(result.reason === 'yield' || result.state.status === 'asking' || result.state.status === 'loading')
     if (result.reason === 'breakpoint') setPauseReason('Breakpoint')
-    if (result.reason === 'step-over') setPauseReason('Block complete')
-    if (['completed', 'step-over', 'breakpoint'].includes(result.reason)) stepOverTargetRef.current = undefined
-  }
-
-  function runProgram(): void {
-    startContinuousExecution()
-  }
-
-  function stepOverProgram(): void {
-    startContinuousExecution(true)
   }
 
   function stopProgram(): void {
     setRunEnabled(false)
     setAutoStepEnabled(false)
     setPauseReason('Stopped')
-    stepOverTargetRef.current = undefined
   }
 
   function toggleAutoStepProgram(): void {
     setMessage('')
     setPauseReason('')
     setRunEnabled(false)
-    stepOverTargetRef.current = undefined
     skipBreakpointRef.current = canContinueExecution
 
     if (autoStepIsActive) {
@@ -3080,7 +3058,6 @@ function App() {
             >
               {autoStepIsActive ? 'Pause' : 'Auto Step'}
             </button>
-            <button type="button" className="toolbar-menu-item" data-menu-item role="menuitem" disabled={!canStepExecution} title="Run the current block, including any function calls, then pause" onClick={() => runToolbarAction('run', stepOverProgram)}>Run Block</button>
             <button type="button" className="toolbar-menu-item" data-menu-item role="menuitem" disabled={!canStopExecution} onClick={() => runToolbarAction('run', stopProgram)}>Stop</button>
             <button
               type="button"
@@ -3419,10 +3396,8 @@ function App() {
               <div className="execution-buttons">
                 <button type="button" className="primary-execution" onClick={runProgram} disabled={!canRunExecution}>{runLabel}</button>
                 <button type="button" onClick={stepProgram} disabled={!canStepExecution} title="Advance one step, entering function calls to inspect them">Step</button>
-                <button type="button" onClick={stepOverProgram} disabled={!canStepExecution} title="Run the current block, including any function calls, then pause">Run Block</button>
                 {canStopExecution ? <button type="button" onClick={stopProgram}>Stop</button> : <button type="button" onClick={resetExecution} disabled={!canResetExecution}>Restart</button>}
               </div>
-              <p className="execution-step-help">Step enters function calls. Run Block finishes the current block and its calls, then pauses.</p>
               <span className="compact-execution-status">{executionStatusLabel}{execution ? ` · ${execution.steps} steps` : ''}</span>
             </div>
           ) : null}
@@ -3516,7 +3491,6 @@ function App() {
               >
                 Step
               </button>
-              <button type="button" onClick={stepOverProgram} disabled={!canStepExecution} title="Run the current block, including any function calls, then pause">Run Block</button>
               <button
                 type="button"
                 onClick={toggleAutoStepProgram}
@@ -3541,7 +3515,6 @@ function App() {
               </button>
               {canStopExecution ? <button type="button" onClick={stopProgram}>Stop</button> : null}
             </div>
-            <p className="execution-step-help">Step enters function calls. Run Block finishes the current block and its calls, then pauses.</p>
             <div className="execution-speed-control">
               <div className="execution-speed-header">
                 <label htmlFor="auto-step-speed">Auto Step speed</label>

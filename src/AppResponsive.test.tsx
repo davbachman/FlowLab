@@ -30,7 +30,7 @@ describe('compact workspace', () => {
     await user.click(canvas.getByRole('button', { name: 'Restart' }))
     expect(canvas.getByRole('button', { name: 'Run' })).toBeEnabled()
     expect(screen.getByText('Ready · 0 steps')).toBeVisible()
-    await user.click(canvas.getByRole('button', { name: 'Run Block' }))
+    await user.click(canvas.getByRole('button', { name: 'Step' }))
     expect(screen.getByTestId('flow-node-input-n')).toHaveAttribute('data-current', 'true')
     expect(canvas.getByRole('button', { name: 'Continue' })).toBeEnabled()
   })

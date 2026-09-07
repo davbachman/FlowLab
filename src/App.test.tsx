@@ -840,7 +840,7 @@ describe('App', () => {
     const runMenu = toolbarMenu('Run')
     const items = within(runMenu).getAllByRole('menuitem')
 
-    expect(items).toHaveLength(6)
+    expect(items).toHaveLength(5)
     expect(items[0]).toHaveTextContent(/Restart\s*(?:⇧⌘R|Ctrl\+Shift\+R)/i)
     expect(items[0]).toHaveAttribute(
       'aria-keyshortcuts',
@@ -849,12 +849,11 @@ describe('App', () => {
     expect(items[1]).toHaveTextContent(/Step\s*(?:Shift\+|⇧)Space/i)
     expect(items[1]).toHaveAttribute('aria-keyshortcuts', 'Shift+Space')
     expect(items[2]).toHaveTextContent(/^Auto Step$/i)
-    expect(items[3]).toHaveTextContent(/^Run Block$/i)
-    expect(items[4]).toHaveTextContent(/^Stop$/i)
-    expect(items[4]).toBeDisabled()
-    expect(items[5]).toHaveTextContent(/Run\s*(?:Shift\+|⇧)Enter/i)
-    expect(items[5]).toHaveAttribute('aria-keyshortcuts', 'Shift+Enter')
-    for (const item of items.filter((_, index) => index !== 4)) {
+    expect(items[3]).toHaveTextContent(/^Stop$/i)
+    expect(items[3]).toBeDisabled()
+    expect(items[4]).toHaveTextContent(/Run\s*(?:Shift\+|⇧)Enter/i)
+    expect(items[4]).toHaveAttribute('aria-keyshortcuts', 'Shift+Enter')
+    for (const item of items.filter((_, index) => index !== 3)) {
       expect(item).toBeEnabled()
     }
 
