@@ -37,7 +37,7 @@ Choose a program from the Examples menu to load its complete, editable flowchart
 - Multiline Process blocks plus commands for combining, splitting, and deterministically cleaning up flowcharts.
 - Functions, classes, objects, methods, fields, recursion, and Python-style special methods.
 - Numbers, strings, booleans, lists, dictionaries, and expandable object values.
-- Interruptible Run/Continue, Restart, Step, Step Over, Auto Step, and breakpoints, with branch tracing, changed variables, call-stack breadcrumbs, and active-flow input.
+- Interruptible Run/Continue, Restart, Step, Run Block, Auto Step, and breakpoints, with branch tracing, changed variables, call-stack breadcrumbs, and active-flow input.
 - Clickable validation issues, connected block insertion, and a canvas-first tabbed layout on smaller screens.
 - Automatic local draft recovery, visible save status, and support for reopening unfinished programs.
 - Imports from FlowLab JSON programs plus native math, text, image, and turtle libraries.

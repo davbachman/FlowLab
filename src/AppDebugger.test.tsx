@@ -82,9 +82,33 @@ describe('debugger controls and feedback', () => {
     expect(steps()).toBe(0)
     expect(output()).toHaveTextContent('No output yet')
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute('aria-current', 'step')
-    fireEvent.click(executionButton('Continue'))
+    expect(screen.getByText('Ready', { exact: true })).toBeInTheDocument()
+    fireEvent.click(executionButton('Run'))
     await screen.findByText('Completed', { exact: true })
     expect(within(output()).getAllByText('first', { exact: true })).toHaveLength(1)
+  })
+
+  it.each(['Run', 'Auto Step'])('honors a starting breakpoint after Restart with %s and continues from it', async (action) => {
+    render(<App />)
+    await loadProgram(makeProgram([
+      ['main', 'function', 'main'], ['output', 'output', '"done"'], ['end', 'return', '0'],
+    ], [['main', 'output'], ['output', 'end']]))
+    toggleBreakpoint('main')
+    fireEvent.click(executionButton('Restart'))
+    expect(executionButton('Run')).toBeEnabled()
+
+    vi.useFakeTimers()
+    fireEvent.click(executionButton(action))
+    await act(async () => { vi.advanceTimersByTime(1000) })
+    expect(steps()).toBe(0)
+    expect(screen.getByText('Breakpoint', { exact: true })).toBeInTheDocument()
+    expect(output()).toHaveTextContent('No output yet')
+
+    fireEvent.click(executionButton('Continue'))
+    await act(async () => { vi.runOnlyPendingTimers() })
+    expect(screen.getByText('Completed', { exact: true })).toBeInTheDocument()
+    expect(within(output()).getAllByText('done', { exact: true })).toHaveLength(1)
+    expect(executionButton('Run')).toBeEnabled()
   })
 
   it('stops an unfinished run and cancels future chunks when code is edited', async () => {
@@ -164,8 +188,8 @@ describe('debugger controls and feedback', () => {
     expect(stack).toHaveTextContent('factorial')
     fireEvent.click(executionButton('Restart'))
     fireEvent.click(executionButton('Step'))
-    fireEvent.click(executionButton('Step Over'))
-    await screen.findByText('Step over complete', { exact: true })
+    fireEvent.click(executionButton('Run Block'))
+    await screen.findByText('Block complete', { exact: true })
     expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step')
     expect(output()).toHaveTextContent('No output yet')
     const variable = within(screen.getByRole('region', { name: 'Variables' })).getByText('result', { exact: true }).closest('.variable-row')
@@ -174,18 +198,18 @@ describe('debugger controls and feedback', () => {
     expect(screen.getByRole('navigation', { name: 'Call stack' })).not.toHaveTextContent('factorial')
   })
 
-  it('preserves Step Over through an input dialog and pauses before output', async () => {
+  it('preserves Run Block through an input dialog and pauses before output', async () => {
     render(<App />)
     await loadProgram(makeProgram([
       ['main', 'function', 'main'], ['ask', 'assignment', 'answer <- ask()'],
       ['output', 'output', 'answer'], ['end', 'return', 'answer'],
     ], [['main', 'ask'], ['ask', 'output'], ['output', 'end']]))
     fireEvent.click(executionButton('Step'))
-    fireEvent.click(executionButton('Step Over'))
+    fireEvent.click(executionButton('Run Block'))
     const dialog = await screen.findByRole('dialog', { name: 'Input requested' })
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Input' }), { target: { value: '42' } })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }))
-    await screen.findByText('Step over complete', { exact: true })
+    await screen.findByText('Block complete', { exact: true })
     expect(output()).toHaveTextContent('No output yet')
     expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step')
     fireEvent.click(executionButton('Continue'))
@@ -193,7 +217,7 @@ describe('debugger controls and feedback', () => {
     expect(output()).toHaveTextContent('42')
   })
 
-  it('preserves Step Over through a native text load and resumes with Continue', async () => {
+  it('preserves Run Block through a native text load and resumes with Continue', async () => {
     let finishFetch: ((value: unknown) => void) | undefined
     vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { finishFetch = resolve })))
     render(<App />)
@@ -205,12 +229,12 @@ describe('debugger controls and feedback', () => {
       imports: 'text',
     })
     fireEvent.click(executionButton('Step'))
-    fireEvent.click(executionButton('Step Over'))
+    fireEvent.click(executionButton('Run Block'))
     await screen.findByText('Loading', { exact: true })
     await act(async () => {
       finishFetch?.({ ok: true, status: 200, text: async () => 'Loaded text' })
     })
-    await screen.findByText('Step over complete', { exact: true })
+    await screen.findByText('Block complete', { exact: true })
     expect(output()).toHaveTextContent('No output yet')
     fireEvent.click(executionButton('Continue'))
     await screen.findByText('Completed', { exact: true })

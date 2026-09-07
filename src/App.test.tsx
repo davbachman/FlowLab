@@ -849,7 +849,7 @@ describe('App', () => {
     expect(items[1]).toHaveTextContent(/Step\s*(?:Shift\+|⇧)Space/i)
     expect(items[1]).toHaveAttribute('aria-keyshortcuts', 'Shift+Space')
     expect(items[2]).toHaveTextContent(/^Auto Step$/i)
-    expect(items[3]).toHaveTextContent(/^Step Over$/i)
+    expect(items[3]).toHaveTextContent(/^Run Block$/i)
     expect(items[4]).toHaveTextContent(/^Stop$/i)
     expect(items[4]).toBeDisabled()
     expect(items[5]).toHaveTextContent(/Run\s*(?:Shift\+|⇧)Enter/i)
@@ -859,6 +859,7 @@ describe('App', () => {
     }
 
     await user.click(items[0])
+    expect(executionButton(/^Run$/i)).toBeEnabled()
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
       'aria-current',
       'step',
@@ -1984,7 +1985,7 @@ describe('App', () => {
     await user.type(inputQueue, '4')
     expect(inputQueue).toHaveValue('4')
 
-    await user.click(executionButton(/^Continue$/i))
+    await user.click(executionButton(/^Run$/i))
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '10',
     )
@@ -2110,7 +2111,7 @@ describe('App', () => {
         .filter((line) => line.length > 0),
     ).toEqual(['4', '5'])
 
-    await user.click(executionButton(/^Continue$/i))
+    await user.click(executionButton(/^Run$/i))
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '45',
     )
@@ -2762,7 +2763,7 @@ describe('App', () => {
 
     expect(executionButton(/^Pause$/i)).toBeInTheDocument()
     expect(executionButton(/^Step$/i)).toBeDisabled()
-    expect(executionButton(/^Continue$/i)).toBeDisabled()
+    expect(executionButton(/^Run$/i)).toBeDisabled()
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
       'data-current',
       'true',

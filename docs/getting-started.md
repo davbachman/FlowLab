@@ -69,17 +69,17 @@ Choose Edit > Clean up code to safely merge short, adjacent Process blocks and a
 
 ## Run and inspect a program
 
-- Restart creates a fresh execution at `main` without advancing it. It clears the prior execution's variables and output.
+- Restart clears the prior execution's variables and output and prepares a fresh execution at `main` without advancing it. The status becomes Ready and the main execution button shows Run.
 - The input queue remains editable immediately after Restart. If execution is waiting at an Input block, add one or more values to the queue and choose Step, Auto Step, or Continue to resume from that block.
 - Step executes one visible block at a time and continues the current execution. Function and method calls enter the called flowchart.
-- Step Over executes the current block and any functions or methods it calls, then pauses in the caller. It works across recursive calls, input dialogs, and text or image loads.
+- Run Block executes the current block, including all functions or methods it calls, then pauses at the next block. It works across recursive calls, input dialogs, and text or image loads.
 - Auto Step repeatedly steps at the speed selected beneath the controls. Use Pause to preserve the current position.
-- Run starts an execution when there is no active one. During a paused execution the same button becomes Continue and resumes from the current block. Stop pauses a longer run while preserving its position, variables, and output. A successful return from `main` shows Completed.
-- Select or hover over a block and use its breakpoint button to pause before that block executes. Run, Continue, Auto Step, and Step Over honor breakpoints. Continuing from a breakpoint executes that block once; loops can hit the breakpoint again on a later visit.
+- Run starts a new or Ready execution. After execution advances or pauses at a breakpoint, the same button becomes Continue and resumes from the current block. Stop pauses a longer run while preserving its position, variables, and output. A successful return from `main` shows Completed.
+- Select or hover over a block and use its breakpoint button to pause before that block executes. Run, Continue, Auto Step, and Run Block honor breakpoints. A breakpoint at `main` pauses before the first step and shows Continue. Continuing from a breakpoint executes that block once; loops can hit the breakpoint again on a later visit.
 - Use Shift+Cmd/Ctrl+R to Restart, Shift+Space to Step, and Shift+Enter to Run or Continue. The same commands are available from the Run menu.
 - Text/image loads and `ask()` submissions resume in the execution mode that started them. Stopping an execution prevents it from automatically continuing through subsequent blocks.
 - The Console reports execution status, executed-block count, and the active Flow name. The call-stack breadcrumb shows nested function and method calls, including recursion. The Console also shows runtime errors, Output lines, current variables, expandable object fields, and stable identities such as `Point #1`.
-- The current node is highlighted while stepping. Variables changed by the most recent step are highlighted, and branch feedback shows the evaluated condition and result, such as `n > 0 → True`, along with the selected wire. Step Over highlights changes made during the complete call.
+- The current node is highlighted while stepping. Variables changed by the most recent step are highlighted, and branch feedback shows the evaluated condition and result, such as `n > 0 → True`, along with the selected wire. Run Block highlights changes made during the complete call.
 - Long multiline variable previews are shortened in the sidebar. Imported `image` and `turtle` libraries add draggable visual panels to the runtime sidebar. Drag either panel by its heading to reposition it, or double-click its canvas to enlarge it over the app.
 - FlowLab stops runaway execution after 1,000,000 executed blocks or 100 active nested calls.
 
@@ -97,7 +97,7 @@ Choose Edit > Clean up code to safely merge short, adjacent Process blocks and a
 - The FlowLab menu contains About and Instructions. Instructions opens the documentation in a separate tab.
 - The File menu contains New, Save, Load, and Recover draft. New opens a separate blank FlowLab tab without changing the current program. See [Saving and loading](saving-and-loading.md).
 - The Edit menu contains Undo, Redo, Copy, Paste, Combine into Process, Split Process, and Clean up code.
-- The Run menu duplicates Restart, Step, Step Over, Auto Step/Pause, Run/Continue, and Stop from the Console.
+- The Run menu duplicates Restart, Step, Run Block, Auto Step/Pause, Run/Continue, and Stop from the Console.
 - The Examples menu contains the eight programs summarized on the [documentation home page](../README.md).
 - The left palette and right runtime sidebar scroll independently. On desktop, drag either sidebar divider to resize it or use the header buttons to hide either sidebar. On screens up to 1100 pixels wide, **Blocks**, **Canvas**, and **Console** tabs give each panel the full workspace. Canvas opens first and keeps execution controls visible. Selecting a block in Blocks returns to Canvas for placement.
 - Unused Imports starts collapsed; open its heading to enter libraries or programs. Special methods remains a collapsed reference.
