@@ -144,7 +144,6 @@ interface FlowNodeData extends Record<string, unknown> {
   attachedMethods?: AttachedMethodHandle[]
   onTextChange?: (nodeId: string, text: string) => void
   onResizeStart?: () => void
-  validationMessage?: string
   textValidationMessage?: string
   hasBreakpoint?: boolean
   onToggleBreakpoint?: (nodeId: string) => void
@@ -1317,7 +1316,6 @@ function App() {
               : undefined,
           onTextChange: updateNodeText,
           onResizeStart: recordCanvasChangeStart,
-          validationMessage: validationFeedback.find((issue) => issue.nodeId === node.id)?.message,
           textValidationMessage: validationFeedback.find((issue) => issue.nodeId === node.id && issue.field === 'text')?.message,
           hasBreakpoint: breakpoints.has(node.id),
           onToggleBreakpoint: toggleBreakpoint,
@@ -4280,7 +4278,6 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
       }`}
       data-testid={`flow-node-${id}`}
       data-current={data.isCurrent ? 'true' : 'false'}
-      data-invalid={!!data.validationMessage}
       data-breakpoint={!!data.hasBreakpoint}
       data-shape={
         isBranchNodeType(data.nodeType)
@@ -4369,7 +4366,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
       ) : null}
       {data.nodeType !== 'class' ? <button type="button" className="node-breakpoint nodrag nopan" aria-pressed={!!data.hasBreakpoint} aria-label={`${data.hasBreakpoint ? 'Remove' : 'Add'} breakpoint on ${data.text.trim().split('\n')[0] || label}`} title={data.hasBreakpoint ? 'Remove breakpoint' : 'Pause before this block'} onClick={(event) => { event.stopPropagation(); data.onToggleBreakpoint?.(id) }}>●</button> : null}
       <div className="node-content">
-        <div className="node-label">{label}{data.validationMessage ? <span className="node-error-indicator" title={data.validationMessage}>!</span> : null}</div>
+        <div className="node-label">{label}</div>
         {data.comment ? <div className="node-comment">{data.comment}</div> : null}
         {editable ? (
           <>

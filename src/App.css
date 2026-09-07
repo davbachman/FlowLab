@@ -1728,8 +1728,6 @@ textarea {
 .validation-link { width: 100%; text-align: left; color: #b42318; background: #fff7f5; border: 1px solid #fecdca; border-radius: 6px; padding: 8px; font: inherit; line-height: 1.45; cursor: pointer; overflow-wrap: anywhere; }
 .validation-link:hover, .validation-link:focus-visible { background: #fee4e2; outline: 2px solid #f97066; outline-offset: 1px; }
 .flow-node .node-input[aria-invalid='true'] { border-color: #d92d20; }
-.flow-node[data-invalid='true'] .node-handle { background: #b42318; }
-.node-error-indicator { display: inline-grid; place-items: center; width: 15px; height: 15px; margin-left: 6px; border-radius: 50%; background: #b42318; color: white; font-size: 11px; }
 .node-breakpoint { position: absolute; left: -26px; top: 0; z-index: 4; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid #cbd5e1; border-radius: 50%; color: #94a3b8; background: white; font-size: 17px; opacity: 0; cursor: pointer; }
 .flow-node:hover .node-breakpoint, .react-flow__node.selected .node-breakpoint, .node-breakpoint:focus-visible, .node-breakpoint[aria-pressed='true'] { opacity: 1; }
 .node-breakpoint[aria-pressed='true'] { color: #dc2626; border-color: #fca5a5; background: #fff1f2; }
