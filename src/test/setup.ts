@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest'
+import { beforeEach } from 'vitest'
 
 class ResizeObserverStub {
   observe() {}
@@ -37,4 +38,11 @@ Object.defineProperty(window, 'localStorage', {
       localStorageItems.set(key, value)
     },
   },
+})
+
+beforeEach(() => {
+  window.localStorage.clear()
+  window.history.replaceState(null, '', '/')
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 })
+  Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 1000 })
 })

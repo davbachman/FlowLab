@@ -19,14 +19,15 @@
 3. Connect the Function block to the first executable block, wire each path through the program, and finish with at least one Return.
 4. Resolve every item in the Validation panel.
 5. Enter any imports or queued input values the program needs.
-6. Press Reset and Step to inspect the flow one block at a time, use Auto Step to watch it at a selected speed, or press Run to restart and execute immediately.
+6. Press Step to inspect the flow one block at a time, use Auto Step to watch it at a selected speed, or press Run to execute. Continue resumes a paused execution; Restart prepares a fresh execution at `main`.
 
 The Examples menu contains eight complete programs that can be edited and run as tutorials or starting points.
 
 ## Work with the canvas
 
 - FlowLab starts with a blank canvas. Select a block in the left palette, move its preview into position, then click the canvas to place it. You can also double-click an empty part of the canvas, type any block name, and press Enter to start placing the matching block. Matching is case-insensitive and the chooser offers completions as you type. Edit the text directly inside any placed block.
-- Drag between block handles to make wires. Function and Method roots begin executable flows. Class handles attach Methods.
+- Drag between block handles to make wires. Function and Method roots begin executable flows. Class handles attach Methods. Drag an executable output into empty canvas to choose a new block that is connected automatically.
+- Click the **+** on a wire to insert a Process, Assignment, Call, Input, or Output block. The existing continuation and branch direction are preserved. Insertion avoids overlapping other blocks and can be undone in one action. Press Escape to cancel without changing the wire.
 - Multiple wires may enter an executable block. Starting a new wire from an occupied output replaces that output's old wire; `true` and `false` branch outputs are replaced independently, while Class Method attachments accumulate.
 - If, While, and For diamonds use either side for the `true` or loop-body branch and the bottom for the `false` or exit branch. FlowLab labels those wires and routes loop-back wires automatically.
 - Left-click selects one block. Shift-, Ctrl-, or Cmd-click extends the selection, and left-drag on empty canvas makes a selection window. Drag any selected block to move the selection.
@@ -68,15 +69,18 @@ Choose Edit > Clean up code to safely merge short, adjacent Process blocks and a
 
 ## Run and inspect a program
 
-- Reset creates a fresh execution at `main` without advancing it.
-- The input queue remains editable immediately after Reset. If execution is waiting at an Input block, add one or more values to the queue and choose Step or Auto Step to continue from that block.
+- Restart creates a fresh execution at `main` without advancing it. It clears the prior execution's variables and output.
+- The input queue remains editable immediately after Restart. If execution is waiting at an Input block, add one or more values to the queue and choose Step, Auto Step, or Continue to resume from that block.
 - Step executes one visible block at a time and continues the current execution. Function and method calls enter the called flowchart.
+- Step Over executes the current block and any functions or methods it calls, then pauses in the caller. It works across recursive calls, input dialogs, and text or image loads.
 - Auto Step repeatedly steps at the speed selected beneath the controls. Use Pause to preserve the current position.
-- Run starts fresh and continues immediately until the program returns, waits for input, pauses for a text or image load, or reports an error.
-- Use Shift+Cmd/Ctrl+R to Reset, Shift+Space to Step, and Shift+Enter to Run. The same commands are available from the Run menu.
-- Text/image loads and `ask()` submissions resume Run or Auto Step in the mode that started them.
-- The Console reports execution status, executed-block count, and the active Flow name. It also shows runtime errors, Output lines, current variables, expandable object fields, and stable identities such as `Point #1`.
-- The current node is highlighted while stepping. Long multiline variable previews are shortened in the sidebar. Imported `image` and `turtle` libraries add draggable visual panels to the runtime sidebar. Drag either panel by its heading to reposition it, or double-click its canvas to enlarge it over the app.
+- Run starts an execution when there is no active one. During a paused execution the same button becomes Continue and resumes from the current block. Stop pauses a longer run while preserving its position, variables, and output. A successful return from `main` shows Completed.
+- Select or hover over a block and use its breakpoint button to pause before that block executes. Run, Continue, Auto Step, and Step Over honor breakpoints. Continuing from a breakpoint executes that block once; loops can hit the breakpoint again on a later visit.
+- Use Shift+Cmd/Ctrl+R to Restart, Shift+Space to Step, and Shift+Enter to Run or Continue. The same commands are available from the Run menu.
+- Text/image loads and `ask()` submissions resume in the execution mode that started them. Stopping an execution prevents it from automatically continuing through subsequent blocks.
+- The Console reports execution status, executed-block count, and the active Flow name. The call-stack breadcrumb shows nested function and method calls, including recursion. The Console also shows runtime errors, Output lines, current variables, expandable object fields, and stable identities such as `Point #1`.
+- The current node is highlighted while stepping. Variables changed by the most recent step are highlighted, and branch feedback shows the evaluated condition and result, such as `n > 0 → True`, along with the selected wire. Step Over highlights changes made during the complete call.
+- Long multiline variable previews are shortened in the sidebar. Imported `image` and `turtle` libraries add draggable visual panels to the runtime sidebar. Drag either panel by its heading to reposition it, or double-click its canvas to enlarge it over the app.
 - FlowLab stops runaway execution after 1,000,000 executed blocks or 100 active nested calls.
 
 ## Use input
@@ -91,11 +95,13 @@ Choose Edit > Clean up code to safely merge short, adjacent Process blocks and a
 ## Menus and layout
 
 - The FlowLab menu contains About and Instructions. Instructions opens the documentation in a separate tab.
-- The File menu contains New, Save, and Load. New opens a separate blank FlowLab tab without changing the current program. See [Saving and loading](saving-and-loading.md).
+- The File menu contains New, Save, Load, and Recover draft. New opens a separate blank FlowLab tab without changing the current program. See [Saving and loading](saving-and-loading.md).
 - The Edit menu contains Undo, Redo, Copy, Paste, Combine into Process, Split Process, and Clean up code.
-- The Run menu duplicates Reset, Step, Auto Step, and Run from the Console.
+- The Run menu duplicates Restart, Step, Step Over, Auto Step/Pause, Run/Continue, and Stop from the Console.
 - The Examples menu contains the eight programs summarized on the [documentation home page](../README.md).
-- The left palette and right runtime sidebar scroll independently. On desktop, drag either sidebar divider to resize it. Use the two panel buttons in the top-right toolbar to hide or restore either sidebar; on narrow screens the workspace stacks vertically.
+- The left palette and right runtime sidebar scroll independently. On desktop, drag either sidebar divider to resize it or use the header buttons to hide either sidebar. On screens up to 1100 pixels wide, **Blocks**, **Canvas**, and **Console** tabs give each panel the full workspace. Canvas opens first and keeps execution controls visible. Selecting a block in Blocks returns to Canvas for placement.
+- Unused Imports starts collapsed; open its heading to enter libraries or programs. Special methods remains a collapsed reference.
+- Click a Validation issue to select and frame the affected block. Text issues focus the code field, including the specific Process line when available. Import issues open the Imports editor.
 
 ---
 

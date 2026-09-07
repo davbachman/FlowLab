@@ -328,28 +328,39 @@ describe('app layout scrolling', () => {
     expect(appCss).not.toMatch(/\n\.flow-node-method\s*\{/)
   })
 
-  it('keeps the three-column editor layout at zoomed desktop widths', () => {
-    const zoomedDesktop = mediaBlockFor('(max-width: 980px) and (min-width: 721px)')
+  it('fits one active panel inside the viewport on tablets and phones', () => {
+    const compact = mediaBlockFor('(max-width: 1100px)')
 
-    expect(declarationsFor('.workspace', zoomedDesktop)).toMatchObject({
-      'grid-template-columns':
-        'var(--palette-sidebar-width, 220px) minmax(320px, 1fr) var(--runtime-sidebar-width, 420px)',
+    expect(declarationsFor('.workspace', compact)).toMatchObject({
+      'grid-template-columns': 'minmax(0, 1fr)',
+      'grid-template-rows': 'minmax(0, 1fr)',
+      overflow: 'hidden',
     })
-    expect(zoomedDesktop).not.toContain('grid-template-rows: auto 60vh auto')
-    expect(zoomedDesktop).not.toContain('flex-direction: row')
+    expect(declarationsFor('.canvas-shell', compact)).toMatchObject({
+      'grid-column': '1',
+      'grid-row': '1',
+      'min-height': '0',
+    })
+    expect(declarationsFor('.sidebar-resize-handle', compact)).toMatchObject({
+      display: 'none',
+    })
   })
 
-  it('only stacks the workspace for narrow mobile viewports', () => {
-    const mobile = mediaBlockFor('(max-width: 720px)')
+  it('scrolls compact panel contents while removing inactive panels from layout', () => {
+    const compact = mediaBlockFor('(max-width: 1100px)')
 
-    expect(declarationsFor('.workspace', mobile)).toMatchObject({
-      'grid-template-columns': '1fr',
-      'grid-template-rows':
-        'var(--palette-sidebar-row, max-content) var(--canvas-sidebar-row, minmax(360px, 60vh)) var(--runtime-sidebar-row, minmax(320px, 50vh))',
+    expect(declarationsFor('.palette, .console-panel', compact)).toMatchObject({
+      'grid-column': '1',
+      'grid-row': '1',
+      width: '100% !important',
+      'min-height': '0',
+      overflow: 'auto',
     })
-    expect(declarationsFor('.palette', mobile)).toMatchObject({
-      'min-height': 'max-content',
-      overflow: 'visible',
+    expect(declarationsFor('.palette[hidden],\n.console-panel[hidden]')).toMatchObject({
+      display: 'none',
+    })
+    expect(declarationsFor('.canvas-shell[hidden]')).toMatchObject({
+      display: 'none',
     })
   })
 

@@ -80,6 +80,14 @@ function executionButton(name: RegExp): HTMLElement {
   return within(runtimeSidebar()).getByRole('button', { name })
 }
 
+async function enterImports(user: TestUser, text: string): Promise<void> {
+  const toggle = screen.getByRole('button', { name: /^Imports$/i })
+  if (toggle.getAttribute('aria-expanded') === 'false') {
+    await user.click(toggle)
+  }
+  await user.type(screen.getByLabelText(/Imports list/i), text)
+}
+
 function functionSignaturesFor(
   container: HTMLElement,
   sectionName: string,
@@ -782,7 +790,8 @@ describe('App', () => {
     expect(flowLabTrigger).toHaveAttribute('aria-expanded', 'false')
     expect(fileTrigger).toHaveAttribute('aria-expanded', 'true')
     const fileMenu = toolbarMenu('File')
-    expect(within(fileMenu).getAllByRole('menuitem')).toHaveLength(3)
+    expect(within(fileMenu).getAllByRole('menuitem')).toHaveLength(4)
+    expect(within(fileMenu).getByRole('menuitem', { name: /^Recover draft$/i })).toBeInTheDocument()
     expect(
       within(fileMenu).getByRole('menuitem', { name: /^New$/i }),
     ).toBeInTheDocument()
@@ -831,8 +840,8 @@ describe('App', () => {
     const runMenu = toolbarMenu('Run')
     const items = within(runMenu).getAllByRole('menuitem')
 
-    expect(items).toHaveLength(4)
-    expect(items[0]).toHaveTextContent(/Reset\s*(?:⇧⌘R|Ctrl\+Shift\+R)/i)
+    expect(items).toHaveLength(6)
+    expect(items[0]).toHaveTextContent(/Restart\s*(?:⇧⌘R|Ctrl\+Shift\+R)/i)
     expect(items[0]).toHaveAttribute(
       'aria-keyshortcuts',
       'Meta+Shift+R Control+Shift+R',
@@ -840,9 +849,12 @@ describe('App', () => {
     expect(items[1]).toHaveTextContent(/Step\s*(?:Shift\+|⇧)Space/i)
     expect(items[1]).toHaveAttribute('aria-keyshortcuts', 'Shift+Space')
     expect(items[2]).toHaveTextContent(/^Auto Step$/i)
-    expect(items[3]).toHaveTextContent(/Run\s*(?:Shift\+|⇧)Enter/i)
-    expect(items[3]).toHaveAttribute('aria-keyshortcuts', 'Shift+Enter')
-    for (const item of items) {
+    expect(items[3]).toHaveTextContent(/^Step Over$/i)
+    expect(items[4]).toHaveTextContent(/^Stop$/i)
+    expect(items[4]).toBeDisabled()
+    expect(items[5]).toHaveTextContent(/Run\s*(?:Shift\+|⇧)Enter/i)
+    expect(items[5]).toHaveAttribute('aria-keyshortcuts', 'Shift+Enter')
+    for (const item of items.filter((_, index) => index !== 4)) {
       expect(item).toBeEnabled()
     }
 
@@ -862,12 +874,12 @@ describe('App', () => {
     expect(executionButton(/^Pause$/i)).toBeInTheDocument()
     await user.click(executionButton(/^Pause$/i))
 
-    await chooseToolbarAction(user, 'Run', 'Run')
+    await chooseToolbarAction(user, 'Run', 'Continue')
 
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
     )
-    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
     await waitFor(() => expect(toolbarTrigger('Run')).toHaveFocus())
   })
 
@@ -886,7 +898,7 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
     )
-    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
 
     expect(
       fireEvent.keyDown(window, { key: 'r', ctrlKey: true, shiftKey: true }),
@@ -1293,7 +1305,7 @@ describe('App', () => {
     registerFlowLabProgram('helpers.json', importedHelperProgram)
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'helpers.json')
+    await enterImports(user, 'helpers.json')
 
     expect(await screen.findByText(/Imported files: helpers/i)).toBeInTheDocument()
     expect(await screen.findByText(/Functions: helper/i)).toBeInTheDocument()
@@ -1304,7 +1316,7 @@ describe('App', () => {
     registerFlowLabProgram('objects.json', objectSampleProgram)
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'objects')
+    await enterImports(user, 'objects')
 
     expect(await screen.findByText('Classes: Point')).toBeInTheDocument()
     expect(screen.queryByText(/^Functions:/)).not.toBeInTheDocument()
@@ -1315,7 +1327,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await enterImports(user, 'turtle')
 
     expect(
       await screen.findByText(/Native libraries: turtle/i),
@@ -1337,7 +1349,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'image')
+    await enterImports(user, 'image')
 
     expect(
       await screen.findByText(/Native libraries: image/i),
@@ -1361,7 +1373,7 @@ describe('App', () => {
     registerFlowLabProgram('helpers.json', importedHelperProgram)
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'helpers')
+    await enterImports(user, 'helpers')
     await screen.findByText(/Functions: helper/i)
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
@@ -1375,7 +1387,7 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
     )
-    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Completed/i)).toBeInTheDocument()
   })
 
   it('starts with a blank canvas and loads the default sample on request', async () => {
@@ -1571,7 +1583,7 @@ describe('App', () => {
     render(<App />)
 
     await chooseToolbarAction(user, 'Examples', 'Object')
-    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Restart$/i))
 
     const flowStatus = screen.getByText('Flow').closest('div')
     const methodNode = screen.getByTestId('flow-node-point-move')
@@ -1599,7 +1611,13 @@ describe('App', () => {
 
     await chooseToolbarAction(user, 'File', 'New')
 
-    expect(open).toHaveBeenCalledWith(window.location.href, '_blank')
+    expect(open).toHaveBeenCalledWith(expect.any(String), '_blank')
+    const openedUrl = new URL(String(open.mock.calls[0]?.[0]))
+    const currentUrl = new URL(window.location.href)
+    expect(openedUrl.origin).toBe(currentUrl.origin)
+    expect(openedUrl.pathname).toBe(currentUrl.pathname)
+    expect(openedUrl.searchParams.get('draft')).toBeTruthy()
+    expect(openedUrl.searchParams.get('draft')).not.toBe(currentUrl.searchParams.get('draft'))
     expect(openedWindow.opener).toBeNull()
     expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
     expect(screen.getByDisplayValue('total <- 0')).toBeInTheDocument()
@@ -1837,7 +1855,7 @@ describe('App', () => {
       'lesson-one',
     )
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'helpers')
+    await enterImports(user, 'helpers')
 
     expect(await screen.findByText('Imported files: helpers')).toBeInTheDocument()
     expect(screen.getByText('Functions: folderHelper')).toBeInTheDocument()
@@ -1938,7 +1956,7 @@ describe('App', () => {
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
     )
-    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Completed/i)).toBeInTheDocument()
   })
 
   it('makes the input queue editable again after resetting an active program', async () => {
@@ -1947,15 +1965,15 @@ describe('App', () => {
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
     await user.click(executionButton(/^Step$/i))
-    expect(screen.getByText(/^Running$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Paused$/i)).toBeInTheDocument()
     expect(
       within(runtimeSidebar()).getByText(/^Steps$/i).closest('div'),
     ).toHaveTextContent('1')
 
-    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Restart$/i))
 
     const inputQueue = screen.getByLabelText(/Input queue/i)
-    expect(screen.getByText(/^Running$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Ready$/i)).toBeInTheDocument()
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
       'aria-current',
       'step',
@@ -1966,18 +1984,18 @@ describe('App', () => {
     await user.type(inputQueue, '4')
     expect(inputQueue).toHaveValue('4')
 
-    await user.click(executionButton(/^Run$/i))
+    await user.click(executionButton(/^Continue$/i))
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '10',
     )
-    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
   })
 
-  it('locks the input queue immediately when Auto Step starts from Reset', async () => {
+  it('locks the input queue immediately when Auto Step starts from Restart', async () => {
     const user = userEvent.setup()
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
-    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Restart$/i))
 
     const inputQueue = screen.getByLabelText(/Input queue/i)
     const stepsStatus = within(runtimeSidebar())
@@ -2020,7 +2038,7 @@ describe('App', () => {
         'aria-current',
         'step',
       )
-      expect(screen.getByText(/^Running$/i)).toBeInTheDocument()
+      expect(screen.getByText(/^Paused$/i)).toBeInTheDocument()
       expect(
         within(runtimeSidebar()).getByText(/^Steps$/i).closest('div'),
       ).toHaveTextContent('3')
@@ -2031,7 +2049,7 @@ describe('App', () => {
     },
   )
 
-  it('retains root input typed while waiting when Run starts fresh', async () => {
+  it('retains root input typed while waiting when Continue resumes', async () => {
     const user = userEvent.setup()
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
@@ -2042,12 +2060,12 @@ describe('App', () => {
     expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
 
     await user.type(inputQueue, '3')
-    await user.click(executionButton(/^Run$/i))
+    await user.click(executionButton(/^Continue$/i))
 
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
     )
-    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
   })
 
   it('preserves root inputs supplied across separate waits in their original order', async () => {
@@ -2085,18 +2103,18 @@ describe('App', () => {
       'step',
     )
 
-    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Restart$/i))
     expect(
       (inputQueue as HTMLTextAreaElement).value
         .split(/\r?\n/)
         .filter((line) => line.length > 0),
     ).toEqual(['4', '5'])
 
-    await user.click(executionButton(/^Run$/i))
+    await user.click(executionButton(/^Continue$/i))
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '45',
     )
-    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
   })
 
   it('resumes Auto Step in place after input is supplied while waiting', async () => {
@@ -2158,7 +2176,7 @@ describe('App', () => {
     expect(inputQueue).toHaveValue('"hello"\n7')
     expect(inputQueue).toHaveAttribute('readonly')
 
-    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Restart$/i))
     expect(inputQueue).toHaveValue('99')
     expect(inputQueue).not.toHaveAttribute('readonly')
   })
@@ -2167,7 +2185,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await enterImports(user, 'turtle')
     await screen.findByText(/Native libraries: turtle/i)
     importProgramFromFileMenu(
       new File([JSON.stringify(turtleDrawingProgram)], 'turtle.json', {
@@ -2194,7 +2212,7 @@ describe('App', () => {
     expect(within(dialog).getByTestId('turtle-canvas')).toBeInTheDocument()
     expect(within(dialog).getAllByTestId('turtle-segment')).toHaveLength(2)
     expect(within(dialog).getByTestId('turtle-marker').tagName).toBe('polygon')
-    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Completed/i)).toBeInTheDocument()
 
     await user.keyboard('{Escape}')
     expect(
@@ -2234,10 +2252,11 @@ describe('App', () => {
         { cache: 'no-store' },
       ),
     )
+    await screen.findByText(/^Completed$/i)
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       'Fetched text from class data',
     )
-    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Completed/i)).toBeInTheDocument()
   })
 
   it('renders, enlarges, and downloads imshow output as PNG', async () => {
@@ -2277,7 +2296,7 @@ describe('App', () => {
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
     expect(putImageData).toHaveBeenCalled()
     expect(screen.getByText(/Image saved as flowlab-image\.png/i)).toBeInTheDocument()
-    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Completed/i)).toBeInTheDocument()
 
     await user.dblClick(imageCanvas)
     const dialog = screen.getByRole('dialog', {
@@ -2297,7 +2316,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await enterImports(user, 'turtle')
     await screen.findByRole('region', { name: /Turtle/i })
     const canvas = screen.getByTestId('turtle-canvas')
     stubBoundingClientRect(canvas, { width: 200, height: 200 })
@@ -2342,7 +2361,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await enterImports(user, 'turtle')
     await screen.findByRole('region', { name: /Turtle/i })
     const canvas = screen.getByTestId('turtle-canvas')
     stubBoundingClientRect(canvas, { width: 200, height: 200 })
@@ -2364,7 +2383,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await enterImports(user, 'turtle')
     await screen.findByRole('region', { name: /Turtle/i })
     const canvas = screen.getByTestId('turtle-canvas')
     stubBoundingClientRect(canvas, { width: 200, height: 200 })
@@ -2387,7 +2406,7 @@ describe('App', () => {
     const addEventListener = vi.spyOn(SVGElement.prototype, 'addEventListener')
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'turtle')
+    await enterImports(user, 'turtle')
     await screen.findByRole('region', { name: /Turtle/i })
 
     await waitFor(() =>
@@ -2480,7 +2499,7 @@ describe('App', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.type(screen.getByLabelText(/Imports list/i), 'turtle\nimage')
+    await enterImports(user, 'turtle\nimage')
     await screen.findByRole('region', { name: /^Turtle$/i })
     await screen.findByRole('region', { name: /^Image$/i })
 
@@ -2541,7 +2560,7 @@ describe('App', () => {
 
     expect(executionBar).toBeInTheDocument()
     expect(executionBar).toContainElement(
-      within(sidebar).getByRole('button', { name: /^Reset$/i }),
+      within(sidebar).getByRole('button', { name: /^Restart$/i }),
     )
     expect(executionBar).toContainElement(
       within(sidebar).getByRole('button', { name: /^Step$/i }),
@@ -2601,10 +2620,11 @@ describe('App', () => {
     await user.click(within(dialog).getByRole('button', { name: /Submit/i }))
 
     expect(screen.queryByRole('dialog', { name: /Input requested/i })).toBeNull()
+    await screen.findByText(/^Completed$/i)
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '7',
     )
-    expect(screen.getByText(/Halted/i)).toBeInTheDocument()
+    expect(screen.getByText(/Completed/i)).toBeInTheDocument()
   })
 
   it('shows current variable values in the right sidebar', async () => {
@@ -2656,7 +2676,7 @@ describe('App', () => {
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
-    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Restart$/i))
 
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
       'data-current',
@@ -2707,7 +2727,7 @@ describe('App', () => {
       )
     })
 
-    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Restart$/i))
     await user.click(executionButton(/^Step$/i))
 
     expect(ifNode).toHaveAttribute('data-current', 'true')
@@ -2719,7 +2739,7 @@ describe('App', () => {
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
-    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Restart$/i))
 
     const currentNode = screen.getByTestId('flow-node-main')
     expect(currentNode).toHaveAttribute('aria-current', 'step')
@@ -2742,7 +2762,7 @@ describe('App', () => {
 
     expect(executionButton(/^Pause$/i)).toBeInTheDocument()
     expect(executionButton(/^Step$/i)).toBeDisabled()
-    expect(executionButton(/^Run$/i)).toBeDisabled()
+    expect(executionButton(/^Continue$/i)).toBeDisabled()
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
       'data-current',
       'true',
@@ -2763,7 +2783,7 @@ describe('App', () => {
     expect(stepsStatus).toHaveTextContent('1')
     expect(executionButton(/^Auto Step$/i)).toBeEnabled()
     expect(executionButton(/^Step$/i)).toBeEnabled()
-    expect(executionButton(/^Run$/i)).toBeEnabled()
+    expect(executionButton(/^Continue$/i)).toBeEnabled()
 
     fireEvent.change(speed, { target: { value: '4' } })
     expect(screen.getByText('4 steps/s')).toBeInTheDocument()
@@ -2779,7 +2799,7 @@ describe('App', () => {
       act(() => vi.advanceTimersByTime(250))
     }
 
-    expect(screen.getByText(/^Halted$/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
     expect(executionButton(/^Auto Step$/i)).toBeEnabled()
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
@@ -2839,7 +2859,7 @@ describe('App', () => {
     expect(screen.getByLabelText(/Current document/i)).toHaveTextContent(
       'helper-call',
     )
-    await user.click(executionButton(/^Reset$/i))
+    await user.click(executionButton(/^Restart$/i))
     await user.click(executionButton(/^Step$/i))
     await user.click(executionButton(/^Step$/i))
 

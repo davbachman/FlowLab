@@ -10,10 +10,19 @@ import {
   type BranchLabel,
   type FlowNodeType,
   type Program,
+  type ProgramPosition,
 } from './types'
+
+export interface WireInsertRequest {
+  edgeId: string
+  clientX: number
+  clientY: number
+  flowPosition: ProgramPosition
+}
 
 export interface FlowEdgeData extends Record<string, unknown> {
   loopbackJoinOffset?: number
+  onInsert?: (request: WireInsertRequest) => void
 }
 
 export type EditorEdge = Edge<FlowEdgeData>

@@ -34,6 +34,7 @@ import {
   type Node,
   type NodeChange,
   type NodeProps,
+  type OnConnectEnd,
   type NodeTypes,
   SelectionMode,
 } from '@xyflow/react'
@@ -46,7 +47,6 @@ import {
   failImageLoadExecution,
   failTextLoadExecution,
   replaceExecutionInputQueue,
-  runExecution,
   stepExecution,
   type ExecutionState,
 } from './lib/interpreter'
@@ -117,7 +117,21 @@ import {
   type Program,
   type RuntimeValue,
 } from './lib/types'
-import { normalizeImportedProgram, validateProgram } from './lib/validation'
+import { validateProgram } from './lib/validation'
+import {
+  createDraftId,
+  documentFingerprint,
+  listRecoveryDrafts,
+  newDraftUrl,
+  parseProgramDraft,
+  readRecoveryDraft,
+  writeRecoveryDraft,
+  type RecoveryDraft,
+} from './lib/drafts'
+import { initialRecoveryState, recoveryStorage } from './lib/documentRecovery'
+import { validationFeedbackForProgram, type ValidationFeedback } from './lib/validationFeedback'
+import { createStepOverTarget, runExecutionChunk, type StepOverTarget } from './lib/debugger'
+import { canInsertOnEdge, connectNewNode, insertNodeOnEdge, CONNECTED_NODE_TYPES, WIRE_INSERT_NODE_TYPES } from './lib/wireInsertion'
 import './App.css'
 
 interface FlowNodeData extends Record<string, unknown> {
@@ -130,6 +144,10 @@ interface FlowNodeData extends Record<string, unknown> {
   attachedMethods?: AttachedMethodHandle[]
   onTextChange?: (nodeId: string, text: string) => void
   onResizeStart?: () => void
+  validationMessage?: string
+  textValidationMessage?: string
+  hasBreakpoint?: boolean
+  onToggleBreakpoint?: (nodeId: string) => void
 }
 
 interface AttachedMethodHandle {
@@ -142,6 +160,11 @@ type EditorNode = Node<FlowNodeData, 'flowNode'>
 interface CanvasSnapshot {
   nodes: EditorNode[]
   edges: EditorEdge[]
+  imports?: string
+  inputQueue?: string
+  documentName?: string
+  draftId?: string
+  savedFingerprint?: string | null
 }
 
 interface WaitingInputQueueDraft {
@@ -212,6 +235,10 @@ interface QuickAddRequest {
   clientX: number
   clientY: number
   flowPosition: { x: number; y: number }
+  edgeId?: string
+  sourceId?: string
+  sourceHandle?: string | null
+  branchLabel?: BranchLabel
 }
 
 interface ViewportSize {
@@ -225,6 +252,7 @@ type RuntimePanelId = 'turtle' | 'image' | 'variables' | 'output'
 type ExpandableCanvasId = Extract<RuntimePanelId, 'turtle' | 'image'>
 type CanvasFocusTarget = HTMLElement | SVGSVGElement
 type AppShortcutCommand = 'reset' | 'step' | 'run'
+type CompactView = 'blocks' | 'canvas' | 'console'
 
 interface ShortcutCommand {
   enabled: boolean
@@ -411,12 +439,24 @@ function useViewportSize(): ViewportSize {
 
 function App() {
   const viewportSize = useViewportSize()
-  const [nodes, setNodes] = useState<EditorNode[]>([])
-  const [edges, setEdges] = useState<EditorEdge[]>([])
-  const [inputQueueText, setInputQueueText] = useState('')
+  const [recoveryStart] = useState(initialRecoveryState)
+  const [draftId, setDraftId] = useState(recoveryStart.id)
+  const [savedFingerprint, setSavedFingerprint] = useState<string | null>(
+    recoveryStart.draft?.savedFingerprint ?? null,
+  )
+  const [recoveryError, setRecoveryError] = useState(recoveryStart.error)
+  const [lastRecoveryKey, setLastRecoveryKey] = useState('')
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
+  const [recoverableDrafts, setRecoverableDrafts] = useState<RecoveryDraft[]>([])
+  const compactLayout = viewportSize.width <= 1100
+  const [compactView, setCompactView] = useState<CompactView>('canvas')
+  const [importsExpanded, setImportsExpanded] = useState(!!recoveryStart.draft?.program.imports?.trim())
+  const [nodes, setNodes] = useState<EditorNode[]>(() => recoveryStart.draft ? programToNodes(recoveryStart.draft.program) : [])
+  const [edges, setEdges] = useState<EditorEdge[]>(() => recoveryStart.draft ? programToEdges(recoveryStart.draft.program) : [])
+  const [inputQueueText, setInputQueueText] = useState(recoveryStart.draft?.program.inputQueue ?? '')
   const [waitingInputQueueDraft, setWaitingInputQueueDraft] =
     useState<WaitingInputQueueDraft | null>(null)
-  const [documentName, setDocumentName] = useState(DEFAULT_DOCUMENT_NAME)
+  const [documentName, setDocumentName] = useState(recoveryStart.draft?.documentName ?? DEFAULT_DOCUMENT_NAME)
   const [filenameInput, setFilenameInput] = useState('')
   const [filenameRequest, setFilenameRequest] = useState<FilenameRequest | null>(
     null,
@@ -426,23 +466,28 @@ function App() {
     null,
   )
   const [askInputText, setAskInputText] = useState('')
-  const [importNamesText, setImportNamesText] = useState('')
+  const [importNamesText, setImportNamesText] = useState(recoveryStart.draft?.program.imports ?? '')
   const [importDirectoryHandle, setImportDirectoryHandle] =
     useState<FlowLabDirectoryHandle | null>(null)
   const [importDirectoryName, setImportDirectoryName] = useState('')
   const [importResolution, setImportResolution] = useState<ImportResolution>(
     EMPTY_IMPORT_RESOLUTION,
   )
-  const [importsLoading, setImportsLoading] = useState(false)
+  const [importsLoading, setImportsLoading] = useState(!!recoveryStart.draft?.program.imports?.trim())
   const [execution, setExecution] = useState<ExecutionState | null>(null)
   const [autoStepEnabled, setAutoStepEnabled] = useState(false)
   const [autoStepSpeed, setAutoStepSpeed] = useState(DEFAULT_AUTO_STEP_SPEED)
+  const [runEnabled, setRunEnabled] = useState(false)
+  const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set())
+  const [pauseReason, setPauseReason] = useState('')
   const [paletteWidth, setPaletteWidth] = useState(() =>
     defaultPaletteWidthForViewport(viewportSize.width),
   )
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(true)
   const [rightSidebarVisible, setRightSidebarVisible] = useState(true)
+  const paletteIsVisible = compactLayout ? compactView === 'blocks' : leftSidebarVisible
+  const consoleIsVisible = compactLayout ? compactView === 'console' : rightSidebarVisible
   const [sidebarResizeDrag, setSidebarResizeDrag] =
     useState<SidebarResizeDrag | null>(null)
   const [runtimePanelOrder, setRuntimePanelOrder] = useState<RuntimePanelId[]>(
@@ -452,7 +497,7 @@ function App() {
     useState<ExpandableCanvasId | null>(null)
   const [expandedCanvas, setExpandedCanvas] =
     useState<ExpandableCanvasId | null>(null)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(recoveryStart.draft ? 'Recovered your local draft.' : recoveryStart.error)
   const [openToolbarMenu, setOpenToolbarMenu] =
     useState<ToolbarMenuName | null>(null)
   const [aboutOpen, setAboutOpen] = useState(false)
@@ -475,8 +520,16 @@ function App() {
   const clipboardRef = useRef<CanvasSnapshot | null>(null)
   const historyRef = useRef<CanvasSnapshot[]>([])
   const redoHistoryRef = useRef<CanvasSnapshot[]>([])
-  const askResumeModeRef = useRef<'step' | 'auto-step' | 'run'>('step')
-  const fitViewAfterLoadRef = useRef(false)
+  const fitViewAfterLoadRef = useRef(!!recoveryStart.draft)
+  const documentStateRef = useRef({ imports: importNamesText, inputQueue: inputQueueText, documentName, draftId, savedFingerprint })
+  useEffect(() => {
+    documentStateRef.current = { imports: importNamesText, inputQueue: inputQueueText, documentName, draftId, savedFingerprint }
+  }, [importNamesText, inputQueueText, documentName, draftId, savedFingerprint])
+  const currentDraftRef = useRef<RecoveryDraft | null>(null)
+  const retainedDraftsRef = useRef(new Map<string, RecoveryDraft>())
+  const documentLoadRequestRef = useRef(0)
+  const stepOverTargetRef = useRef<StepOverTarget | undefined>(undefined)
+  const skipBreakpointRef = useRef(false)
   const toolbarRef = useRef<HTMLElement | null>(null)
   const expandedCanvasTriggerRef = useRef<CanvasFocusTarget | null>(null)
   const draggedRuntimePanelRef = useRef<ExpandableCanvasId | null>(null)
@@ -485,6 +538,7 @@ function App() {
   >({})
   const importFileInputRef = useRef<HTMLInputElement | null>(null)
   const quickAddRef = useRef<HTMLFormElement | null>(null)
+  const quickAddTriggerRef = useRef<HTMLElement | null>(null)
   const lastNodePlacementAtRef = useRef(0)
   const paletteWidthWasResizedRef = useRef(false)
   const processedImageSaveRequestsRef = useRef(
@@ -706,6 +760,7 @@ function App() {
       setPendingNodePosition(null)
       setQuickAddRequest(null)
       setQuickAddText('')
+      quickAddTriggerRef.current?.focus()
     }
 
     document.addEventListener('keydown', cancelNodePlacementOnEscape)
@@ -751,7 +806,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [importDirectoryHandle, importNamesText])
+  }, [draftId, importDirectoryHandle, importNamesText])
 
   useEffect(() => {
     if (execution?.status !== 'loading' || !execution.textRequest) {
@@ -778,9 +833,7 @@ function App() {
             text,
           )
 
-          return askResumeModeRef.current === 'run'
-            ? runExecution(resumedExecution)
-            : resumedExecution
+          return resumedExecution
         })
         setMessage('')
       })
@@ -830,9 +883,7 @@ function App() {
             image,
           )
 
-          return askResumeModeRef.current === 'run'
-            ? runExecution(resumedExecution)
-            : resumedExecution
+          return resumedExecution
         })
         setMessage('')
       })
@@ -913,17 +964,46 @@ function App() {
           return currentExecution
         }
 
+        if (!skipBreakpointRef.current && currentExecution.program === currentExecution.rootProgram && breakpoints.has(currentExecution.currentNodeId)) {
+          setAutoStepEnabled(false)
+          setPauseReason('Breakpoint')
+          return currentExecution
+        }
+        skipBreakpointRef.current = false
         return stepExecution(currentExecution)
       })
     }, 1000 / autoStepSpeed)
 
     return () => window.clearTimeout(timeout)
-  }, [autoStepIsActive, autoStepSpeed, execution])
+  }, [autoStepIsActive, autoStepSpeed, execution, breakpoints])
+
+  useEffect(() => {
+    if (!execution || execution.status === 'halted' || execution.status === 'error') {
+      const timer = window.setTimeout(() => { setRunEnabled(false); setAutoStepEnabled(false) }, 0)
+      return () => window.clearTimeout(timer)
+    }
+    if (!runEnabled || execution.status !== 'running') return
+    const timer = window.setTimeout(() => {
+      const result = runExecutionChunk(execution, {
+        breakpoints,
+        stepOver: stepOverTargetRef.current,
+      })
+      setExecution(result.state)
+      if (result.reason !== 'yield' && result.state.status !== 'asking' && result.state.status !== 'loading') {
+        setRunEnabled(false)
+      }
+      if (result.reason === 'breakpoint') setPauseReason('Breakpoint')
+      if (result.reason === 'step-over') setPauseReason('Step over complete')
+      if (['completed', 'step-over', 'breakpoint'].includes(result.reason)) stepOverTargetRef.current = undefined
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [breakpoints, execution, runEnabled])
 
   const pushHistorySnapshot = useCallback(() => {
     const snapshot = cloneCanvasSnapshot({
       nodes: nodesRef.current,
       edges: edgesRef.current,
+      ...documentStateRef.current,
     })
 
     historyRef.current = [
@@ -939,10 +1019,24 @@ function App() {
 
   const restoreCanvasSnapshot = useCallback((snapshot: CanvasSnapshot) => {
     const nextSnapshot = cloneCanvasSnapshot(snapshot)
+    if (nextSnapshot.draftId && nextSnapshot.draftId !== documentStateRef.current.draftId) {
+      if (currentDraftRef.current) writeRecoveryDraft(recoveryStorage(), currentDraftRef.current)
+      setDraftId(nextSnapshot.draftId)
+      setSavedFingerprint(nextSnapshot.savedFingerprint ?? null)
+      if (nextSnapshot.documentName !== undefined) setDocumentName(nextSnapshot.documentName)
+    }
     nodesRef.current = nextSnapshot.nodes
     edgesRef.current = nextSnapshot.edges
     setNodes(nextSnapshot.nodes)
     setEdges(nextSnapshot.edges)
+    if (nextSnapshot.imports !== undefined) {
+      setImportNamesText(nextSnapshot.imports)
+      if (nextSnapshot.imports !== documentStateRef.current.imports || nextSnapshot.draftId !== documentStateRef.current.draftId) {
+        setImportsLoading(!!nextSnapshot.imports.trim())
+        setImportResolution(EMPTY_IMPORT_RESOLUTION)
+      }
+    }
+    if (nextSnapshot.inputQueue !== undefined) setInputQueueText(nextSnapshot.inputQueue)
     setExecution(null)
     setPendingNodeType(null)
     setPendingNodePosition(null)
@@ -1016,15 +1110,59 @@ function App() {
     program,
   ])
   const currentNodeId = execution?.currentNodeId ?? null
+  const validationFeedback = useMemo(
+    () => validationFeedbackForProgram(program, validation.errors),
+    [program, validation.errors],
+  )
+  const toggleBreakpoint = useCallback((nodeId: string) => {
+    setBreakpoints((current) => {
+      const next = new Set(current)
+      if (next.has(nodeId)) next.delete(nodeId)
+      else next.add(nodeId)
+      return next
+    })
+  }, [])
+  const focusValidation = useCallback((issue: ValidationFeedback) => {
+    if (issue.field === 'imports') {
+      setCompactView('blocks')
+      setLeftSidebarVisible(true)
+      setImportsExpanded(true)
+      window.requestAnimationFrame(() => document.getElementById('imports-list')?.focus())
+      return
+    }
+    if (!issue.nodeId) return
+    setCompactView('canvas')
+    setNodes((current) => current.map((node) => ({ ...node, selected: node.id === issue.nodeId })))
+    setEdges((current) => current.map((edge) => ({ ...edge, selected: edge.id === issue.edgeId })))
+    window.requestAnimationFrame(() => {
+      void flowInstance?.fitView({ nodes: [{ id: issue.nodeId! }], padding: 0.5, maxZoom: 1.2, duration: 200 })
+      const field = document.getElementById(`${issue.nodeId}-text`)
+      if (issue.field === 'text' && (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) {
+        field.focus({ preventScroll: true })
+        if (issue.lineNumber) {
+          const lines = field.value.split('\n')
+          const start = lines.slice(0, issue.lineNumber - 1).join('\n').length + (issue.lineNumber > 1 ? 1 : 0)
+          field.setSelectionRange(start, start + (lines[issue.lineNumber - 1]?.length ?? 0))
+        }
+      }
+    })
+  }, [flowInstance])
   const executionIsBusy =
     execution?.status === 'asking' || execution?.status === 'loading'
   const canResetExecution = validation.valid && !executionIsBusy
   const canStepExecution =
-    validation.valid && !executionIsBusy && !autoStepIsActive
+    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled && execution?.status !== 'halted' && execution?.status !== 'error'
   const canToggleAutoStep =
-    validation.valid && (!executionIsBusy || autoStepIsActive)
+    validation.valid && !runEnabled && (!executionIsBusy || autoStepIsActive)
   const canRunExecution =
-    validation.valid && !executionIsBusy && !autoStepIsActive
+    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled
+  const runLabel = execution && execution.status !== 'halted' && execution.status !== 'error' ? 'Continue' : 'Run'
+  const canStopExecution = runEnabled || autoStepIsActive
+  const executionStatusLabel = (runEnabled || autoStepIsActive) && execution?.status === 'running'
+    ? 'Running'
+    : execution?.status === 'running'
+      ? pauseReason || (execution.steps === 0 ? 'Ready' : 'Paused')
+      : formatStatus(execution)
   const cleanupIsDisabled =
     nodes.length === 0 ||
     (execution !== null &&
@@ -1033,7 +1171,7 @@ function App() {
   const showExecutionInputQueue =
     execution !== null && execution.status !== 'halted' && execution.status !== 'error'
   const inputQueueIsAtFreshRoot =
-    isFreshRootExecution(execution) && !autoStepIsActive
+    isFreshRootExecution(execution) && !autoStepIsActive && !runEnabled
   const inputQueueIsWaiting = execution?.status === 'waiting'
   const inputQueueIsEditable =
     !showExecutionInputQueue || inputQueueIsAtFreshRoot || inputQueueIsWaiting
@@ -1049,6 +1187,44 @@ function App() {
           activeWaitingInputQueueDraft.text,
         )
       : inputQueueText
+  const savedProgram = useMemo(
+    () => programWithSavedRuntimeState(program, importNamesText, effectiveInputQueueText),
+    [program, importNamesText, effectiveInputQueueText],
+  )
+  const fingerprint = useMemo(() => documentFingerprint(savedProgram, documentName), [savedProgram, documentName])
+  const isDirty = fingerprint !== (savedFingerprint ?? documentFingerprint(
+    { version: 1, nodes: [], edges: [], imports: '', inputQueue: '' }, DEFAULT_DOCUMENT_NAME,
+  ))
+
+  useEffect(() => {
+    window.history.replaceState(window.history.state, '', newDraftUrl(window.location.href, draftId))
+  }, [draftId])
+
+  const recoveryProgram = useMemo(() => (JSON.parse(fingerprint) as { program: Program }).program, [fingerprint])
+  const recoveryKey = `${draftId}\0${fingerprint}\0${savedFingerprint}`
+  const recoverySaved = lastRecoveryKey === recoveryKey
+
+  useEffect(() => {
+    const draft: RecoveryDraft = { version: 1, id: draftId, program: recoveryProgram, documentName, savedFingerprint, updatedAt: Date.now() }
+    currentDraftRef.current = draft
+    const timer = window.setTimeout(() => {
+      const result = writeRecoveryDraft(recoveryStorage(), draft)
+      setRecoveryError(result.ok ? '' : result.error)
+      if (result.ok) setLastRecoveryKey(recoveryKey)
+    }, 350)
+    return () => window.clearTimeout(timer)
+  }, [draftId, recoveryProgram, documentName, savedFingerprint, recoveryKey])
+
+  useEffect(() => {
+    const persist = () => {
+      if (currentDraftRef.current) writeRecoveryDraft(recoveryStorage(), currentDraftRef.current)
+    }
+    window.addEventListener('pagehide', persist)
+    return () => {
+      persist()
+      window.removeEventListener('pagehide', persist)
+    }
+  }, [])
   const visibleTurtleState = useMemo(
     () =>
       execution?.turtle ?? (hasTurtleLibrary ? initialTurtleState() : null),
@@ -1075,8 +1251,24 @@ function App() {
           execution.status !== 'error'
         ? formatInputQueue(execution.inputQueue)
         : inputQueueText
-  const renderEdges = useMemo(() => programToEdges(program, edges), [program, edges])
-  const quickAddSuggestions = matchingQuickAddNodeTypes(quickAddText)
+  const renderEdges = useMemo(() => programToEdges(program, edges).map((edge) => {
+    const branch = execution?.lastStep?.branch
+    const active = branch?.program === execution?.rootProgram && branch?.edgeId === edge.id
+    return {
+      ...edge,
+      ...(active ? { label: `${branch.expression} → ${branch.label === 'true' ? 'True' : 'False'}`, style: { ...edge.style, stroke: '#d97706', strokeWidth: 3 }, labelStyle: { fill: '#92400e', fontWeight: 700 } } : {}),
+      data: { ...edge.data, onInsert: canInsertOnEdge(program, edge.id) ? (request: { edgeId: string; clientX: number; clientY: number; flowPosition: { x: number; y: number } }) => {
+        quickAddTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        setPendingNodeType(null)
+        setQuickAddText('')
+        setQuickAddIndex(0)
+        setQuickAddRequest(request)
+      } : undefined },
+    }
+  }), [program, edges, execution])
+  const quickAddSuggestions = matchingQuickAddNodeTypes(quickAddText,
+    quickAddRequest?.edgeId ? WIRE_INSERT_NODE_TYPES : quickAddRequest?.sourceId ? CONNECTED_NODE_TYPES : FLOW_NODE_TYPES,
+  )
   const exportFileName = useMemo(
     () => fileNameForDocument(documentName),
     [documentName],
@@ -1118,7 +1310,7 @@ function App() {
         ...node,
         data: {
           ...node.data,
-          isCurrent: node.id === currentNodeId,
+          isCurrent: node.id === currentNodeId && execution?.program === execution?.rootProgram,
           isWidthCustomized: node.width !== undefined,
           trueBranchHandle: trueBranchHandleForNode(node, edges),
           attachedMethods:
@@ -1127,14 +1319,22 @@ function App() {
               : undefined,
           onTextChange: updateNodeText,
           onResizeStart: recordCanvasChangeStart,
+          validationMessage: validationFeedback.find((issue) => issue.nodeId === node.id)?.message,
+          textValidationMessage: validationFeedback.find((issue) => issue.nodeId === node.id && issue.field === 'text')?.message,
+          hasBreakpoint: breakpoints.has(node.id),
+          onToggleBreakpoint: toggleBreakpoint,
         },
       })),
     [
       currentNodeId,
+      execution,
       edges,
       nodes,
       recordCanvasChangeStart,
       updateNodeText,
+      validationFeedback,
+      breakpoints,
+      toggleBreakpoint,
     ],
   )
   const combinableSelection = useMemo(
@@ -1149,7 +1349,7 @@ function App() {
   const onNodesChange = useCallback(
     (changes: NodeChange<EditorNode>[]) => {
       setNodes((currentNodes) => applyNodeChanges(changes, currentNodes))
-      if (changes.some((change) => change.type !== 'select')) {
+      if (changes.some((change) => change.type !== 'select' && change.type !== 'dimensions')) {
         setExecution(null)
       }
     },
@@ -1311,6 +1511,7 @@ function App() {
 
   function selectNodeType(nodeType: FlowNodeType): void {
     beginNodePlacement(nodeType)
+    setCompactView('canvas')
   }
 
   function screenToFlowPoint(clientX: number, clientY: number): {
@@ -1394,6 +1595,7 @@ function App() {
     setPendingNodePosition(null)
     setQuickAddText('')
     setQuickAddIndex(0)
+    quickAddTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setQuickAddRequest({
       clientX: event.clientX,
       clientY: event.clientY,
@@ -1406,16 +1608,64 @@ function App() {
       return
     }
 
+    if (quickAddRequest.edgeId || quickAddRequest.sourceId) {
+      const newNode = {
+        id: nextNodeId(nodeType, nodes),
+        type: nodeType,
+        text: defaultNodeText(nodeType),
+        position: centerNodePosition(nodeType, quickAddRequest.flowPosition),
+      }
+      const updated = quickAddRequest.edgeId
+        ? insertNodeOnEdge(program, quickAddRequest.edgeId, newNode)
+        : connectNewNode(program, quickAddRequest.sourceId!, newNode, quickAddRequest.branchLabel)
+      if (!updated) {
+        setMessage('This connection has changed. Choose a wire again.')
+        setQuickAddRequest(null)
+        return
+      }
+      pushHistorySnapshot()
+      setNodes(programToNodes(updated).map((node) => ({ ...node, selected: node.id === newNode.id })))
+      const addedEdge = updated.edges.find((edge) => edge.source === quickAddRequest.sourceId && edge.target === newNode.id)
+      const edgeHints = addedEdge ? [...edges, { ...addedEdge, sourceHandle: quickAddRequest.sourceHandle }] : edges
+      setEdges(programToEdges(updated, edgeHints))
+      setExecution(null)
+      setQuickAddRequest(null)
+      setMessage(`${NODE_TYPE_LABELS[nodeType]} block connected.`)
+      window.requestAnimationFrame(() => document.getElementById(`${newNode.id}-text`)?.focus())
+      return
+    }
     beginNodePlacement(nodeType, quickAddRequest.flowPosition)
     setMessage(`${NODE_TYPE_LABELS[nodeType]} ready to place.`)
   }
 
+  const onConnectEnd: OnConnectEnd = (event, connection) => {
+    if (connection.isValid || connection.toNode || !connection.fromNode || connection.fromHandle?.type !== 'source') return
+    const source = nodes.find((node) => node.id === connection.fromNode?.id)
+    if (!source || source.data.nodeType === 'class' || source.data.nodeType === 'return') return
+    const pointer = 'changedTouches' in event ? event.changedTouches[0] : event
+    if (!pointer) return
+    const target = document.elementFromPoint?.(pointer.clientX, pointer.clientY) ?? event.target
+    if (!(target instanceof Element) || !target.closest('.react-flow__pane')) return
+    setQuickAddText('')
+    setQuickAddIndex(0)
+    setPendingNodeType(null)
+    setQuickAddRequest({
+      clientX: pointer.clientX,
+      clientY: pointer.clientY,
+      flowPosition: screenToFlowPoint(pointer.clientX, pointer.clientY),
+      sourceId: source.id,
+      sourceHandle: connection.fromHandle.id,
+      branchLabel: branchLabelFromHandle(connection.fromHandle.id),
+    })
+  }
+
   function submitQuickAdd(event: FormEvent): void {
     event.preventDefault()
-    const nodeType = resolveQuickAddNodeType(
+    const resolved = resolveQuickAddNodeType(
       quickAddText,
       quickAddSuggestions[quickAddIndex],
     )
+    const nodeType = resolved && quickAddSuggestions.includes(resolved) ? resolved : null
 
     if (!nodeType) {
       setMessage(`No block matches "${quickAddText.trim()}".`)
@@ -1486,12 +1736,20 @@ function App() {
   }
 
   function loadExample(example: FlowLabExample): void {
+    documentLoadRequestRef.current += 1
+    preserveCurrentDraft()
+    setDraftId(createDraftId())
+    setSavedFingerprint(null)
+    setBreakpoints(new Set())
+    setCompactView('canvas')
     pushHistorySnapshot()
     fitViewAfterLoadRef.current = true
     setNodes(programToNodes(example.program))
     setEdges(programToEdges(example.program))
     setInputQueueText(example.inputQueue)
     const currentImports = parseImportNames(importNamesText)
+    setImportsLoading(!!currentImports.length || !!example.requiredImports.length)
+    setImportsExpanded(!!currentImports.length || !!example.requiredImports.length)
     const missingImports = example.requiredImports.filter(
       (name) => !currentImports.includes(name),
     )
@@ -1509,7 +1767,7 @@ function App() {
   }
 
   function openNewFlowLab(): void {
-    const newWindow = window.open(window.location.href, '_blank')
+    const newWindow = window.open(newDraftUrl(window.location.href), '_blank')
 
     if (!newWindow) {
       setMessage('The new FlowLab tab was blocked by the browser.')
@@ -1523,9 +1781,11 @@ function App() {
   function resetExecution(): void {
     setMessage('')
     setAutoStepEnabled(false)
+    setRunEnabled(false)
+    setPauseReason('')
+    stepOverTargetRef.current = undefined
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
-    askResumeModeRef.current = 'step'
     setExecution(
       createExecution(program, parseInputQueue(effectiveInputQueueText), {
         importedPrograms,
@@ -1588,9 +1848,11 @@ function App() {
   function stepProgram(): void {
     setMessage('')
     setAutoStepEnabled(false)
+    setRunEnabled(false)
+    setPauseReason('')
+    stepOverTargetRef.current = undefined
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
-    askResumeModeRef.current = 'step'
     setExecution((currentExecution) => {
       const activeExecution = currentExecution
         ? executionWithEditedInputQueue(currentExecution)
@@ -1602,26 +1864,65 @@ function App() {
     })
   }
 
-  function runProgram(): void {
+  function startContinuousExecution(stepOver = false): void {
     setMessage('')
+    setPauseReason('')
     setAutoStepEnabled(false)
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
-    askResumeModeRef.current = 'run'
-    const initialExecution = createExecution(
-      program,
-      parseInputQueue(effectiveInputQueueText),
-      { importedPrograms, nativeLibraries: nativeLibraryNames },
-    )
-    setExecution(runExecution(initialExecution))
+    const canResume = execution && execution.status !== 'halted' && execution.status !== 'error'
+    let initialExecution = canResume
+      ? executionWithEditedInputQueue(execution)
+      : createExecution(program, parseInputQueue(effectiveInputQueueText), {
+          importedPrograms, nativeLibraries: nativeLibraryNames,
+        })
+    if (initialExecution.status === 'waiting') {
+      if (!initialExecution.inputQueue.length) {
+        setMessage('Enter an input queue value before continuing.')
+        return
+      }
+      initialExecution = { ...initialExecution, status: 'running' }
+    }
+    stepOverTargetRef.current = stepOver
+      ? createStepOverTarget(initialExecution)
+      : execution?.status === 'waiting' ? stepOverTargetRef.current : undefined
+    const result = runExecutionChunk(initialExecution, {
+      breakpoints,
+      skipCurrentBreakpoint: !!canResume,
+      stepOver: stepOverTargetRef.current,
+    })
+    skipBreakpointRef.current = false
+    setExecution(result.state)
+    setRunEnabled(result.reason === 'yield' || result.state.status === 'asking' || result.state.status === 'loading')
+    if (result.reason === 'breakpoint') setPauseReason('Breakpoint')
+    if (result.reason === 'step-over') setPauseReason('Step over complete')
+    if (['completed', 'step-over', 'breakpoint'].includes(result.reason)) stepOverTargetRef.current = undefined
+  }
+
+  function runProgram(): void {
+    startContinuousExecution()
+  }
+
+  function stepOverProgram(): void {
+    startContinuousExecution(true)
+  }
+
+  function stopProgram(): void {
+    setRunEnabled(false)
+    setAutoStepEnabled(false)
+    setPauseReason('Stopped')
+    stepOverTargetRef.current = undefined
   }
 
   function toggleAutoStepProgram(): void {
     setMessage('')
+    setPauseReason('')
+    setRunEnabled(false)
+    stepOverTargetRef.current = undefined
+    skipBreakpointRef.current = !!execution && execution.status !== 'halted' && execution.status !== 'error'
 
     if (autoStepIsActive) {
       setAutoStepEnabled(false)
-      askResumeModeRef.current = 'step'
       return
     }
 
@@ -1643,7 +1944,6 @@ function App() {
 
     setWaitingInputQueueDraft(null)
     setInputQueueText(effectiveInputQueueText)
-    askResumeModeRef.current = 'auto-step'
     setExecution((currentExecution) => {
       if (currentExecution?.status === 'waiting') {
         const suppliedExecution = replaceExecutionInputQueue(
@@ -1963,6 +2263,7 @@ function App() {
       cloneCanvasSnapshot({
         nodes: nodesRef.current,
         edges: edgesRef.current,
+        ...documentStateRef.current,
       }),
     )
     restoreCanvasSnapshot(previousSnapshot)
@@ -1983,6 +2284,7 @@ function App() {
       cloneCanvasSnapshot({
         nodes: nodesRef.current,
         edges: edgesRef.current,
+        ...documentStateRef.current,
       }),
     )
     restoreCanvasSnapshot(nextSnapshot)
@@ -2227,7 +2529,65 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [copySelection, pasteSelection, redoCanvasChange, undoCanvasChange])
 
+  function markDocumentSaved(fileName: string, exported: Program, exportingId: string): void {
+    const name = documentNameFromFileName(fileName)
+    const saved = documentFingerprint(exported, name)
+    if (currentDraftRef.current?.id === exportingId) {
+      setDocumentName(name)
+      setSavedFingerprint(saved)
+    } else {
+      const result = readRecoveryDraft(recoveryStorage(), exportingId)
+      if (result.ok && result.value) writeRecoveryDraft(recoveryStorage(), { ...result.value, documentName: name, savedFingerprint: saved })
+    }
+  }
+
+  function preserveCurrentDraft(): void {
+    const draft = currentDraftRef.current
+    if (!draft) return
+    const result = writeRecoveryDraft(recoveryStorage(), draft)
+    if (result.ok) retainedDraftsRef.current.delete(draft.id)
+    else {
+      retainedDraftsRef.current.set(draft.id, draft)
+      setRecoveryError(result.error)
+    }
+  }
+
+  function openRecoveryDialog(): void {
+    preserveCurrentDraft()
+    const result = listRecoveryDrafts(recoveryStorage())
+    const drafts = new Map((result.ok ? result.value : []).map((draft) => [draft.id, draft]))
+    for (const [id, draft] of retainedDraftsRef.current) drafts.set(id, draft)
+    setRecoverableDrafts([...drafts.values()].filter((draft) => draft.id !== draftId && (draft.program.nodes.length > 0 || draft.program.imports || draft.program.inputQueue)).sort((a, b) => b.updatedAt - a.updatedAt))
+    if (!result.ok) setRecoveryError(result.error)
+    setRecoveryDialogOpen(true)
+  }
+
+  function restoreRecoveryDraft(draft: RecoveryDraft): void {
+    documentLoadRequestRef.current += 1
+    preserveCurrentDraft()
+    pushHistorySnapshot()
+    setDraftId(draft.id)
+    setNodes(programToNodes(draft.program))
+    setEdges(programToEdges(draft.program))
+    setInputQueueText(draft.program.inputQueue ?? '')
+    setImportNamesText(draft.program.imports ?? '')
+    setImportsExpanded(!!draft.program.imports?.trim())
+    setImportResolution(EMPTY_IMPORT_RESOLUTION)
+    setImportsLoading(!!draft.program.imports?.trim())
+    setDocumentName(draft.documentName)
+    setSavedFingerprint(draft.savedFingerprint)
+    setBreakpoints(new Set())
+    setExecution(null)
+    setPendingNodeType(null)
+    setQuickAddRequest(null)
+    fitViewAfterLoadRef.current = true
+    setRecoveryDialogOpen(false)
+    setCompactView('canvas')
+    setMessage('Recovered your local draft.')
+  }
+
   async function exportJson(): Promise<void> {
+    const exportingId = draftId
     const exportedProgram = programWithSavedRuntimeState(
       program,
       importNamesText,
@@ -2260,7 +2620,7 @@ function App() {
 
         await writeProgramToDirectory(directoryHandle, savedFileName, blob)
         registerFlowLabProgram(savedFileName, exportedProgram)
-        setDocumentName(documentNameFromFileName(savedFileName))
+        markDocumentSaved(savedFileName, exportedProgram, exportingId)
         const directoryName = directoryHandle.name ?? importDirectoryName
         setMessage(
           directoryName
@@ -2283,7 +2643,7 @@ function App() {
     if (!saveFilePicker) {
       registerFlowLabProgram(exportFileName, exportedProgram)
       downloadProgramJson(blob, exportFileName)
-      setDocumentName(documentNameFromFileName(exportFileName))
+      markDocumentSaved(exportFileName, exportedProgram, exportingId)
       setMessage('Program exported.')
       return
     }
@@ -2295,7 +2655,7 @@ function App() {
       await writable.close()
       const savedFileName = handle.name ?? exportFileName
       registerFlowLabProgram(savedFileName, exportedProgram)
-      setDocumentName(documentNameFromFileName(savedFileName))
+      markDocumentSaved(savedFileName, exportedProgram, exportingId)
       setMessage('Program exported.')
     } catch (error) {
       if (!isAbortError(error)) {
@@ -2404,82 +2764,46 @@ function App() {
         askInputText,
       )
 
-      return askResumeModeRef.current === 'run'
-        ? runExecution(resumedExecution)
-        : resumedExecution
+      return resumedExecution
     })
     setAskInputText('')
   }
 
   async function importJson(file: File | undefined): Promise<void> {
-    if (!file) {
-      return
-    }
-
+    if (!file) return
+    const request = ++documentLoadRequestRef.current
     setExpandedCanvas(null)
-
     try {
-      const parsed = normalizeImportedProgram(JSON.parse(await file.text()))
-      const savedImportsText =
-        typeof parsed.imports === 'string' ? parsed.imports : null
-      const savedInputQueueText =
-        typeof parsed.inputQueue === 'string' ? parsed.inputQueue : null
-      let validationFunctionNames = importedFunctionNames
-      let validationClassNames = importedClassNames
-      let nextImportResolution: ImportResolution | null = null
-
-      if (savedImportsText !== null) {
-        nextImportResolution = savedImportsText.trim()
-          ? await resolveFlowLabImports(savedImportsText, {
-              directoryHandle: importDirectoryHandle,
-            })
-          : EMPTY_IMPORT_RESOLUTION
-        validationFunctionNames = callableImportedFunctionNames(
-          nextImportResolution.files,
-          parsed,
-          nextImportResolution.nativeLibraries,
-        )
-        validationClassNames = callableImportedClassNames(
-          nextImportResolution.files,
-          parsed,
-        )
-      }
-
-      const result = validateProgram(parsed, {
-        externalFunctionNames: new Set(validationFunctionNames),
-        externalClassNames: new Set(validationClassNames),
-      })
-      const importErrors = nextImportResolution?.errors ?? []
-
-      if (!result.valid || importErrors.length) {
-        setMessage(
-          `Import failed: ${[...result.errors, ...importErrors].join(' ')}`,
-        )
-        return
-      }
-
+      const parsed = parseProgramDraft(JSON.parse(await file.text()))
+      if (request !== documentLoadRequestRef.current) return
+      const savedImportsText = parsed.imports ?? importNamesText
+      const savedInputQueueText = parsed.inputQueue ?? inputQueueText
+      const result = validateProgram(parsed)
       registerFlowLabProgram(file.name, parsed)
+      preserveCurrentDraft()
+      setDraftId(createDraftId())
       pushHistorySnapshot()
       setNodes(programToNodes(parsed))
       setEdges(programToEdges(parsed))
-      if (savedImportsText !== null) {
-        setImportNamesText(savedImportsText)
-        setImportResolution(nextImportResolution ?? EMPTY_IMPORT_RESOLUTION)
-        setImportsLoading(false)
-      }
-      if (savedInputQueueText !== null) {
-        setInputQueueText(savedInputQueueText)
-      }
-      setDocumentName(documentNameFromFileName(file.name))
+      setImportNamesText(savedImportsText)
+      setImportsExpanded(!!savedImportsText.trim())
+      setImportResolution(EMPTY_IMPORT_RESOLUTION)
+      setImportsLoading(!!savedImportsText.trim())
+      setInputQueueText(savedInputQueueText)
+      const loadedName = documentNameFromFileName(file.name)
+      setDocumentName(loadedName)
+      setSavedFingerprint(documentFingerprint(programWithSavedRuntimeState(parsed, savedImportsText, savedInputQueueText), loadedName))
+      setBreakpoints(new Set())
       setExecution(null)
       setPendingNodeType(null)
       setPendingNodePosition(null)
       setQuickAddRequest(null)
-      setMessage('Program loaded.')
+      fitViewAfterLoadRef.current = true
+      setCompactView('canvas')
+      setMessage(result.valid || savedImportsText.trim() ? 'Program loaded.' : 'Draft loaded. Resolve the validation issues before running.')
     } catch (error) {
-      setMessage(
-        `Import failed: ${error instanceof Error ? error.message : String(error)}`,
-      )
+      if (request !== documentLoadRequestRef.current) return
+      setMessage(`Import failed: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -2576,6 +2900,10 @@ function App() {
               onClick={openImportPicker}
             >
               Load
+            </button>
+            <button type="button" className="toolbar-menu-item" data-menu-item role="menuitem"
+              onClick={() => runToolbarAction('file', openRecoveryDialog)}>
+              Recover draft
             </button>
           </ToolbarMenu>
 
@@ -2682,7 +3010,7 @@ function App() {
               disabled={!canResetExecution}
               onClick={() => runToolbarAction('run', resetExecution)}
             >
-              <span>Reset</span>
+              <span>Restart</span>
               <kbd aria-hidden="true">{shiftedPrimaryShortcutLabel('R')}</kbd>
             </button>
             <button
@@ -2707,6 +3035,8 @@ function App() {
             >
               {autoStepIsActive ? 'Pause' : 'Auto Step'}
             </button>
+            <button type="button" className="toolbar-menu-item" data-menu-item role="menuitem" disabled={!canStepExecution} onClick={() => runToolbarAction('run', stepOverProgram)}>Step Over</button>
+            <button type="button" className="toolbar-menu-item" data-menu-item role="menuitem" disabled={!canStopExecution} onClick={() => runToolbarAction('run', stopProgram)}>Stop</button>
             <button
               type="button"
               className="toolbar-menu-item toolbar-menu-item-with-shortcut"
@@ -2716,7 +3046,7 @@ function App() {
               disabled={!canRunExecution}
               onClick={() => runToolbarAction('run', runProgram)}
             >
-              <span>Run</span>
+              <span>{runLabel}</span>
               <kbd aria-hidden="true">⇧Enter</kbd>
             </button>
           </ToolbarMenu>
@@ -2749,7 +3079,12 @@ function App() {
           <span className="document-name" aria-label="Current document">
             {documentName}
           </span>
+          <span className="document-save-status" aria-label="Save status" title={recoveryError || 'File > Save exports a JSON file. Local recovery is saved separately.'}>
+            <span className={isDirty ? 'document-dirty' : ''}>{isDirty ? 'Unsaved changes' : savedFingerprint ? 'Saved to file' : 'Local draft'}</span>
+            <small>{recoveryError ? 'Recovery unavailable' : recoverySaved ? 'Recovery saved' : 'Saving recovery…'}</small>
+          </span>
           <div
+            hidden={compactLayout}
             className="sidebar-visibility-controls"
             aria-label="Sidebar visibility"
           >
@@ -2783,6 +3118,16 @@ function App() {
             </button>
           </div>
         </div>
+        {compactLayout ? (
+          <nav className="compact-view-tabs" aria-label="Workspace view">
+            {(['blocks', 'canvas', 'console'] as const).map((view) => (
+              <button key={view} type="button" aria-pressed={compactView === view} onClick={() => setCompactView(view)}>
+                {view === 'blocks' ? 'Blocks' : view === 'canvas' ? 'Canvas' : 'Console'}
+                {view === 'blocks' && validation.errors.length > 0 ? <span className="tab-count">{validation.errors.length}</span> : null}
+              </button>
+            ))}
+          </nav>
+        ) : null}
         <input
           ref={importFileInputRef}
           className="toolbar-file-input"
@@ -2824,7 +3169,7 @@ function App() {
           id="node-palette"
           className="palette"
           aria-label="Node palette"
-          hidden={!leftSidebarVisible}
+          hidden={!paletteIsVisible}
           style={{ width: `${paletteWidth}px` }}
         >
           <div
@@ -2932,16 +3277,24 @@ function App() {
             {validation.valid ? (
               <p className="valid-message">Valid program</p>
             ) : (
-              <ul className="error-list">
-                {validation.errors.map((error) => (
-                  <li key={error}>{error}</li>
+              <ul className="error-list validation-errors">
+                {validationFeedback.map((issue) => (
+                  <li key={issue.id}>
+                    {issue.nodeId || issue.field === 'imports' ? (
+                      <button type="button" className="validation-link" title={issue.originalMessage} onClick={() => focusValidation(issue)}>{issue.message}</button>
+                    ) : issue.message}
+                  </li>
                 ))}
               </ul>
             )}
           </section>
+          {recoveryError ? <p className="recovery-warning" role="status">{recoveryError}</p> : null}
 
           <section className="imports-panel" aria-label="Imports">
-            <h2>Imports</h2>
+            <h2><button type="button" className="section-toggle" aria-expanded={importsExpanded} aria-controls="imports-content" onClick={() => setImportsExpanded((current) => !current)}>
+              <span>Imports</span><span aria-hidden="true">{importsExpanded ? '▾' : '▸'}</span>
+            </button></h2>
+            <div id="imports-content" hidden={!importsExpanded}>
             <textarea
               id="imports-list"
               aria-label="Imports list"
@@ -3003,17 +3356,30 @@ function App() {
                 ))}
               </ul>
             ) : null}
+            </div>
           </section>
         </aside>
 
         <section
           className="canvas-shell"
+          hidden={compactLayout && compactView !== 'canvas'}
           aria-label="Visual editor"
           data-node-placement-active={pendingNodeType ? 'true' : 'false'}
           onMouseMove={trackPendingNode}
           onMouseLeave={hidePendingNodePreview}
           onDoubleClick={openQuickAdd}
         >
+          {compactLayout ? (
+            <div className="compact-execution-bar">
+              <div className="execution-buttons">
+                <button type="button" className="primary-execution" onClick={runProgram} disabled={!canRunExecution}>{runLabel}</button>
+                <button type="button" onClick={stepProgram} disabled={!canStepExecution}>Step</button>
+                <button type="button" onClick={stepOverProgram} disabled={!canStepExecution}>Step Over</button>
+                {canStopExecution ? <button type="button" onClick={stopProgram}>Stop</button> : <button type="button" onClick={resetExecution} disabled={!canResetExecution}>Restart</button>}
+              </div>
+              <span className="compact-execution-status">{executionStatusLabel}{execution ? ` · ${execution.steps} steps` : ''}</span>
+            </div>
+          ) : null}
           <ReactFlow
             nodes={renderNodes}
             edges={renderEdges}
@@ -3022,6 +3388,7 @@ function App() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onConnectEnd={onConnectEnd}
             isValidConnection={isValidConnection}
             onInit={setFlowInstance}
             onPaneClick={placePendingNode}
@@ -3046,7 +3413,7 @@ function App() {
             defaultEdgeOptions={{ type: 'smoothstep' }}
           >
             <Background color="#d4d9e2" gap={18} />
-            <Controls showInteractive={false} />
+            <Controls showInteractive={false} fitViewOptions={{ padding: 0.18 }} />
             {pendingNodeType && pendingNodePosition ? (
               <ViewportPortal>
                 <PlacementPreview
@@ -3065,7 +3432,7 @@ function App() {
           id="runtime-sidebar"
           className="console-panel"
           aria-label="Runtime sidebar"
-          hidden={!rightSidebarVisible}
+          hidden={!consoleIsVisible}
           style={{ width: `${sidebarWidth}px` }}
         >
           <div
@@ -3090,7 +3457,7 @@ function App() {
                 aria-keyshortcuts="Meta+Shift+R Control+Shift+R"
                 disabled={!canResetExecution}
               >
-                Reset
+                Restart
               </button>
               <button
                 id="step-execution-button"
@@ -3101,6 +3468,7 @@ function App() {
               >
                 Step
               </button>
+              <button type="button" onClick={stepOverProgram} disabled={!canStepExecution} title="Execute the current block and its function calls, then pause">Step Over</button>
               <button
                 type="button"
                 onClick={toggleAutoStepProgram}
@@ -3115,13 +3483,15 @@ function App() {
               </button>
               <button
                 id="run-execution-button"
+                className="primary-execution"
                 type="button"
                 onClick={runProgram}
                 aria-keyshortcuts="Shift+Enter"
                 disabled={!canRunExecution}
               >
-                Run
+                {runLabel}
               </button>
+              {canStopExecution ? <button type="button" onClick={stopProgram}>Stop</button> : null}
             </div>
             <div className="execution-speed-control">
               <div className="execution-speed-header">
@@ -3160,7 +3530,7 @@ function App() {
           <dl className="status-grid">
             <div>
               <dt>Status</dt>
-              <dd>{formatStatus(execution)}</dd>
+              <dd>{executionStatusLabel}</dd>
             </div>
             <div>
               <dt>Steps</dt>
@@ -3172,6 +3542,12 @@ function App() {
             </div>
           </dl>
 
+          {execution ? (
+            <nav className="call-stack" aria-label="Call stack">
+              {[...execution.callStack.map((frame) => frame.functionName), execution.functionName].map((name, index) => <Fragment key={`${name}-${index}`}>{index ? <span aria-hidden="true"> › </span> : null}<span>{name}</span></Fragment>)}
+            </nav>
+          ) : null}
+          {execution?.lastStep?.branch ? <p className="branch-feedback" aria-label="Last branch">{execution.lastStep.branch.expression} → {execution.lastStep.branch.label === 'true' ? 'True' : 'False'}</p> : null}
           {message ? <p className="notice">{message}</p> : null}
           {execution?.error ? <p className="runtime-error">{execution.error}</p> : null}
 
@@ -3210,7 +3586,7 @@ function App() {
                     {variableEntries.length ? (
                       <dl className="variable-list">
                         {variableEntries.map(([name, value]) => (
-                          <div className="variable-row" key={name}>
+                          <div className={`variable-row${execution?.lastStep?.changedVariables.some((change) => change.name === name) ? ' variable-row-changed' : ''}`} key={name} title={execution?.lastStep?.changedVariables.some((change) => change.name === name) ? 'Changed in last step' : undefined}>
                             <dt>{name}</dt>
                             <dd>
                               <VariableValue
@@ -3337,6 +3713,19 @@ function App() {
           aria-hidden="true"
           onPointerDown={closeExpandedCanvas}
         />
+      ) : null}
+      {recoveryDialogOpen ? (
+        <div className="modal-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) setRecoveryDialogOpen(false) }}>
+          <div className="about-modal recovery-modal" role="dialog" aria-modal="true" aria-labelledby="recovery-title" onKeyDown={(event) => { if (event.key === 'Escape') { setRecoveryDialogOpen(false); focusToolbarTrigger('file') } else trapDialogFocus(event) }}>
+            <h2 id="recovery-title">Recover a draft</h2>
+            <p>Open a draft to restore its blocks, imports, and input. Save to a file to keep a separate copy.</p>
+            {recoveryError ? <p className="runtime-error">{recoveryError}</p> : null}
+            {recoverableDrafts.length ? <ul className="recovery-list">
+              {recoverableDrafts.map((draft) => <li key={draft.id}><button type="button" onClick={() => restoreRecoveryDraft(draft)}><strong>{draft.documentName}</strong><span>{draft.program.nodes.length} blocks · {new Date(draft.updatedAt).toLocaleString()}</span></button></li>)}
+            </ul> : <p>No other drafts saved yet.</p>}
+            <div className="modal-buttons"><button type="button" autoFocus onClick={() => { setRecoveryDialogOpen(false); focusToolbarTrigger('file') }}>Close</button></div>
+          </div>
+        </div>
       ) : null}
       {aboutOpen ? (
         <div
@@ -3848,6 +4237,8 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
       }`}
       data-testid={`flow-node-${id}`}
       data-current={data.isCurrent ? 'true' : 'false'}
+      data-invalid={!!data.validationMessage}
+      data-breakpoint={!!data.hasBreakpoint}
       data-shape={
         isBranchNodeType(data.nodeType)
           ? 'diamond'
@@ -3933,8 +4324,9 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
           }
         />
       ) : null}
+      {data.nodeType !== 'class' ? <button type="button" className="node-breakpoint nodrag nopan" aria-pressed={!!data.hasBreakpoint} aria-label={`${data.hasBreakpoint ? 'Remove' : 'Add'} breakpoint on ${data.text.trim().split('\n')[0] || label}`} title={data.hasBreakpoint ? 'Remove breakpoint' : 'Pause before this block'} onClick={(event) => { event.stopPropagation(); data.onToggleBreakpoint?.(id) }}>●</button> : null}
       <div className="node-content">
-        <div className="node-label">{label}</div>
+        <div className="node-label">{label}{data.validationMessage ? <span className="node-error-indicator" title={data.validationMessage}>!</span> : null}</div>
         {data.comment ? <div className="node-comment">{data.comment}</div> : null}
         {editable ? (
           <>
@@ -3944,6 +4336,8 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
             {isProcess ? (
               <textarea
                 id={`${id}-text`}
+                aria-invalid={!!data.textValidationMessage}
+                title={data.textValidationMessage}
                 className="node-input node-textarea nodrag"
                 value={data.text}
                 rows={Math.max(2, data.text.split(/\r?\n/).length)}
@@ -3955,6 +4349,8 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
             ) : (
               <input
                 id={`${id}-text`}
+                aria-invalid={!!data.textValidationMessage}
+                title={data.textValidationMessage}
                 className="node-input nodrag"
                 value={data.text}
                 onChange={(event) => data.onTextChange?.(id, event.target.value)}
@@ -4591,9 +4987,9 @@ function clampPaletteWidth(width: number): number {
   return Math.min(MAX_PALETTE_WIDTH, Math.max(MIN_PALETTE_WIDTH, width))
 }
 
-function matchingQuickAddNodeTypes(query: string): FlowNodeType[] {
+function matchingQuickAddNodeTypes(query: string, allowedTypes: readonly FlowNodeType[] = FLOW_NODE_TYPES): FlowNodeType[] {
   const normalizedQuery = query.trim().toLowerCase()
-  const matches = FLOW_NODE_TYPES.filter((nodeType) => {
+  const matches = allowedTypes.filter((nodeType) => {
     if (!normalizedQuery) {
       return true
     }
@@ -4661,6 +5057,11 @@ function quickAddPopoverStyle(
 
 function cloneCanvasSnapshot(snapshot: CanvasSnapshot): CanvasSnapshot {
   return {
+    imports: snapshot.imports,
+    inputQueue: snapshot.inputQueue,
+    documentName: snapshot.documentName,
+    draftId: snapshot.draftId,
+    savedFingerprint: snapshot.savedFingerprint,
     nodes: snapshot.nodes.map((node) => ({
       ...node,
       position: { ...node.position },
@@ -5271,6 +5672,7 @@ function formatStatus(execution: ExecutionState | null): string {
     return 'Not started'
   }
 
+  if (execution.status === 'halted') return 'Completed'
   return execution.status[0].toUpperCase() + execution.status.slice(1)
 }
 

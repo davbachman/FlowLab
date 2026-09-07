@@ -266,7 +266,8 @@ describe('React Flow options', () => {
         }),
       ).toBe(true)
     })
-    expect(fitView).not.toHaveBeenCalled()
+    await waitFor(() => expect(fitView).toHaveBeenCalledTimes(1))
+    fitView.mockClear()
 
     await user.click(screen.getByRole('button', { name: /^Edit$/i }))
     await user.click(

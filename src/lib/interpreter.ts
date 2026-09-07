@@ -358,6 +358,30 @@ export interface ExecutionState {
   imageRequest?: PendingImageLoad
   returnValue?: RuntimeValue
   error?: string
+  /** Feedback from the most recent step, recorded during execution. */
+  lastStep?: ExecutionStepFeedback
+}
+
+export interface ExecutionVariableChange {
+  name: string
+  before?: RuntimeValue
+  after?: RuntimeValue
+}
+
+export interface ExecutionStepFeedback {
+  nodeId: string
+  text: string
+  program: Program
+  functionName: string
+  callStack: string[]
+  changedVariables: ExecutionVariableChange[]
+  branch?: {
+    nodeId: string
+    expression: string
+    label: BranchLabel
+    edgeId: string
+    program: Program
+  }
 }
 
 const DEFAULT_MAX_STEPS = 1000000
@@ -543,7 +567,14 @@ export function stepExecution(state: ExecutionState): ExecutionState {
   }
 
   try {
-    return executeNode({ ...state, status: 'running', steps: state.steps + 1 }, node)
+    return withStepFeedback(
+      state,
+      executeNode(
+        { ...state, status: 'running', steps: state.steps + 1, lastStep: undefined },
+        node,
+      ),
+      node,
+    )
   } catch (error) {
     return fail(state, error instanceof Error ? error.message : String(error))
   }
@@ -777,7 +808,23 @@ function advance(
     )
   }
 
-  return { ...state, currentNodeId: edge.target, status: 'running' }
+  return {
+    ...state,
+    currentNodeId: edge.target,
+    status: 'running',
+    lastStep: {
+      ...feedbackForNode(state, node),
+      ...(branchLabel ? {
+        branch: {
+          nodeId: node.id,
+          expression: node.text,
+          label: branchLabel,
+          edgeId: edge.id,
+          program: state.program,
+        },
+      } : {}),
+    },
+  }
 }
 
 function findNextEdge(
@@ -829,7 +876,11 @@ function resumePendingNode(
   pendingNode: PendingNode,
 ): ExecutionState {
   try {
-    return executePendingNode(state, pendingNode)
+    return withStepFeedback(
+      state,
+      executePendingNode({ ...state, lastStep: undefined }, pendingNode),
+      pendingNode.node,
+    )
   } catch (error) {
     return fail(state, pendingNodeError(pendingNode, error))
   }
@@ -1275,6 +1326,7 @@ function completeReturn(
       turtle,
       returnValue: value,
       status: 'halted',
+      lastStep: feedbackForNode(state, node),
     }
   }
 
@@ -2751,4 +2803,103 @@ function parseInputValue(rawValue: string): RuntimeValue {
 
 function fail(state: ExecutionState, error: string): ExecutionState {
   return { ...state, status: 'error', error }
+}
+
+function feedbackForNode(
+  state: ExecutionState,
+  node: ProgramNode,
+): ExecutionStepFeedback {
+  return {
+    nodeId: node.id,
+    text: node.text,
+    program: state.program,
+    functionName: state.functionName,
+    callStack: [...state.callStack.map((frame) => frame.functionName), state.functionName],
+    changedVariables: [],
+  }
+}
+
+function withStepFeedback(
+  before: ExecutionState,
+  after: ExecutionState,
+  node: ProgramNode,
+): ExecutionState {
+  return {
+    ...after,
+    lastStep: {
+      ...(after.lastStep ?? feedbackForNode(before, node)),
+      callStack: [...after.callStack.map((frame) => frame.functionName), after.functionName],
+      changedVariables: executionVariableChanges(before, after),
+    },
+  }
+}
+
+/** Changes in the resulting active invocation, including referenced objects. */
+export function executionVariableChanges(
+  before: ExecutionState,
+  after: ExecutionState,
+): ExecutionVariableChange[] {
+  const depth = after.callStack.length
+  // Compare the same invocation's variables, including when a Return resumes
+  // its caller. Entering a new invocation does not change the caller's locals.
+  const previousScope = depth === before.callStack.length
+    ? before
+    : before.callStack[depth]
+  const changedVariables: ExecutionVariableChange[] = []
+  if (
+    previousScope &&
+    previousScope.program === after.program &&
+    previousScope.functionName === after.functionName
+  ) {
+    for (const name of new Set([
+      ...Object.keys(previousScope.environment),
+      ...Object.keys(after.environment),
+    ])) {
+      const previous = previousScope.environment[name]
+      const next = after.environment[name]
+      if (!debugValuesEqual(previous, next, before.objectHeap, after.objectHeap)) {
+        changedVariables.push({ name, before: previous, after: next })
+      }
+    }
+  }
+
+  return changedVariables
+}
+
+/** Compare values and referenced fields without invoking user-defined methods. */
+function debugValuesEqual(
+  before: RuntimeValue | undefined,
+  after: RuntimeValue | undefined,
+  beforeHeap: ObjectHeap,
+  afterHeap: ObjectHeap,
+  seenObjects = new Set<number>(),
+): boolean {
+  if (before === undefined || after === undefined) {
+    return before === after
+  }
+  if (isRuntimeObject(before) && isRuntimeObject(after)) {
+    if (before.id !== after.id || before.className !== after.className) return false
+    if (seenObjects.has(before.id)) return true
+    seenObjects.add(before.id)
+    const previous = beforeHeap[before.id]?.fields
+    const next = afterHeap[after.id]?.fields
+    if (previous === next) return true
+    if (!previous || !next) return false
+    const names = new Set([...Object.keys(previous), ...Object.keys(next)])
+    return [...names].every((name) =>
+      debugValuesEqual(previous[name], next[name], beforeHeap, afterHeap, seenObjects),
+    )
+  }
+  if (Array.isArray(before) && Array.isArray(after)) {
+    return before.length === after.length && before.every((value, index) =>
+      debugValuesEqual(value, after[index], beforeHeap, afterHeap, seenObjects),
+    )
+  }
+  if (isRuntimeDictionary(before) && isRuntimeDictionary(after)) {
+    return before.entries.length === after.entries.length && before.entries.every((entry, index) =>
+      entry.key === after.entries[index].key &&
+      debugValuesEqual(entry.value, after.entries[index].value, beforeHeap, afterHeap, seenObjects),
+    )
+  }
+  return Object.is(before, after)
 }
