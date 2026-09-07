@@ -1257,15 +1257,13 @@ function App() {
     return {
       ...edge,
       ...(active ? { label: `${branch.expression} → ${branch.label === 'true' ? 'True' : 'False'}`, style: { ...edge.style, stroke: '#d97706', strokeWidth: 3 }, labelStyle: { fill: '#92400e', fontWeight: 700 } } : {}),
-      data: { ...edge.data, onInsert: canInsertOnEdge(program, edge.id) ? (request: { edgeId: string; clientX: number; clientY: number; flowPosition: { x: number; y: number } }) => {
-        quickAddTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-        setPendingNodeType(null)
-        setQuickAddText('')
-        setQuickAddIndex(0)
-        setQuickAddRequest(request)
-      } : undefined },
+      interactionWidth: Math.max(edge.interactionWidth ?? 20, 24),
     }
   }), [program, edges, execution])
+  const selectedEdges = edges.filter((edge) => edge.selected)
+  const insertableSelection = selectedEdges.length === 1 && canInsertOnEdge(program, selectedEdges[0].id)
+    ? selectedEdges[0]
+    : null
   const quickAddSuggestions = matchingQuickAddNodeTypes(quickAddText,
     quickAddRequest?.edgeId ? WIRE_INSERT_NODE_TYPES : quickAddRequest?.sourceId ? CONNECTED_NODE_TYPES : FLOW_NODE_TYPES,
   )
@@ -1601,6 +1599,40 @@ function App() {
       clientY: event.clientY,
       flowPosition,
     })
+  }
+
+  function openWireInsertion(edgeId: string, clientX: number, clientY: number): void {
+    if (!canInsertOnEdge(program, edgeId)) return
+    quickAddTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    setPendingNodeType(null)
+    setPendingNodePosition(null)
+    setQuickAddText('')
+    setQuickAddIndex(0)
+    setQuickAddRequest({
+      edgeId,
+      clientX,
+      clientY,
+      flowPosition: screenToFlowPoint(clientX, clientY),
+    })
+  }
+
+  function onEdgeDoubleClick(event: MouseEvent, edge: EditorEdge): void {
+    event.preventDefault()
+    event.stopPropagation()
+    openWireInsertion(edge.id, event.clientX, event.clientY)
+  }
+
+  function insertOnSelectedWire(): void {
+    if (!insertableSelection) return
+    const element = document.querySelector(
+      `.react-flow__edge[data-id="${CSS.escape(insertableSelection.id)}"]`,
+    )
+    const rect = element?.getBoundingClientRect()
+    openWireInsertion(
+      insertableSelection.id,
+      rect ? rect.left + rect.width / 2 : viewportSize.width / 2,
+      rect ? rect.top + rect.height / 2 : viewportSize.height / 2,
+    )
   }
 
   function startQuickAddPlacement(nodeType: FlowNodeType): void {
@@ -2985,6 +3017,16 @@ function App() {
               className="toolbar-menu-item"
               data-menu-item
               role="menuitem"
+              disabled={!insertableSelection}
+              onClick={() => runToolbarAction('edit', insertOnSelectedWire)}
+            >
+              Insert block on selected wire
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
               title="Safely combine sequential Process blocks and arrange the flowchart"
               disabled={cleanupIsDisabled}
               onClick={() => runToolbarAction('edit', cleanUpCode)}
@@ -3389,6 +3431,7 @@ function App() {
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             onConnectEnd={onConnectEnd}
+            onEdgeDoubleClick={onEdgeDoubleClick}
             isValidConnection={isValidConnection}
             onInit={setFlowInstance}
             onPaneClick={placePendingNode}

@@ -1,7 +1,6 @@
 import { BaseEdge, getSmoothStepPath, type EdgeProps } from '@xyflow/react'
 import type { EditorEdge } from '../lib/editorEdges'
 import { adaptiveSmoothStepOffset } from '../lib/adaptiveSmoothStep'
-import { EdgeInsertControl } from './EdgeInsertControl'
 
 const DEFAULT_SMOOTH_STEP_OFFSET = 20
 
@@ -27,36 +26,22 @@ export function AdaptiveSmoothStepEdge(props: EdgeProps<EditorEdge>) {
     ...props.pathOptions,
     offset,
   })
-  const onInsert = props.data?.onInsert
-
   return (
-    <>
-      <BaseEdge
-        id={props.id}
-        path={path}
-        markerStart={props.markerStart}
-        markerEnd={props.markerEnd}
-        style={props.style}
-        interactionWidth={props.interactionWidth}
-        label={props.label}
-        labelX={labelX}
-        labelY={labelY - (onInsert ? 27 : 0)}
-        labelStyle={props.labelStyle}
-        labelShowBg={props.labelShowBg}
-        labelBgStyle={props.labelBgStyle}
-        labelBgPadding={props.labelBgPadding}
-        labelBgBorderRadius={props.labelBgBorderRadius}
-      />
-      {onInsert ? (
-        <EdgeInsertControl
-          edgeId={props.id}
-          source={props.source}
-          target={props.target}
-          x={labelX}
-          y={labelY}
-          onInsert={onInsert}
-        />
-      ) : null}
-    </>
+    <BaseEdge
+      id={props.id}
+      path={path}
+      markerStart={props.markerStart}
+      markerEnd={props.markerEnd}
+      style={props.style}
+      interactionWidth={props.interactionWidth}
+      label={props.label}
+      labelX={labelX}
+      labelY={labelY}
+      labelStyle={props.labelStyle}
+      labelShowBg={props.labelShowBg}
+      labelBgStyle={props.labelBgStyle}
+      labelBgPadding={props.labelBgPadding}
+      labelBgBorderRadius={props.labelBgBorderRadius}
+    />
   )
 }
