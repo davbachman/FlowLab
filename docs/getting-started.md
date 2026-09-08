@@ -94,7 +94,7 @@ Choose Edit > Clean up code to safely merge short, adjacent Process blocks and a
 ## Menus and layout
 
 - The FlowLab menu contains About and Instructions. Instructions opens the documentation in a separate tab.
-- The File menu contains New, Save, Load, and Recover draft. New opens a separate blank FlowLab tab without changing the current program. See [Saving and loading](saving-and-loading.md).
+- The File menu contains New, Clear, Save, Load, and Recover draft. New opens a separate blank FlowLab tab. Clear removes all blocks and wires from the current canvas while keeping its imports, input queue, document name, and settings. Use Undo to restore the cleared canvas. See [Saving and loading](saving-and-loading.md).
 - The Edit menu contains Undo, Redo, Copy, Paste, Combine into Process, Split Process, and Clean up code.
 - The Run menu duplicates Restart, Step, Auto Step/Pause, Run, and Stop from the Console.
 - The Examples menu contains the eight programs summarized on the [documentation home page](../README.md).

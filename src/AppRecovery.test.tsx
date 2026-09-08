@@ -134,6 +134,78 @@ describe('document recovery and editable drafts', () => {
     expect(previous.ok && previous.value?.program.nodes[0].text).toBe('n >')
   })
 
+  it('clears only the canvas and restores the graph with one Undo or Redo', async () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 200, y: 100 } },
+        { id: 'return', type: 'return', text: '0', position: { x: 200, y: 250 } },
+      ],
+      edges: [{ id: 'main-return', source: 'main', target: 'return' }],
+      imports: 'math\ntext',
+      inputQueue: '3\n4',
+    }
+    const { container } = render(<App />)
+    loadFile(JSON.stringify(program), 'library-lesson.json')
+    await screen.findByText('Native libraries: math, text')
+    await waitFor(() => expect(screen.getByLabelText('Graph validation')).toHaveTextContent('Valid program'))
+    expect(screen.getByLabelText('Save status')).toHaveTextContent('Saved to file')
+    const id = currentDraftId()
+    const savedFingerprint = documentFingerprint(program, 'library-lesson')
+    fireEvent.change(screen.getByRole('slider', { name: 'Auto Step speed' }), { target: { value: '4' } })
+
+    fileAction('Clear')
+
+    expect(container.querySelectorAll('.react-flow__node')).toHaveLength(0)
+    expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(0)
+    expect(screen.getByLabelText('Imports list')).toHaveValue('math\ntext')
+    expect(screen.getByText('Native libraries: math, text')).toBeInTheDocument()
+    expect(screen.getByLabelText('Input queue')).toHaveValue('3\n4')
+    expect(screen.getByRole('slider', { name: 'Auto Step speed' })).toHaveValue('4')
+    expect(screen.getByLabelText('Current document')).toHaveTextContent('library-lesson')
+    expect(currentDraftId()).toBe(id)
+    expect(screen.getByLabelText('Save status')).toHaveTextContent('Unsaved changes')
+    await waitFor(() => {
+      const draft = readRecoveryDraft(localStorage, id)
+      expect(draft.ok && draft.value).toMatchObject({
+        id,
+        documentName: 'library-lesson',
+        savedFingerprint,
+        program: { ...program, nodes: [], edges: [] },
+      })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'File' }))
+    const clear = within(screen.getByRole('menu', { name: 'File' })).getByRole('menuitem', { name: 'Clear' })
+    expect(clear).toBeDisabled()
+    fireEvent.click(clear)
+    fireEvent.keyDown(clear, { key: 'Escape' })
+
+    toolbarAction('Edit', 'Undo')
+    expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-return')).toBeInTheDocument()
+    expect(screen.getByLabelText('Save status')).toHaveTextContent('Saved to file')
+    expect(currentDraftId()).toBe(id)
+    await waitFor(() => {
+      const draft = readRecoveryDraft(localStorage, id)
+      expect(draft.ok && draft.value?.program).toEqual(program)
+    })
+
+    toolbarAction('Edit', 'Redo')
+    expect(container.querySelectorAll('.react-flow__node')).toHaveLength(0)
+    expect(container.querySelectorAll('.react-flow__edge')).toHaveLength(0)
+    expect(screen.getByLabelText('Imports list')).toHaveValue('math\ntext')
+    expect(screen.getByLabelText('Input queue')).toHaveValue('3\n4')
+    expect(screen.getByRole('slider', { name: 'Auto Step speed' })).toHaveValue('4')
+    expect(screen.getByLabelText('Current document')).toHaveTextContent('library-lesson')
+    expect(currentDraftId()).toBe(id)
+    expect(screen.getByLabelText('Save status')).toHaveTextContent('Unsaved changes')
+    await waitFor(() => {
+      const draft = readRecoveryDraft(localStorage, id)
+      expect(draft.ok && draft.value?.program).toEqual({ ...program, nodes: [], edges: [] })
+    })
+  })
+
   it('keeps browser recovery distinct from a successful file save', async () => {
     const write = vi.fn<(blob: Blob) => Promise<void>>().mockResolvedValue(undefined)
     const close = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)

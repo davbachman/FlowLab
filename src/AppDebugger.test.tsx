@@ -132,6 +132,29 @@ describe('debugger controls and feedback', () => {
     expect(screen.queryByText('Maximum step count', { exact: false })).not.toBeInTheDocument()
   })
 
+  it('stops execution when the canvas is cleared and keeps it stopped after Undo', async () => {
+    render(<App />)
+    await loadProgram(countingProgram)
+    vi.useFakeTimers()
+    fireEvent.click(executionButton('Run'))
+    expect(steps()).toBeGreaterThan(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'File' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Clear' }))
+    await act(async () => { vi.advanceTimersByTime(200) })
+    expect(screen.queryByTestId('flow-node-main')).not.toBeInTheDocument()
+    expect(steps()).toBe(0)
+    expect(executionButton('Run')).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Undo' }))
+    await act(async () => { vi.advanceTimersByTime(200) })
+    expect(screen.getByTestId('flow-node-main')).toBeInTheDocument()
+    expect(steps()).toBe(0)
+    expect(executionButton('Run')).toBeEnabled()
+    expect(screen.getByText('Not started', { exact: true })).toBeInTheDocument()
+  })
+
   it('resumes a breakpoint once and shows branch and variable feedback while stepping', async () => {
     render(<App />)
     await loadProgram({ ...sampleProgram, inputQueue: '3' })

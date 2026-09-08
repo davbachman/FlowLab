@@ -15,6 +15,8 @@
 
 File > New opens a blank FlowLab instance in a new browser tab and leaves the current program untouched. Each document has its own draft address, so work in one tab does not replace another tab's recovery copy.
 
+File > Clear removes all blocks and wires from the current canvas while preserving its imports, input queue, document name, and settings. It keeps the same document and draft address. Use Edit > Undo to restore the cleared canvas.
+
 ## Save a program
 
 File > Save exports the current program as FlowLab JSON.

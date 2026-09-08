@@ -1809,6 +1809,23 @@ function App() {
     setMessage('Opened a new FlowLab tab.')
   }
 
+  function clearCanvas(): void {
+    if (!nodesRef.current.length && !edgesRef.current.length) return
+
+    pushHistorySnapshot()
+    nodesRef.current = []
+    edgesRef.current = []
+    setNodes([])
+    setEdges([])
+    setExecution(null)
+    setAutoStepEnabled(false)
+    setRunEnabled(false)
+    setPendingNodeType(null)
+    setPendingNodePosition(null)
+    setQuickAddRequest(null)
+    setMessage('Canvas cleared. Use Undo to restore the blocks.')
+  }
+
   function resetExecution(): void {
     setMessage('')
     setAutoStepEnabled(false)
@@ -2892,6 +2909,17 @@ function App() {
               onClick={() => runToolbarAction('file', openNewFlowLab)}
             >
               New
+            </button>
+            <button
+              type="button"
+              className="toolbar-menu-item"
+              data-menu-item
+              role="menuitem"
+              title="Delete all blocks and wires from this canvas"
+              disabled={!nodes.length && !edges.length}
+              onClick={() => runToolbarAction('file', clearCanvas)}
+            >
+              Clear
             </button>
             <button
               type="button"

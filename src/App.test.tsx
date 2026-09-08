@@ -790,7 +790,8 @@ describe('App', () => {
     expect(flowLabTrigger).toHaveAttribute('aria-expanded', 'false')
     expect(fileTrigger).toHaveAttribute('aria-expanded', 'true')
     const fileMenu = toolbarMenu('File')
-    expect(within(fileMenu).getAllByRole('menuitem')).toHaveLength(4)
+    expect(within(fileMenu).getAllByRole('menuitem')).toHaveLength(5)
+    expect(within(fileMenu).getByRole('menuitem', { name: /^Clear$/i })).toBeDisabled()
     expect(within(fileMenu).getByRole('menuitem', { name: /^Recover draft$/i })).toBeInTheDocument()
     expect(
       within(fileMenu).getByRole('menuitem', { name: /^New$/i }),
