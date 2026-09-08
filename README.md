@@ -31,27 +31,31 @@ See [Getting started](docs/getting-started.md) for the complete editor and execu
 
 Choose a program from the Examples menu to load its complete, editable flowchart.
 
+Open **FlowLab > Reference** inside the app to look up available functions and see which libraries are imported. **FlowLab > Instructions** opens this documentation.
+
 ## Highlights
 
-- Visual canvas editing with selection, wiring, comments, horizontal block resizing, copy/paste, undo, pan, zoom, and fit view.
+- Visual canvas editing with selection, wiring, comments, horizontal block resizing, copy/paste, undo/redo, pan, zoom, and fit view.
 - Multiline Process blocks plus commands for combining, splitting, and deterministically cleaning up flowcharts.
 - Functions, classes, objects, methods, fields, recursion, and Python-style special methods.
 - Numbers, strings, booleans, lists, dictionaries, and expandable object values.
-- Interruptible Run, Restart, Step, Auto Step, and breakpoints, with branch tracing, changed variables, call-stack breadcrumbs, and active-flow input.
+- Interruptible Run, Restart, Step, adjustable Auto Step, and breakpoints, with arrival-wire highlighting for every block, branch results, changed variables, call-stack breadcrumbs, and active-flow input.
 - Clickable validation issues, connected block insertion, and a canvas-first tabbed layout on smaller screens.
 - Automatic local draft recovery, visible save status, and support for reopening unfinished programs.
+- File > Clear empties the current canvas while retaining imports and settings, with Undo to restore it.
 - Imports from FlowLab JSON programs plus native math, text, image, and turtle libraries.
 - JSON loading and saving, including block positions and widths, comments, imports, and queued input.
+- An in-app function reference that updates with your imports, plus draggable and expandable image and turtle panels.
 
 ## Documentation
 
 | Guide | Contents |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Canvas workflow, Process blocks, validation, execution controls, input, and inspection. |
+| [Getting started](docs/getting-started.md) | Canvas workflow, Process blocks, function lookup, validation, execution controls, input, layout, and keyboard shortcuts. |
 | [Language reference](docs/language-reference.md) | Data types, expressions, assignments, calls, control flow, and built-ins. |
 | [Classes and objects](docs/classes-and-objects.md) | Declarations, fields, methods, identity, and special methods. |
 | [Imports and native libraries](docs/imports-and-libraries.md) | JSON program imports plus the `math`, `text`, `image`, and `turtle` libraries. |
-| [Saving and loading](docs/saving-and-loading.md) | New programs, JSON files, programs folders, and restored state. |
+| [Saving and loading](docs/saving-and-loading.md) | New and Clear, JSON files, save status, draft recovery, and programs folders. |
 
 ## License
 

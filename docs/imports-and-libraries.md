@@ -5,6 +5,7 @@
 ## Contents
 
 - [Add imports](#add-imports)
+- [Look up available functions](#look-up-available-functions)
 - [Resolve JSON imports](#resolve-json-imports)
 - [Handle name conflicts](#handle-name-conflicts)
 - [Math library](#math-library)
@@ -14,9 +15,13 @@
 
 ## Add imports
 
-- Enter imports in the Imports panel one per line or comma-separated. The `.json` suffix is optional for FlowLab program files.
+- Open the Imports heading in the Blocks sidebar and enter imports one per line or comma-separated, for example `math, text, helpers`. The `.json` suffix is optional for FlowLab program files. Native library names are case-insensitive; use the function names exactly as listed below.
 - The panel reports loading progress, resolved files and native libraries, available Classes and Functions, conflicts, and errors.
 - A JSON import contributes its non-`main` Functions and its Classes with the Methods attached to those Classes.
+
+## Look up available functions
+
+Choose **FlowLab → Reference** for an in-app list of available function signatures and descriptions. It groups the always-available core functions, functions defined on the current canvas, and functions from imported libraries and JSON files. The Available libraries section lists the four native libraries and resolved JSON imports, with their import status. Add a native library in Imports to see its functions in the reference.
 
 ## Resolve JSON imports
 
@@ -27,6 +32,8 @@ FlowLab resolves JSON names in this order:
 3. A URL or relative path the browser can fetch.
 
 Import a file once if the browser cannot otherwise find it by name. See [Saving and loading](saving-and-loading.md) for the programs-folder workflow.
+
+Imported JSON must be a valid, complete FlowLab program, including its own `main` and Return, even though its `main` is not imported. Its saved Imports list is not resolved recursively. Each imported file is validated on its own, so calls to another file or a native library can prevent it from loading; its call targets must be defined in that file or be [core functions](language-reference.md#calls-and-built-ins).
 
 ## Handle name conflicts
 
@@ -53,7 +60,15 @@ Enter `math` in Imports to enable:
 | `atan(number)` | Returns an angle in radians whose tangent is the given Number. |
 | `atan2(y, x)` | Returns the angle in radians from the positive x-axis to `(x, y)`. |
 
-Angles passed to trigonometric functions and returned by inverse trigonometric functions are measured in radians. The inputs to `asin` and `acos` must be from -1 through 1, and logarithms require positive inputs.
+Angles passed to trigonometric functions and returned by inverse trigonometric functions are measured in radians. The inputs to `asin` and `acos` must be from -1 through 1, and logarithms require positive inputs. All arguments must be finite Numbers; `exp` reports an error if its result exceeds the supported Number range.
+
+For a degree-based calculation, place these lines in a Process block after importing `math`:
+
+```text
+pi <- acos(-1)
+angle <- 30 * pi / 180
+height <- 10 * sin(angle)
+```
 
 ## Text library
 
@@ -64,7 +79,17 @@ Enter `text` in Imports to enable:
 - `chr(code)` returns the one-character String for an integer Unicode code point from 0 through 1,114,111.
 - `ord(character)` returns the integer Unicode code point for a String containing exactly one Unicode character.
 
-Calling `text_from_url()` temporarily shows the loading state while the browser fetches the text.
+Calling `text_from_url(url)` temporarily shows the loading state while the browser fetches the text. `split_words` ignores surrounding whitespace and returns `[]` for an empty or whitespace-only String. Unicode conversion counts code points: `ord("🙂")` is `128578`, while a letter followed by a separate combining accent contains two code points and is rejected.
+
+Example Process block after importing `text`:
+
+```text
+words <- split_words("  red green blue  ")
+letter <- chr(65)
+code <- ord(letter)
+```
+
+The results are `["red", "green", "blue"]`, `"A"`, and `65`.
 
 ## Image library
 
@@ -73,7 +98,7 @@ Enter `image` in Imports to enable opaque Image values and the Image runtime pan
 | Call | Result or effect |
 | --- | --- |
 | `imread(url)` | Loads a browser-readable image URL and returns a new Image. |
-| `imsave(image, filename)` | Downloads the current image pixels as a PNG. A missing `.png` suffix is added. |
+| `imsave(image, filename)` | Downloads the current image pixels as a PNG and returns the same Image. A missing `.png` suffix is added. |
 | `imshow(image)` | Displays the image in the Image panel and returns the same Image. |
 | `image_from_pixels(rows)` | Creates an Image from a rectangular list of pixel rows. |
 | `image_to_pixels(image)` | Returns the pixels as rows of `[red, green, blue, alpha]` lists. |
@@ -81,21 +106,23 @@ Enter `image` in Imports to enable opaque Image values and the Image runtime pan
 | `get_pixel(image, x, y)` | Returns one `[red, green, blue, alpha]` pixel. |
 | `set_pixel(image, x, y, color)` | Changes one pixel and returns the same Image. |
 
-Pixel coordinates are zero-based: `(0, 0)` is the upper-left corner, `x` increases to the right, and `y` increases downward. Color channels must be integers from 0 through 255. `image_from_pixels` and `set_pixel` accept RGB lists such as `[255, 0, 0]` or RGBA lists such as `[255, 0, 0, 128]`; omitted alpha defaults to 255. `image_to_pixels` and `get_pixel` always return RGBA.
+Pixel coordinates are integers within the image bounds and are zero-based: `(0, 0)` is the upper-left corner, `x` increases to the right, and `y` increases downward. Color channels must be integers from 0 through 255. `image_from_pixels` and `set_pixel` accept RGB lists such as `[255, 0, 0]` or RGBA lists such as `[255, 0, 0, 128]`; omitted alpha defaults to 255. `image_to_pixels` and `get_pixel` always return RGBA. Pixel rows must be nonempty and all have the same length.
 
 Images have identity and are shown in Variables as labels such as `Image #1 (640 × 480)`. Assignment creates an alias, so after `copy <- photo`, calling `set_pixel(copy, ...)` also changes `photo`. Use `image_to_pixels` followed by `image_from_pixels` when a separate Image is needed.
 
-`imread` pauses execution while the browser downloads and decodes the file. The server must allow the browser request, including any required cross-origin permissions. An Image may contain at most 16,777,216 pixels. The Image panel remains empty until `imshow` is called. Drag the panel by its heading to reposition it in the runtime sidebar, or double-click a displayed image to enlarge it over the app.
+`imread` pauses execution while the browser downloads and decodes the file. The server must allow the browser request, including any required cross-origin permissions. An Image may contain at most 16,777,216 pixels. The Image panel remains empty until `imshow` is called. Drag the panel by its heading to reposition it in the runtime sidebar, or double-click a displayed image to enlarge it over the app. Choose Close or press Escape to leave the enlarged view.
 
-Example:
+This Process block creates and edits a two-pixel image without downloading a source file:
 
 ```text
-photo <- imread("https://example.edu/photo.png")
+photo <- image_from_pixels([[[255, 0, 0], [0, 0, 255]]])
 size <- imsize(photo)
-set_pixel(photo, 0, 0, [255, 0, 0])
+set_pixel(photo, 0, 0, [0, 255, 0])
 imshow(photo)
 imsave(photo, "edited-photo.png")
 ```
+
+`size` is `[2, 1]`. To edit an existing picture, replace the first line with `photo <- imread("your-image-url")` using a browser-readable image URL.
 
 ## Turtle library
 
@@ -109,13 +136,15 @@ Enter `turtle` in Imports to show the Turtle drawing panel and enable these call
 | `right(degrees)` | Turn right by a finite Number of degrees. |
 | `penup()` | Move without drawing. |
 | `pendown()` | Resume drawing. |
-| `color(text)` | Set the line color from a String. |
+| `color(text)` | Set the line color from a browser color String, such as `"red"` or `"#008080"`. |
 | `home()` | Draw or move to `(0, 0)` and face right. |
 | `clear()` | Erase drawn segments without moving or turning the turtle. |
 
-The turtle starts at `(0, 0)`, facing right, with its pen down. Put commands in Call blocks or Process lines to use them for their drawing side effects; if used in a larger expression they return `0`.
+The turtle starts at `(0, 0)`, facing right, with its pen down. Positive `x` points right and positive `y` points up. Turtle turns use degrees, unlike the math library's radians. Put commands in Call blocks or Process lines to use them for their drawing side effects; if used in a larger expression they return `0`.
 
-Step mode updates the drawing as each containing Call or Process block executes. Right-drag the Turtle canvas to pan it, use Ctrl+wheel or a trackpad pinch to zoom, or pinch with two touch pointers. Drag the panel by its heading to reposition it in the runtime sidebar, or double-click the canvas to enlarge it over the app.
+Step mode updates the drawing as each containing Call or Process block executes. Right-drag the Turtle canvas to pan it, use Ctrl+wheel or a trackpad pinch to zoom, or pinch with two touch pointers. Drag the panel by its heading to reposition it in the runtime sidebar, or double-click the canvas to enlarge it over the app. Choose Close or press Escape to leave the enlarged view.
+
+The turtle's `clear()` command erases its drawing. **File → Clear** removes the flowchart's blocks and wires; it keeps the `turtle` import.
 
 ---
 
