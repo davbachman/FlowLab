@@ -35,12 +35,28 @@ export function findFreeNodePosition(
 ): ProgramPosition {
   const gap = 24
   const addedSize = estimateProgramNodeDimensions(program, newNode)
-  const neighbors = program.nodes.flatMap((node) => {
-    const size = estimateProgramNodeDimensions(program, node, measuredDimensions?.get(node.id))
-    const above = node.position.y + size.height + gap <= newNode.position.y
-    const below = newNode.position.y + addedSize.height + gap <= node.position.y
-    return above || below ? [] : [{ x: node.position.x, width: size.width }]
+  const existingBounds = program.nodes.map((node) => {
+    const measured = measuredDimensions?.get(node.id)
+    const size = measured && Number.isFinite(measured.width) && measured.width > 0 &&
+      Number.isFinite(measured.height) && measured.height > 0
+      ? measured
+      : estimateProgramNodeDimensions(program, node)
+    return { ...node.position, ...size }
   })
+  // Keep the pointer position whenever the block fits. The spacing margin is
+  // only for relocating an actual overlap, not a reason to move a free drop.
+  const overlaps = existingBounds.some((node) =>
+    newNode.position.x < node.x + node.width &&
+    newNode.position.x + addedSize.width > node.x &&
+    newNode.position.y < node.y + node.height &&
+    newNode.position.y + addedSize.height > node.y,
+  )
+  if (!overlaps) return newNode.position
+
+  const neighbors = existingBounds.filter((node) =>
+    node.y + node.height + gap > newNode.position.y &&
+    newNode.position.y + addedSize.height + gap > node.y,
+  )
   const candidates = [
     newNode.position.x,
     ...neighbors.flatMap((node) => [node.x - addedSize.width - gap, node.x + node.width + gap]),
@@ -77,6 +93,7 @@ export function insertNodeOnEdge(
   program: Program,
   edgeId: string,
   newNode: ProgramNode,
+  measuredDimensions?: ReadonlyMap<string, FlowNodeDimensions>,
 ): Program | null {
   if (
     !WIRE_INSERT_NODE_TYPES.includes(newNode.type) ||
@@ -95,7 +112,7 @@ export function insertNodeOnEdge(
 
   return {
     ...program,
-    nodes: [...program.nodes, { ...newNode, position: findFreeNodePosition(program, newNode) }],
+    nodes: [...program.nodes, { ...newNode, position: findFreeNodePosition(program, newNode, measuredDimensions) }],
     edges: program.edges.flatMap((edge) =>
       edge.id === edgeId
         ? [{ ...edge, target: newNode.id }, continuation]
@@ -110,6 +127,7 @@ export function connectNewNode(
   sourceId: string,
   newNode: ProgramNode,
   label?: BranchLabel,
+  measuredDimensions?: ReadonlyMap<string, FlowNodeDimensions>,
 ): Program | null {
   const source = program.nodes.find((node) => node.id === sourceId)
   if (
@@ -138,7 +156,7 @@ export function connectNewNode(
 
   return {
     ...program,
-    nodes: [...program.nodes, { ...newNode, position: findFreeNodePosition(program, newNode) }],
+    nodes: [...program.nodes, { ...newNode, position: findFreeNodePosition(program, newNode, measuredDimensions) }],
     edges: [...retainedEdges, edge],
   }
 }

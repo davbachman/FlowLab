@@ -120,6 +120,39 @@ describe('wire insertion', () => {
 })
 
 describe('connected quick add', () => {
+  it.each([
+    { x: 23, y: 94 },
+    { x: 206, y: 0 },
+    { x: -206, y: 0 },
+    { x: 23, y: -94 },
+    { x: 800, y: 800 },
+  ])('preserves a free drop at $x, $y without enforcing an extra spacing margin', (position) => {
+    const sourceOnly = { ...program, nodes: [program.nodes[0]], edges: [] }
+    const added = { ...newNode, position }
+    const updated = connectNewNode(sourceOnly, 'main', added)!
+    expect(updated.nodes.at(-1)?.position).toEqual(position)
+  })
+
+  it('uses rendered bounds when long text makes layout estimates larger than the visible block', () => {
+    const sourceOnly = {
+      ...program,
+      nodes: [{ ...program.nodes[0], text: 'a_very_long_function_name_that_does_not_resize_its_block' }],
+      edges: [],
+    }
+    const added = { ...newNode, position: { x: 206, y: 0 } }
+    const dimensions = new Map([['main', { width: 194, height: 78 }]])
+    const updated = connectNewNode(sourceOnly, 'main', added, undefined, dimensions)!
+    expect(updated.nodes.at(-1)?.position).toEqual(added.position)
+  })
+
+  it('still adjusts a real overlap without moving existing blocks', () => {
+    const sourceOnly = { ...program, nodes: [program.nodes[0]], edges: [] }
+    const added = { ...newNode, position: { x: 23, y: 70 } }
+    const updated = connectNewNode(sourceOnly, 'main', added)!
+    expect(updated.nodes[0]).toEqual(sourceOnly.nodes[0])
+    expect(updated.nodes.at(-1)?.position).toEqual({ x: 218, y: 70 })
+  })
+
   it('replaces only the dragged branch and accepts a terminating Return', () => {
     const updated = connectNewNode(program, 'loop', { ...newNode, type: 'return' }, 'false')!
     expect(updated.edges).toContainEqual(program.edges[2])

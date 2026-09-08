@@ -1646,9 +1646,14 @@ function App() {
         text: defaultNodeText(nodeType),
         position: centerNodePosition(nodeType, quickAddRequest.flowPosition),
       }
+      const measuredDimensions = new Map(nodes.flatMap((node) =>
+        node.measured?.width && node.measured?.height
+          ? [[node.id, { width: node.measured.width, height: node.measured.height }] as const]
+          : [],
+      ))
       const updated = quickAddRequest.edgeId
-        ? insertNodeOnEdge(program, quickAddRequest.edgeId, newNode)
-        : connectNewNode(program, quickAddRequest.sourceId!, newNode, quickAddRequest.branchLabel)
+        ? insertNodeOnEdge(program, quickAddRequest.edgeId, newNode, measuredDimensions)
+        : connectNewNode(program, quickAddRequest.sourceId!, newNode, quickAddRequest.branchLabel, measuredDimensions)
       if (!updated) {
         setMessage('This connection has changed. Choose a wire again.')
         setQuickAddRequest(null)

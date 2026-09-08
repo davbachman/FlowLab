@@ -15,7 +15,7 @@ interface TestNode {
 const flowProps: Record<string, unknown>[] = []
 const flowInstance = {
   fitView: vi.fn(() => Promise.resolve(true)),
-  screenToFlowPosition: (point: { x: number; y: number }) => point,
+  screenToFlowPosition: vi.fn((point: { x: number; y: number }) => point),
 }
 
 vi.mock('@xyflow/react', async (importOriginal) => {
@@ -62,13 +62,17 @@ async function openBasicExample(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('menuitem', { name: /^Basic$/i }))
 }
 
-function dragOutputIntoBlankCanvas(sourceId: string, sourceHandle: string | null = null) {
+function dragOutputIntoBlankCanvas(
+  sourceId: string,
+  sourceHandle: string | null = null,
+  point = { x: 600, y: 400 },
+) {
   const endConnection = flowProps.at(-1)?.onConnectEnd as (
     event: globalThis.MouseEvent,
     state: Record<string, unknown>,
   ) => void
   expect(endConnection).toBeTypeOf('function')
-  const event = new window.MouseEvent('mouseup', { clientX: 600, clientY: 400 })
+  const event = new window.MouseEvent('mouseup', { clientX: point.x, clientY: point.y })
   Object.defineProperty(event, 'target', { value: screen.getByTestId('flow-canvas') })
   act(() => endConnection(event, {
     isValid: false,
@@ -77,7 +81,7 @@ function dragOutputIntoBlankCanvas(sourceId: string, sourceHandle: string | null
     toNode: null,
     toHandle: null,
     from: { x: 200, y: 200 },
-    to: { x: 600, y: 400 },
+    to: point,
   }))
 }
 
@@ -98,6 +102,46 @@ describe('connected block insertion', () => {
   beforeEach(() => {
     flowProps.length = 0
     window.localStorage.clear()
+    flowInstance.screenToFlowPosition.mockImplementation((point) => point)
+  })
+
+  it.each([
+    { name: 'Return', width: 194, height: 82 },
+    { name: 'Process', width: 284, height: 112 },
+    { name: 'If', width: 188, height: 142 },
+  ])('centers a connected $name at the wire drop near another block after pan and zoom', async ({ name, width, height }) => {
+    const user = userEvent.setup()
+    flowInstance.screenToFlowPosition.mockImplementation(({ x, y }) => ({
+      x: (x - 300) / 0.5,
+      y: (y - 80) / 0.5,
+    }))
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Function' }))
+    const placeNode = flowProps.at(-1)?.onPaneClick as (event: globalThis.MouseEvent) => void
+    act(() => placeNode(new window.MouseEvent('click', { clientX: 348.5, clientY: 100.5 })))
+    const source = currentNodes()[0]
+    expect(source.position).toEqual({ x: 0, y: 0 })
+    const before = graphSnapshot()
+
+    // Leave 12 flow pixels below the source: visible blank space, but inside
+    // the old automatic layout margin that moved connected blocks sideways.
+    const drop = { x: 360, y: 80 + (94 + height / 2) * 0.5 }
+    dragOutputIntoBlankCanvas(source.id, null, drop)
+    await user.type(screen.getByRole('combobox'), name)
+    await user.click(screen.getByRole('option', { name }))
+
+    const added = currentNodes().find((node) => node.id !== source.id)!
+    expect(added.position).toEqual({ x: 120 - width / 2, y: 94 })
+    expect(currentNodes().find((node) => node.id === source.id)?.position).toEqual(source.position)
+    expect(currentEdges()).toContainEqual(expect.objectContaining({ source: source.id, target: added.id }))
+    const connected = graphSnapshot()
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Undo' }))
+    expect(graphSnapshot()).toEqual(before)
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Redo' }))
+    expect(graphSnapshot()).toEqual(connected)
   })
 
   it('double-clicks a branch wire to insert a block and restores the whole change with one Undo', async () => {
