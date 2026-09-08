@@ -17,7 +17,7 @@ export interface ExecutionChunkResult {
 /**
  * Execute a bounded amount of work, then yield to the UI. The caller schedules
  * another chunk after 'yield' and cancels that schedule to stop execution.
- * Pass skipCurrentBreakpoint only on an explicit Continue action.
+ * Pass skipCurrentBreakpoint only when an explicit Run action resumes execution.
  */
 export function runExecutionChunk(
   state: ExecutionState,

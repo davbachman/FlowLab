@@ -26,13 +26,13 @@ describe('compact workspace', () => {
     await user.click(tabs.getByRole('button', { name: 'Canvas' }))
     expect(screen.getByText('Paused · 2 steps')).toBeVisible()
     expect(screen.getByTestId('flow-node-init-total')).toHaveAttribute('data-current', 'true')
-    expect(canvas.getByRole('button', { name: 'Continue' })).toBeEnabled()
+    expect(canvas.getByRole('button', { name: 'Run' })).toBeEnabled()
     await user.click(canvas.getByRole('button', { name: 'Restart' }))
     expect(canvas.getByRole('button', { name: 'Run' })).toBeEnabled()
     expect(screen.getByText('Ready · 0 steps')).toBeVisible()
     await user.click(canvas.getByRole('button', { name: 'Step' }))
     expect(screen.getByTestId('flow-node-input-n')).toHaveAttribute('data-current', 'true')
-    expect(canvas.getByRole('button', { name: 'Continue' })).toBeEnabled()
+    expect(canvas.getByRole('button', { name: 'Run' })).toBeEnabled()
   })
 
   it('returns to Canvas after choosing a block and can collapse populated Imports', async () => {

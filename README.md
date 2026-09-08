@@ -12,7 +12,7 @@ Created by David Bachman with GPT 5.5 and GPT 5.6 sol. Learn more about David at
 2. Add executable blocks below it. Use a Process block to keep several related assignments and function calls together.
 3. Connect the blocks with wires and add a Return block to finish the flow.
 4. Resolve every item shown under Validation.
-5. Press Restart and Step to inspect execution one block at a time, or Run to execute immediately.
+5. Press Step to inspect execution one block at a time, or Run to execute from the current position until completion, a breakpoint, or an input wait. Restart resets execution to the beginning.
 
 See [Getting started](docs/getting-started.md) for the complete editor and execution walkthrough.
 
@@ -37,7 +37,7 @@ Choose a program from the Examples menu to load its complete, editable flowchart
 - Multiline Process blocks plus commands for combining, splitting, and deterministically cleaning up flowcharts.
 - Functions, classes, objects, methods, fields, recursion, and Python-style special methods.
 - Numbers, strings, booleans, lists, dictionaries, and expandable object values.
-- Interruptible Run/Continue, Restart, Step, Auto Step, and breakpoints, with branch tracing, changed variables, call-stack breadcrumbs, and active-flow input.
+- Interruptible Run, Restart, Step, Auto Step, and breakpoints, with branch tracing, changed variables, call-stack breadcrumbs, and active-flow input.
 - Clickable validation issues, connected block insertion, and a canvas-first tabbed layout on smaller screens.
 - Automatic local draft recovery, visible save status, and support for reopening unfinished programs.
 - Imports from FlowLab JSON programs plus native math, text, image, and turtle libraries.

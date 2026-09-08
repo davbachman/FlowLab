@@ -177,7 +177,7 @@ describe('React Flow options', () => {
     }
     expect(renderedEdges().find((edge) => edge.source === 'while-n' && edge.target === 'add-n')?.label).toBe('true')
 
-    await user.click(controls.getByRole('button', { name: 'Continue' }))
+    await user.click(controls.getByRole('button', { name: 'Run' }))
     await screen.findByText('Completed', { exact: true })
     expect(highlightedEdges()).toEqual([
       expect.objectContaining({ source: 'show-total', target: 'return' }),

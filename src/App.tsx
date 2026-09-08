@@ -1154,7 +1154,6 @@ function App() {
   const canContinueExecution = !!execution &&
     execution.status !== 'halted' && execution.status !== 'error' &&
     (!isFreshRootExecution(execution) || pauseReason === 'Breakpoint')
-  const runLabel = canContinueExecution ? 'Continue' : 'Run'
   const canStopExecution = runEnabled || autoStepIsActive
   const executionStatusLabel = (runEnabled || autoStepIsActive) && execution?.status === 'running'
     ? 'Running'
@@ -3071,7 +3070,7 @@ function App() {
               disabled={!canRunExecution}
               onClick={() => runToolbarAction('run', runProgram)}
             >
-              <span>{runLabel}</span>
+              <span>Run</span>
               <kbd aria-hidden="true">⇧Enter</kbd>
             </button>
           </ToolbarMenu>
@@ -3397,7 +3396,7 @@ function App() {
           {compactLayout ? (
             <div className="compact-execution-bar">
               <div className="execution-buttons">
-                <button type="button" className="primary-execution" onClick={runProgram} disabled={!canRunExecution}>{runLabel}</button>
+                <button type="button" className="primary-execution" onClick={runProgram} disabled={!canRunExecution}>Run</button>
                 <button type="button" onClick={stepProgram} disabled={!canStepExecution} title="Advance one step, entering function calls to inspect them">Step</button>
                 {canStopExecution ? <button type="button" onClick={stopProgram}>Stop</button> : <button type="button" onClick={resetExecution} disabled={!canResetExecution}>Restart</button>}
               </div>
@@ -3514,7 +3513,7 @@ function App() {
                 aria-keyshortcuts="Shift+Enter"
                 disabled={!canRunExecution}
               >
-                {runLabel}
+                Run
               </button>
               {canStopExecution ? <button type="button" onClick={stopProgram}>Stop</button> : null}
             </div>

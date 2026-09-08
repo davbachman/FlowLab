@@ -874,7 +874,7 @@ describe('App', () => {
     expect(executionButton(/^Pause$/i)).toBeInTheDocument()
     await user.click(executionButton(/^Pause$/i))
 
-    await chooseToolbarAction(user, 'Run', 'Continue')
+    await chooseToolbarAction(user, 'Run', 'Run')
 
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
@@ -2049,7 +2049,7 @@ describe('App', () => {
     },
   )
 
-  it('retains root input typed while waiting when Continue resumes', async () => {
+  it('retains root input typed while waiting when Run resumes', async () => {
     const user = userEvent.setup()
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
@@ -2060,7 +2060,7 @@ describe('App', () => {
     expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
 
     await user.type(inputQueue, '3')
-    await user.click(executionButton(/^Continue$/i))
+    await user.click(executionButton(/^Run$/i))
 
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(
       '6',
@@ -2783,7 +2783,7 @@ describe('App', () => {
     expect(stepsStatus).toHaveTextContent('1')
     expect(executionButton(/^Auto Step$/i)).toBeEnabled()
     expect(executionButton(/^Step$/i)).toBeEnabled()
-    expect(executionButton(/^Continue$/i)).toBeEnabled()
+    expect(executionButton(/^Run$/i)).toBeEnabled()
 
     fireEvent.change(speed, { target: { value: '4' } })
     expect(screen.getByText('4 steps/s')).toBeInTheDocument()
