@@ -1637,6 +1637,39 @@ describe('App', () => {
     expect(screen.getByDisplayValue('total <- 1')).toBeInTheDocument()
   })
 
+  it.each([
+    { label: 'Assignment text', original: 'total <- 0' },
+    { label: 'Process text', original: 'total <- total + n\nn <- n - 1' },
+  ])('preserves the cursor while editing the middle of $label', async ({ label, original }) => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    const field = screen.getByLabelText(label) as HTMLInputElement | HTMLTextAreaElement
+    await user.click(field)
+    field.setSelectionRange(2, 2)
+
+    await user.keyboard('ab')
+    expect(field).toHaveValue(`${original.slice(0, 2)}ab${original.slice(2)}`)
+    expect(field.selectionStart).toBe(4)
+    expect(field.selectionEnd).toBe(4)
+
+    await user.keyboard('{Backspace}{Delete}')
+    expect(field).toHaveValue(`${original.slice(0, 2)}a${original.slice(3)}`)
+    expect(field.selectionStart).toBe(3)
+
+    field.setSelectionRange(2, 4)
+    await user.keyboard('xy')
+    const edited = `${original.slice(0, 2)}xy${original.slice(4)}`
+    expect(field).toHaveValue(edited)
+    expect(field.selectionStart).toBe(4)
+    expect(field).toHaveFocus()
+
+    await chooseToolbarAction(user, 'Edit', 'Undo')
+    expect(field).toHaveValue(`${original.slice(0, 2)}x${original.slice(4)}`)
+    await chooseToolbarAction(user, 'Edit', 'Redo')
+    expect(field).toHaveValue(edited)
+  })
+
   it('lets students edit function names', async () => {
     const user = userEvent.setup()
     render(<App />)

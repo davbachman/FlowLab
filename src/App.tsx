@@ -4243,6 +4243,22 @@ function trapDialogFocus(event: ReactKeyboardEvent<HTMLDivElement>): void {
 
 function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
   const updateNodeInternals = useUpdateNodeInternals()
+  const [text, setText] = useState(data.text)
+  const [lastProgramText, setLastProgramText] = useState(data.text)
+
+  // React Flow receives program updates through an effect. Keep keystrokes
+  // local so the controlled field does not briefly restore its old value and
+  // move the caret; still accept external edits such as Undo, Redo, and Load.
+  if (data.text !== lastProgramText) {
+    setLastProgramText(data.text)
+    setText(data.text)
+  }
+
+  function changeText(nextText: string): void {
+    setText(nextText)
+    data.onTextChange?.(id, nextText)
+  }
+
   const label = NODE_TYPE_LABELS[data.nodeType]
   const editable =
     data.nodeType === 'function' ||
@@ -4395,11 +4411,9 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
                 aria-invalid={!!data.textValidationMessage}
                 title={data.textValidationMessage}
                 className="node-input node-textarea nodrag"
-                value={data.text}
-                rows={Math.max(2, data.text.split(/\r?\n/).length)}
-                onChange={(event) =>
-                  data.onTextChange?.(id, event.target.value)
-                }
+                value={text}
+                rows={Math.max(2, text.split(/\r?\n/).length)}
+                onChange={(event) => changeText(event.target.value)}
                 spellCheck={false}
               />
             ) : (
@@ -4408,8 +4422,8 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
                 aria-invalid={!!data.textValidationMessage}
                 title={data.textValidationMessage}
                 className="node-input nodrag"
-                value={data.text}
-                onChange={(event) => data.onTextChange?.(id, event.target.value)}
+                value={text}
+                onChange={(event) => changeText(event.target.value)}
                 spellCheck={false}
               />
             )}
