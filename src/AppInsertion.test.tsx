@@ -132,6 +132,7 @@ describe('connected block insertion', () => {
 
     const added = currentNodes().find((node) => node.id !== source.id)!
     expect(added.position).toEqual({ x: 120 - width / 2, y: 94 })
+    expect(added.data.text).toBe('')
     expect(currentNodes().find((node) => node.id === source.id)?.position).toEqual(source.position)
     expect(currentEdges()).toContainEqual(expect.objectContaining({ source: source.id, target: added.id }))
     const connected = graphSnapshot()
@@ -165,6 +166,7 @@ describe('connected block insertion', () => {
 
     const inserted = currentNodes().find((node) => !before.nodes.some((original) => original.id === node.id))!
     expect(inserted.data.nodeType).toBe('output')
+    expect(inserted.data.text).toBe('')
     expect(currentEdges()).toContainEqual(expect.objectContaining({
       id: incoming.id, source: 'while-n', target: inserted.id, label: 'true', sourceHandle: WHILE_TRUE_RIGHT_HANDLE,
     }))
@@ -254,6 +256,7 @@ describe('connected block insertion', () => {
 
     const inserted = currentNodes().find((node) => !before.nodes.some((original) => original.id === node.id))!
     expect(inserted.data.nodeType).toBe('return')
+    expect(inserted.data.text).toBe('')
     expect(currentEdges().filter((edge) => edge.source === 'while-n' && edge.label === 'true')).toEqual([
       expect.objectContaining({ source: 'while-n', target: inserted.id, label: 'true', sourceHandle: WHILE_TRUE_RIGHT_HANDLE }),
     ])

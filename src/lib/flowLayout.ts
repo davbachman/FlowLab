@@ -34,7 +34,6 @@ const CLASS_TO_METHOD_GUTTER = 170
 const TALL_NODE_VERTICAL_GUTTER = 96
 const MONOSPACE_CHARACTER_WIDTH = 7.8
 const COMMENT_CHARACTER_WIDTH = 6.5
-const INPUT_AND_NODE_CHROME_WIDTH = 48
 const COMMENT_AND_NODE_CHROME_WIDTH = 32
 
 const NODE_WIDTH_RANGE: Record<FlowNodeType, { min: number; max: number }> = {
@@ -246,8 +245,14 @@ export function adaptiveFlowNodeWidth(
   const maximum = node.type === 'class' ? Math.max(range.max, minimum) : range.max
   const codeLineLength = longestLineLength(node.text)
   const commentLineLength = longestLineLength(node.comment ?? '')
+  // Include the narrower text area inside diamonds and parallelograms.
+  const inputAndNodeChromeWidth = isBranchNodeType(node.type)
+    ? 104
+    : node.type === 'input' || node.type === 'output'
+      ? 64
+      : 48
   const contentWidth = Math.max(
-    codeLineLength * MONOSPACE_CHARACTER_WIDTH + INPUT_AND_NODE_CHROME_WIDTH,
+    codeLineLength * MONOSPACE_CHARACTER_WIDTH + inputAndNodeChromeWidth,
     Math.min(commentLineLength, 72) * COMMENT_CHARACTER_WIDTH +
       COMMENT_AND_NODE_CHROME_WIDTH,
   )

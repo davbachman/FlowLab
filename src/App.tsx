@@ -84,7 +84,7 @@ import {
 import { LoopbackEdge } from './components/LoopbackEdge'
 import { AdaptiveSmoothStepEdge } from './components/AdaptiveSmoothStepEdge'
 import { cleanUpProgram } from './lib/codeCleanup'
-import { minimumFlowNodeWidth } from './lib/flowLayout'
+import { adaptiveFlowNodeWidth, minimumFlowNodeWidth } from './lib/flowLayout'
 import { combineNodesIntoProcess } from './lib/processConsolidation'
 import {
   DELETE_KEY_CODES,
@@ -310,21 +310,6 @@ const edgeTypes = {
   loopback: LoopbackEdge,
   smoothstep: AdaptiveSmoothStepEdge,
 } satisfies EdgeTypes
-
-const DEFAULT_NODE_TEXT: Record<FlowNodeType, string> = {
-  function: 'main',
-  class: 'Point(x, y)',
-  method: 'move',
-  return: '0',
-  process: 'x <- 1\nsqrt(x)',
-  assignment: 'x <- x + 1',
-  call: 'forward(50)',
-  input: 'n',
-  output: 'total',
-  if: 'x < 10',
-  while: 'x < 10',
-  for: 'item in L',
-}
 
 const DEFINITION_NODE_PALETTE: FlowNodeType[] = [
   'function',
@@ -1290,13 +1275,22 @@ function App() {
   const updateNodeText = useCallback(
     (nodeId: string, text: string) => {
       pushHistorySnapshot()
-      setNodes((currentNodes) =>
-        currentNodes.map((node) =>
-          node.id === nodeId
-            ? { ...node, data: { ...node.data, text } }
-            : node,
-        ),
-      )
+      setNodes((currentNodes) => {
+        const currentProgram = toProgram(currentNodes, edgesRef.current)
+        return currentNodes.map((node) => {
+          if (node.id !== nodeId) return node
+          const editedNode = { ...node, data: { ...node.data, text } }
+          const programNode = currentProgram.nodes.find((candidate) => candidate.id === nodeId)!
+          const desiredWidth = adaptiveFlowNodeWidth(currentProgram, { ...programNode, text })
+          const currentWidth = node.width ?? node.measured?.width ?? minimumNodeWidth(
+            node.data.nodeType,
+            attachedProgramMethodCount(nodeId, currentProgram),
+          )
+          return desiredWidth > currentWidth
+            ? { ...editedNode, width: desiredWidth }
+            : editedNode
+        })
+      })
       setExecution(null)
     },
     [pushHistorySnapshot, setNodes],
@@ -1534,7 +1528,7 @@ function App() {
       position: centerNodePosition(nodeType, position),
       data: {
         nodeType,
-        text: defaultNodeText(nodeType),
+        text: '',
       },
     }
 
@@ -1643,7 +1637,7 @@ function App() {
       const newNode = {
         id: nextNodeId(nodeType, nodes),
         type: nodeType,
-        text: defaultNodeText(nodeType),
+        text: '',
         position: centerNodePosition(nodeType, quickAddRequest.flowPosition),
       }
       const measuredDimensions = new Map(nodes.flatMap((node) =>
@@ -4207,9 +4201,7 @@ function PlacementPreview({
             className={`node-input placement-preview-value${
               nodeType === 'process' ? ' placement-preview-value-multiline' : ''
             }`}
-          >
-            {defaultNodeText(nodeType)}
-          </div>
+          />
         </div>
       </div>
     </div>
@@ -5599,10 +5591,6 @@ function tryParseClassDeclaration(text: string): ClassDeclaration | null {
   } catch {
     return null
   }
-}
-
-function defaultNodeText(nodeType: FlowNodeType): string {
-  return DEFAULT_NODE_TEXT[nodeType]
 }
 
 function attachedMethodsForClass(

@@ -1638,13 +1638,15 @@ describe('App', () => {
   })
 
   it.each([
-    { label: 'Assignment text', original: 'total <- 0' },
-    { label: 'Process text', original: 'total <- total + n\nn <- n - 1' },
-  ])('preserves the cursor while editing the middle of $label', async ({ label, original }) => {
+    { label: 'Assignment text', original: 'total <- 0', minimumWidth: 214, maximumWidth: 680 },
+    { label: 'Process text', original: 'total <- total + n\nn <- n - 1', minimumWidth: 284, maximumWidth: 760 },
+  ])('preserves the cursor while editing and widening $label', async ({ label, original, minimumWidth, maximumWidth }) => {
     const user = userEvent.setup()
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
     const field = screen.getByLabelText(label) as HTMLInputElement | HTMLTextAreaElement
+    const block = field.closest('.react-flow__node') as HTMLElement
+    const originalWidth = block.style.width
     await user.click(field)
     field.setSelectionRange(2, 2)
 
@@ -1652,6 +1654,7 @@ describe('App', () => {
     expect(field).toHaveValue(`${original.slice(0, 2)}ab${original.slice(2)}`)
     expect(field.selectionStart).toBe(4)
     expect(field.selectionEnd).toBe(4)
+    expect(block.style.width).toBe(originalWidth)
 
     await user.keyboard('{Backspace}{Delete}')
     expect(field).toHaveValue(`${original.slice(0, 2)}a${original.slice(3)}`)
@@ -1668,6 +1671,25 @@ describe('App', () => {
     expect(field).toHaveValue(`${original.slice(0, 2)}x${original.slice(4)}`)
     await chooseToolbarAction(user, 'Edit', 'Redo')
     expect(field).toHaveValue(edited)
+
+    await user.click(field)
+    field.setSelectionRange(2, 2)
+    const insertedText = 'extra_'.repeat(8)
+    await user.paste(insertedText)
+    expect(field).toHaveValue(`${edited.slice(0, 2)}${insertedText}${edited.slice(2)}`)
+    expect(field.selectionStart).toBe(2 + insertedText.length)
+    expect(field.selectionEnd).toBe(2 + insertedText.length)
+    expect(Number.parseFloat(block.style.width)).toBeGreaterThan(minimumWidth)
+    expect(Number.parseFloat(block.style.width)).toBeLessThan(maximumWidth)
+
+    await user.paste('x'.repeat(200))
+    expect(block).toHaveStyle({ width: `${maximumWidth}px` })
+    expect(field.selectionStart).toBe(2 + insertedText.length + 200)
+    expect(field).toHaveFocus()
+
+    await user.clear(field)
+    expect(field).toHaveValue('')
+    expect(block).toHaveStyle({ width: `${maximumWidth}px` })
   })
 
   it('lets students edit function names', async () => {
@@ -1753,7 +1775,7 @@ describe('App', () => {
     })
   })
 
-  it('loads and saves a custom block width', async () => {
+  it('preserves and saves a manual block width above the automatic growth limit', async () => {
     const user = userEvent.setup()
     const write = vi.fn<(value: Blob) => Promise<void>>(() => Promise.resolve())
     const close = vi.fn<() => Promise<void>>(() => Promise.resolve())
@@ -1764,7 +1786,7 @@ describe('App', () => {
     const wideProgram: Program = {
       ...sampleProgram,
       nodes: sampleProgram.nodes.map((node) =>
-        node.id === 'init-total' ? { ...node, width: 520 } : node,
+        node.id === 'init-total' ? { ...node, width: 900 } : node,
       ),
     }
 
@@ -1779,7 +1801,12 @@ describe('App', () => {
 
     const block = await screen.findByTestId('flow-node-init-total')
     expect(block).toHaveClass('flow-node-width-custom')
-    expect(block.closest('.react-flow__node')).toHaveStyle({ width: '520px' })
+    expect(block.closest('.react-flow__node')).toHaveStyle({ width: '900px' })
+    const editor = within(block).getByLabelText(/Assignment text/i)
+    fireEvent.change(editor, { target: { value: `total <- ${'x'.repeat(200)}` } })
+    expect(block.closest('.react-flow__node')).toHaveStyle({ width: '900px' })
+    fireEvent.change(editor, { target: { value: 'total <- 1' } })
+    expect(block.closest('.react-flow__node')).toHaveStyle({ width: '900px' })
 
     await chooseToolbarAction(user, 'File', 'Save')
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
@@ -1789,7 +1816,7 @@ describe('App', () => {
     const exportedProgram = JSON.parse(await exportedBlob.text()) as Program
     expect(
       exportedProgram.nodes.find((node) => node.id === 'init-total')?.width,
-    ).toBe(520)
+    ).toBe(900)
   })
 
   it('imports the saved imports list and input queue before validating the program', async () => {
@@ -3396,6 +3423,7 @@ describe('App', () => {
       'data-shape',
       'diamond',
     )
+    expect(screen.getByLabelText(/^If text$/i)).toHaveValue('')
   })
 
   it('previews a palette block under the cursor until the canvas click places it', async () => {
@@ -3409,6 +3437,7 @@ describe('App', () => {
 
     fireEvent.mouseMove(canvas, { clientX: 320, clientY: 240 })
     expect(screen.queryByTestId('flow-node-if-1')).not.toBeInTheDocument()
+    expect(screen.getByTestId('pending-node-preview').querySelector('.placement-preview-value')).toBeEmptyDOMElement()
     const firstPosition = pendingNodePreviewPosition()
 
     fireEvent.mouseMove(canvas, { clientX: 520, clientY: 360 })
@@ -3449,6 +3478,7 @@ describe('App', () => {
 
     expect(screen.queryByTestId('pending-node-preview')).not.toBeInTheDocument()
     expect(screen.getByTestId('flow-node-return-1')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Return text$/i)).toHaveValue('')
   })
 
   it('completes a quick-add block name with Tab before placement', async () => {
@@ -3540,7 +3570,7 @@ describe('App', () => {
     )
   })
 
-  it('places Function blocks with editable main text', async () => {
+  it('places Function blocks with an empty editable name', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
     const addFunctionButton = screen.getByRole('button', {
@@ -3557,7 +3587,10 @@ describe('App', () => {
       'data-shape',
       'block',
     )
-    expect(screen.getAllByDisplayValue('main')).toHaveLength(1)
+    const editor = screen.getByLabelText(/^Function text$/i)
+    expect(editor).toHaveValue('')
+    await user.type(editor, 'main')
+    expect(editor).toHaveValue('main')
   })
 
   it('places Classes with an open Method connector and Methods with an owner input', async () => {
@@ -3570,12 +3603,14 @@ describe('App', () => {
     placePendingNodeOnPane(pane as Element, 360, 220)
 
     const classNode = screen.getByTestId('flow-node-class-1')
-    const classInput = screen.getByDisplayValue('Point(x, y)')
+    const classInput = within(classNode).getByLabelText(/^Class text$/i)
 
+    expect(classInput).toHaveValue('')
     expect(classNode).toHaveAttribute('data-shape', 'declaration')
     expect(
       classNode.querySelector(`[data-handleid="${CLASS_METHOD_NEW_HANDLE}"]`),
     ).toHaveAttribute('data-handlepos', 'bottom')
+    await user.type(classInput, 'Point(x, y)')
     expect(within(classNode).getByText('x')).toHaveClass('class-field')
     expect(within(classNode).getByText('y')).toHaveClass('class-field')
 
@@ -3586,7 +3621,10 @@ describe('App', () => {
 
     const methodNode = screen.getByTestId('flow-node-method-1')
 
-    expect(screen.getByDisplayValue('move')).toBeInTheDocument()
+    const methodInput = within(methodNode).getByLabelText(/^Method text$/i)
+    expect(methodInput).toHaveValue('')
+    await user.type(methodInput, 'move')
+    expect(methodInput).toHaveValue('move')
     expect(
       methodNode.querySelector(`[data-handleid="${METHOD_OWNER_HANDLE}"]`),
     ).toHaveAttribute('data-handlepos', 'top')
@@ -3634,7 +3672,7 @@ describe('App', () => {
       'data-shape',
       'block',
     )
-    expect(screen.getByDisplayValue('0')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Return text$/i)).toHaveValue('')
   })
 
   it('places For blocks as decision diamonds', async () => {
@@ -3652,7 +3690,7 @@ describe('App', () => {
       'data-shape',
       'diamond',
     )
-    expect(screen.getByDisplayValue('item in L')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^For text$/i)).toHaveValue('')
   })
 
   it('places Process blocks with editable multiline text', async () => {
@@ -3673,7 +3711,7 @@ describe('App', () => {
     )
     const editor = within(processNode).getByLabelText(/Process text/i)
     expect(editor.tagName).toBe('TEXTAREA')
-    expect(editor).toHaveValue('x <- 1\nsqrt(x)')
+    expect(editor).toHaveValue('')
     expect(editor).not.toHaveClass('nowheel')
   })
 })

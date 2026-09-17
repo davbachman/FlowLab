@@ -1136,7 +1136,8 @@ button:disabled {
   display: block;
   min-height: 48px;
   resize: none;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   text-align: left;
   white-space: pre;
 }
