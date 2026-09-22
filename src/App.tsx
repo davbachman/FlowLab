@@ -47,7 +47,6 @@ import {
   failImageLoadExecution,
   failTextLoadExecution,
   replaceExecutionInputQueue,
-  stepExecution,
   type ExecutionState,
 } from './lib/interpreter'
 import {
@@ -131,7 +130,7 @@ import {
 } from './lib/drafts'
 import { initialRecoveryState, recoveryStorage } from './lib/documentRecovery'
 import { validationFeedbackForProgram, type ValidationFeedback } from './lib/validationFeedback'
-import { runExecutionChunk } from './lib/debugger'
+import { hasPendingLibraryStep, runExecutionChunk, stepExecutionChunk, visibleExecution } from './lib/debugger'
 import { canInsertOnEdge, connectNewNode, insertNodeOnEdge, CONNECTED_NODE_TYPES, WIRE_INSERT_NODE_TYPES } from './lib/wireInsertion'
 import './App.css'
 
@@ -463,6 +462,8 @@ function App() {
   const [autoStepEnabled, setAutoStepEnabled] = useState(false)
   const [autoStepSpeed, setAutoStepSpeed] = useState(DEFAULT_AUTO_STEP_SPEED)
   const [runEnabled, setRunEnabled] = useState(false)
+  const [libraryStepEnabled, setLibraryStepEnabled] = useState(false)
+  const displayedExecution = useMemo(() => execution ? visibleExecution(execution) : null, [execution])
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set())
   const [pauseReason, setPauseReason] = useState('')
   const [paletteWidth, setPaletteWidth] = useState(DEFAULT_PALETTE_WIDTH)
@@ -923,6 +924,7 @@ function App() {
   useEffect(() => {
     if (
       !autoStepIsActive ||
+      libraryStepEnabled ||
       execution?.status !== 'running' ||
       !execution.currentNodeId
     ) {
@@ -938,22 +940,34 @@ function App() {
           return currentExecution
         }
 
-        if (!skipBreakpointRef.current && currentExecution.program === currentExecution.rootProgram && breakpoints.has(currentExecution.currentNodeId)) {
+        if (!skipBreakpointRef.current && !currentExecution.libraryCall && currentExecution.program === currentExecution.rootProgram && breakpoints.has(currentExecution.currentNodeId)) {
           setAutoStepEnabled(false)
           setPauseReason('Breakpoint')
           return currentExecution
         }
         skipBreakpointRef.current = false
-        return stepExecution(currentExecution)
+        const result = stepExecutionChunk(currentExecution)
+        setLibraryStepEnabled(hasPendingLibraryStep(result))
+        return result.state
       })
     }, 1000 / autoStepSpeed)
 
     return () => window.clearTimeout(timeout)
-  }, [autoStepIsActive, autoStepSpeed, execution, breakpoints])
+  }, [autoStepIsActive, autoStepSpeed, execution, breakpoints, libraryStepEnabled])
+
+  useEffect(() => {
+    if (!libraryStepEnabled || !execution || execution.status !== 'running') return
+    const timer = window.setTimeout(() => {
+      const result = stepExecutionChunk(execution)
+      setExecution(result.state)
+      setLibraryStepEnabled(hasPendingLibraryStep(result))
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [execution, libraryStepEnabled])
 
   useEffect(() => {
     if (!execution || execution.status === 'halted' || execution.status === 'error') {
-      const timer = window.setTimeout(() => { setRunEnabled(false); setAutoStepEnabled(false) }, 0)
+      const timer = window.setTimeout(() => { setRunEnabled(false); setAutoStepEnabled(false); setLibraryStepEnabled(false) }, 0)
       return () => window.clearTimeout(timer)
     }
     if (!runEnabled || execution.status !== 'running') return
@@ -1080,7 +1094,7 @@ function App() {
     importsLoading,
     program,
   ])
-  const currentNodeId = execution?.currentNodeId ?? null
+  const currentNodeId = displayedExecution?.currentNodeId ?? null
   const validationFeedback = useMemo(
     () => validationFeedbackForProgram(program, validation.errors),
     [program, validation.errors],
@@ -1122,16 +1136,16 @@ function App() {
     execution?.status === 'asking' || execution?.status === 'loading'
   const canResetExecution = validation.valid && !executionIsBusy
   const canStepExecution =
-    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled && execution?.status !== 'halted' && execution?.status !== 'error'
+    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled && !libraryStepEnabled && execution?.status !== 'halted' && execution?.status !== 'error'
   const canToggleAutoStep =
-    validation.valid && !runEnabled && (!executionIsBusy || autoStepIsActive)
+    validation.valid && !runEnabled && (!libraryStepEnabled || autoStepIsActive) && (!executionIsBusy || autoStepIsActive)
   const canRunExecution =
-    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled
+    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled && !libraryStepEnabled
   const canContinueExecution = !!execution &&
     execution.status !== 'halted' && execution.status !== 'error' &&
     (!isFreshRootExecution(execution) || pauseReason === 'Breakpoint')
-  const canStopExecution = runEnabled || autoStepIsActive
-  const executionStatusLabel = (runEnabled || autoStepIsActive) && execution?.status === 'running'
+  const canStopExecution = runEnabled || autoStepIsActive || libraryStepEnabled
+  const executionStatusLabel = (runEnabled || autoStepIsActive || libraryStepEnabled) && execution?.status === 'running'
     ? 'Running'
     : execution?.status === 'running'
       ? pauseReason || (execution.steps === 0 ? 'Ready' : 'Paused')
@@ -1222,11 +1236,11 @@ function App() {
       : execution &&
           execution.status !== 'halted' &&
           execution.status !== 'error'
-        ? formatInputQueue(execution.inputQueue)
+        ? formatInputQueue(displayedExecution?.inputQueue ?? [])
         : inputQueueText
   const renderEdges = useMemo(() => programToEdges(program, edges).map((edge) => {
-    const incomingEdge = execution?.incomingEdge
-    const branch = execution?.lastStep?.branch
+    const incomingEdge = displayedExecution?.incomingEdge
+    const branch = displayedExecution?.lastStep?.branch
     const active = incomingEdge?.program === execution?.rootProgram && incomingEdge?.edgeId === edge.id
     const activeBranch = active && branch?.program === incomingEdge?.program && branch?.edgeId === edge.id
     return {
@@ -1235,7 +1249,7 @@ function App() {
       ...(activeBranch ? { label: `${branch.expression} → ${branch.label === 'true' ? 'True' : 'False'}`, labelStyle: { fill: '#92400e', fontWeight: 700 } } : {}),
       interactionWidth: Math.max(edge.interactionWidth ?? 20, 24),
     }
-  }), [program, edges, execution])
+  }), [program, edges, execution, displayedExecution])
   const selectedEdges = edges.filter((edge) => edge.selected)
   const insertableSelection = selectedEdges.length === 1 && canInsertOnEdge(program, selectedEdges[0].id)
     ? selectedEdges[0]
@@ -1257,10 +1271,10 @@ function App() {
   )
   const variableEntries = useMemo(
     () =>
-      Object.entries(execution?.environment ?? {}).sort(([left], [right]) =>
+      Object.entries(displayedExecution?.environment ?? {}).sort(([left], [right]) =>
         left.localeCompare(right),
       ),
-    [execution],
+    [displayedExecution],
   )
 
   const updateNodeText = useCallback(
@@ -1293,7 +1307,7 @@ function App() {
         ...node,
         data: {
           ...node.data,
-          isCurrent: node.id === currentNodeId && execution?.program === execution?.rootProgram,
+          isCurrent: node.id === currentNodeId && displayedExecution?.program === displayedExecution?.rootProgram,
           isWidthCustomized: node.width !== undefined,
           trueBranchHandle: trueBranchHandleForNode(node, edges),
           attachedMethods:
@@ -1309,7 +1323,7 @@ function App() {
       })),
     [
       currentNodeId,
-      execution,
+      displayedExecution,
       edges,
       nodes,
       recordCanvasChangeStart,
@@ -1810,6 +1824,7 @@ function App() {
     setExecution(null)
     setAutoStepEnabled(false)
     setRunEnabled(false)
+    setLibraryStepEnabled(false)
     setPendingNodeType(null)
     setPendingNodePosition(null)
     setQuickAddRequest(null)
@@ -1820,6 +1835,7 @@ function App() {
     setMessage('')
     setAutoStepEnabled(false)
     setRunEnabled(false)
+    setLibraryStepEnabled(false)
     setPauseReason('')
     skipBreakpointRef.current = false
     setInputQueueText(effectiveInputQueueText)
@@ -1892,21 +1908,22 @@ function App() {
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
     if (!execution) setOutputRunId((id) => id + 1)
-    setExecution((currentExecution) => {
-      const activeExecution = currentExecution
-        ? executionWithEditedInputQueue(currentExecution)
-        : createExecution(program, parseInputQueue(inputQueueText), {
-            importedPrograms,
-            nativeLibraries: nativeLibraryNames,
-          })
-      return stepExecution(activeExecution)
-    })
+    const activeExecution = execution
+      ? executionWithEditedInputQueue(execution)
+      : createExecution(program, parseInputQueue(inputQueueText), {
+          importedPrograms,
+          nativeLibraries: nativeLibraryNames,
+        })
+    const result = stepExecutionChunk(activeExecution)
+    setExecution(result.state)
+    setLibraryStepEnabled(hasPendingLibraryStep(result))
   }
 
   function runProgram(): void {
     setMessage('')
     setPauseReason('')
     setAutoStepEnabled(false)
+    setLibraryStepEnabled(false)
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
     const canResume = execution && execution.status !== 'halted' && execution.status !== 'error'
@@ -1936,6 +1953,7 @@ function App() {
   function stopProgram(): void {
     setRunEnabled(false)
     setAutoStepEnabled(false)
+    setLibraryStepEnabled(false)
     setPauseReason('Stopped')
   }
 
@@ -1943,6 +1961,7 @@ function App() {
     setMessage('')
     setPauseReason('')
     setRunEnabled(false)
+    setLibraryStepEnabled(false)
     skipBreakpointRef.current = canContinueExecution
 
     if (autoStepIsActive) {
@@ -3420,10 +3439,10 @@ function App() {
             <div className="compact-execution-bar">
               <div className="execution-buttons">
                 <button type="button" className="primary-execution" onClick={runProgram} disabled={!canRunExecution}>Run</button>
-                <button type="button" onClick={stepProgram} disabled={!canStepExecution} title="Advance one step, entering function calls to inspect them">Step</button>
+                <button type="button" onClick={stepProgram} disabled={!canStepExecution} title="Advance one block, entering functions defined on this canvas">Step</button>
                 {canStopExecution ? <button type="button" onClick={stopProgram}>Stop</button> : <button type="button" onClick={resetExecution} disabled={!canResetExecution}>Restart</button>}
               </div>
-              <span className="compact-execution-status">{executionStatusLabel}{execution ? ` · ${execution.steps} steps` : ''}</span>
+              <span className="compact-execution-status">{executionStatusLabel}{displayedExecution ? ` · ${displayedExecution.steps} steps` : ''}</span>
             </div>
           ) : null}
           <ReactFlow
@@ -3511,7 +3530,7 @@ function App() {
                 type="button"
                 onClick={stepProgram}
                 aria-keyshortcuts="Shift+Space"
-                title="Advance one step, entering function calls to inspect them"
+                title="Advance one block, entering functions defined on this canvas"
                 disabled={!canStepExecution}
               >
                 Step
@@ -3581,20 +3600,20 @@ function App() {
             </div>
             <div>
               <dt>Steps</dt>
-              <dd>{execution?.steps ?? 0}</dd>
+              <dd>{displayedExecution?.steps ?? 0}</dd>
             </div>
             <div>
               <dt>Flow</dt>
-              <dd>{execution?.functionName ?? '—'}</dd>
+              <dd>{displayedExecution?.functionName ?? '—'}</dd>
             </div>
           </dl>
 
-          {execution ? (
+          {displayedExecution ? (
             <nav className="call-stack" aria-label="Call stack">
-              {[...execution.callStack.map((frame) => frame.functionName), execution.functionName].map((name, index) => <Fragment key={`${name}-${index}`}>{index ? <span aria-hidden="true"> › </span> : null}<span>{name}</span></Fragment>)}
+              {[...displayedExecution.callStack.map((frame) => frame.functionName), displayedExecution.functionName].map((name, index) => <Fragment key={`${name}-${index}`}>{index ? <span aria-hidden="true"> › </span> : null}<span>{name}</span></Fragment>)}
             </nav>
           ) : null}
-          {execution?.lastStep?.branch ? <p className="branch-feedback" aria-label="Last branch">{execution.lastStep.branch.expression} → {execution.lastStep.branch.label === 'true' ? 'True' : 'False'}</p> : null}
+          {displayedExecution?.lastStep?.branch ? <p className="branch-feedback" aria-label="Last branch">{displayedExecution.lastStep.branch.expression} → {displayedExecution.lastStep.branch.label === 'true' ? 'True' : 'False'}</p> : null}
           {message ? <p className="notice">{message}</p> : null}
 
           <div className="runtime-panel-list">
@@ -3632,12 +3651,12 @@ function App() {
                     {variableEntries.length ? (
                       <dl className="variable-list" tabIndex={0} aria-label="Variable values">
                         {variableEntries.map(([name, value]) => (
-                          <div className={`variable-row${execution?.lastStep?.changedVariables.some((change) => change.name === name) ? ' variable-row-changed' : ''}`} key={name} title={execution?.lastStep?.changedVariables.some((change) => change.name === name) ? 'Changed in last step' : undefined}>
+                          <div className={`variable-row${displayedExecution?.lastStep?.changedVariables.some((change) => change.name === name) ? ' variable-row-changed' : ''}`} key={name} title={displayedExecution?.lastStep?.changedVariables.some((change) => change.name === name) ? 'Changed in last step' : undefined}>
                             <dt>{name}</dt>
                             <dd>
                               <VariableValue
                                 value={value}
-                                objectHeap={execution?.objectHeap ?? {}}
+                                objectHeap={displayedExecution?.objectHeap ?? {}}
                               />
                             </dd>
                           </div>

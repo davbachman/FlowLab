@@ -362,6 +362,9 @@ export interface ExecutionState {
   incomingEdge?: { edgeId: string; program: Program }
   /** Feedback from the most recent step, recorded during execution. */
   lastStep?: ExecutionStepFeedback
+  /** Debugger boundary: library internals execute without becoming visible steps. */
+  libraryCall?: { caller: ExecutionState; frame: SuspendedFrame }
+  hiddenSteps?: number
 }
 
 export interface ExecutionVariableChange {

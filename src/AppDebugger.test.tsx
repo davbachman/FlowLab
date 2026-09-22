@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { sampleProgram } from './lib/sampleProgram'
+import { registerFlowLabProgram } from './lib/imports'
 import type { BranchLabel, Program, ProgramNode } from './lib/types'
 
 function makeProgram(
@@ -50,6 +51,24 @@ const countingProgram = makeProgram([
   ['main', 'init'], ['init', 'condition'], ['condition', 'count', 'true'],
   ['count', 'condition'], ['condition', 'end', 'false'],
 ])
+
+const libraryProgram = makeProgram([
+  ['library-main', 'function', 'main'], ['library-main-end', 'return', '0'],
+  ['helper', 'function', 'helper'], ['arg', 'input', 'internalN'],
+  ['condition', 'while', 'internalN > 0'], ['decrement', 'assignment', 'internalN <- internalN - 1'],
+  ['helper-end', 'return', '99'],
+], [
+  ['library-main', 'library-main-end'], ['helper', 'arg'], ['arg', 'condition'],
+  ['condition', 'decrement', 'true'], ['decrement', 'condition'], ['condition', 'helper-end', 'false'],
+])
+
+const libraryConsumer = {
+  ...makeProgram([
+    ['main', 'function', 'main'], ['init', 'assignment', 'seed <- 7'],
+    ['call', 'assignment', 'result <- helper(150)'], ['output', 'output', 'result'], ['end', 'return', 'result'],
+  ], [['main', 'init'], ['init', 'call'], ['call', 'output'], ['output', 'end']]),
+  imports: 'debug-helpers',
+}
 
 describe('debugger controls and feedback', () => {
   beforeEach(() => {
@@ -136,6 +155,72 @@ describe('debugger controls and feedback', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/zero/i)
     expect(screen.getByRole('alert')).toBeVisible()
     expect(output()).toContainElement(screen.getByRole('alert'))
+  })
+
+  it.each(['Step', 'Auto Step', 'Run'])('keeps library internals hidden during %s and returns to the caller', async action => {
+    registerFlowLabProgram('debug-helpers.json', libraryProgram)
+    render(<App />)
+    await loadProgram(libraryConsumer)
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(executionButton('Step'))
+    toggleBreakpoint('output')
+    fireEvent.change(screen.getByLabelText('Auto Step speed'), { target: { value: '10' } })
+    fireEvent.click(executionButton(action))
+    if (action !== 'Auto Step') {
+      expect(screen.getByTestId('flow-node-call')).toHaveAttribute('aria-current', 'step')
+      expect(screen.getByLabelText('Call stack')).toHaveTextContent(/^main$/)
+      expect(screen.getByLabelText('Variable values')).toHaveTextContent('seed7')
+      expect(screen.getByLabelText('Variable values')).not.toHaveTextContent('internalN')
+      expect(steps()).toBe(3)
+    }
+    await waitFor(() => expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step'))
+    if (action === 'Auto Step') await screen.findByText('Breakpoint', { exact: true })
+    expect(steps()).toBe(3)
+    expect(output()).toHaveTextContent('No output yet')
+    expect(screen.getByLabelText('Variable values')).toHaveTextContent('result99')
+    expect(screen.getByLabelText('Variable values')).not.toHaveTextContent('internalN')
+    expect(screen.getByLabelText('Call stack')).toHaveTextContent(/^main$/)
+    const result = within(screen.getByLabelText('Variable values')).getByText('result').closest('.variable-row')
+    expect(result).toHaveClass('variable-row-changed')
+  })
+
+  it('can stop a long library Step, then finish it without running the next block', async () => {
+    registerFlowLabProgram('debug-helpers.json', libraryProgram)
+    render(<App />)
+    await loadProgram(libraryConsumer)
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(executionButton('Stop'))
+    expect(screen.getByText('Stopped', { exact: true })).toBeVisible()
+    expect(screen.getByTestId('flow-node-call')).toHaveAttribute('aria-current', 'step')
+    expect(executionButton('Step')).toBeEnabled()
+    fireEvent.click(executionButton('Step'))
+    await waitFor(() => expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step'))
+    expect(output()).toHaveTextContent('No output yet')
+    expect(steps()).toBe(3)
+  })
+
+  it('resumes a library Step after ask without showing its locals or running the next block', async () => {
+    registerFlowLabProgram('debug-helpers.json', makeProgram([
+      ['library-main', 'function', 'main'], ['library-main-end', 'return', '0'],
+      ['helper', 'function', 'helper'], ['ask', 'assignment', 'secret <- ask()'], ['return', 'return', 'secret + 1'],
+    ], [['library-main', 'library-main-end'], ['helper', 'ask'], ['ask', 'return']]))
+    render(<App />)
+    await loadProgram(libraryConsumer)
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(executionButton('Step'))
+    expect(screen.getByRole('dialog', { name: 'Input requested' })).toBeVisible()
+    expect(screen.getByTestId('flow-node-call')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByLabelText('Call stack')).toHaveTextContent(/^main$/)
+    fireEvent.change(screen.getByLabelText('Input', { exact: true }), { target: { value: '41' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }))
+    await waitFor(() => expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step'))
+    expect(screen.getByLabelText('Variable values')).toHaveTextContent('result42')
+    expect(screen.getByLabelText('Variable values')).not.toHaveTextContent('secret')
+    expect(output()).toHaveTextContent('No output yet')
+    expect(steps()).toBe(3)
   })
 
   it.each(['Run', 'Auto Step'])('honors a starting breakpoint after Restart with %s and continues from it', async (action) => {

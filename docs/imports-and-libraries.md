@@ -18,6 +18,7 @@
 - Open the Imports heading in the Blocks sidebar and enter imports one per line or comma-separated, for example `math, text, helpers`. The `.json` suffix is optional for FlowLab program files. Native library names are case-insensitive; use the function names exactly as listed below.
 - The panel reports loading progress, resolved files and native libraries, available Classes and Functions, conflicts, and errors.
 - A JSON import contributes its non-`main` Functions and its Classes with the Methods attached to those Classes.
+- Imported calls run as part of the calling block in Step and Auto Step. Their internal blocks, local variables, branches, and call stack stay hidden during execution, just like native library calls. Results, output, and runtime errors remain visible. Input requests still pause execution, and Stop can interrupt a long call. To step through a library's implementation, open its FlowLab file as the current program.
 
 ## Look up available functions
 

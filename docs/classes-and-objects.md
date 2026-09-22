@@ -98,7 +98,7 @@ Special methods are ordinary Method blocks attached to a Class, but FlowLab also
 - Special methods can be called explicitly, such as `p.__repr__()` or `p.__add__(q)`, with the same Input and return contracts.
 - String concatenation does not invoke `__repr__`; write `"point: " + p.__repr__()` explicitly.
 - Keep special methods side-effect-free because operators and Output invoke them implicitly.
-- When stepping, FlowLab enters a special Method's flow just as it does for an explicit method call.
+- When stepping, FlowLab enters a special Method's flow just as it does for an explicit method call, provided its Class is defined on the current canvas. Methods from imported Classes execute within the calling step and keep their internal computation hidden.
 - Directly re-entering the same special method on the same receiver is rejected as recursion. A special method may call a different special method, so `__le__` can compose `__lt__` and `__eq__`.
 
 Use the Flow status while stepping to see whether execution is in `main`, a function, or a qualified method such as `Point.move` or `Point.__add__`.

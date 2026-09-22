@@ -83,19 +83,19 @@ The library list shows all four native libraries and marks which are imported, a
 
 - Restart clears the prior execution's variables and output and prepares a fresh execution at `main` without advancing it. The status becomes Ready and the main execution button shows Run.
 - The input queue remains editable immediately after Restart. If execution is waiting at an Input block, add one or more values to the queue and choose Step, Auto Step, or Run to resume from that block.
-- Step executes one visible block at a time and continues the current execution. Function and method calls enter the called flowchart.
+- Step executes one visible block at a time and continues the current execution. Calls to Functions and Methods defined on the current canvas enter their flowcharts. Calls into imported libraries, including user-defined FlowLab files, run within the calling step without showing their internal blocks, variables, branches, or call stack. The caller stays highlighted until the call returns or needs input. Long library calls remain stoppable.
 - Auto Step repeatedly steps at the speed selected beneath the controls, from 1 to 10 steps per second. You can change the speed while it runs. Use Pause to preserve the current position.
 - Run executes from the current position until completion, a breakpoint, or an input wait. The button stays labeled Run after stepping or pausing. Use Restart to reset execution to the beginning. Stop pauses a longer run while preserving its position, variables, and output. A successful return from `main` shows Completed.
 - Select or hover over a block and use its breakpoint button to pause before that block executes. Run and Auto Step honor breakpoints. A breakpoint at `main` pauses before the first step. Pressing Run from a breakpoint executes that block once; loops can hit the breakpoint again on a later visit.
 - Use Shift+Cmd/Ctrl+R to Restart, Shift+Space to Step, and Shift+Enter to Run. The same commands are available from the Run menu.
 - Text/image loads and `ask()` submissions resume in the execution mode that started them. Stopping an execution prevents it from automatically continuing through subsequent blocks.
 - Editing block code, moving or deleting blocks, changing wires, or changing imports resets execution. Selecting blocks and panning or zooming the canvas lets you inspect the program without restarting it.
-- The Console reports execution status, executed-block count, and the active Flow name. The call-stack breadcrumb shows nested function and method calls, including recursion. The Console also shows current variables, expandable object fields, and stable identities such as `Point #1`. The variable list scrolls independently when it grows long.
+- The Console reports execution status, visible-block count, and the active Flow name. The call-stack breadcrumb shows nested calls within the current canvas, including recursion; library internals are hidden in Step, Auto Step, and Run. The Console also shows current variables, expandable object fields, and stable identities such as `Point #1`. The variable list scrolls independently when it grows long.
 - Output lines and runtime errors appear in the **Output** drawer below the canvas, even when the right sidebar is hidden. The drawer opens on the first output or error of each new run. Click its heading to collapse it; further messages from that run show a **new** count without reopening it. Expand the drawer to read them.
 - Drag the drawer's top divider to adjust its height, or focus the divider and use Up/Down arrow keys (Home for minimum height, End for maximum). New output scrolls into view automatically until you scroll up to read earlier messages; scroll back to the bottom to resume following it.
 - The current node and the wire used to reach it are highlighted while stepping. The amber wire moves after every block and remains visible while waiting for input or after completion. Restart clears it. Variables changed by the most recent step are highlighted, and branch feedback shows the evaluated condition and result, such as `n > 0 → True`, along with the selected wire.
 - Long multiline variable previews are shortened in the sidebar. Imported `image` and `turtle` libraries add draggable visual panels to the runtime sidebar. Drag either panel by its heading to reposition it, or double-click its canvas to enlarge it over the app. Use Close or Escape to return to the sidebar. Run, Step, and Restart keyboard shortcuts also work while a canvas is enlarged.
-- FlowLab stops runaway execution after 1,000,000 executed blocks or 100 active nested calls.
+- FlowLab stops runaway execution after 1,000,000 executed blocks or 100 active nested calls. These safety limits include work inside libraries.
 
 ## Use input
 
@@ -103,7 +103,7 @@ The library list shows all four native libraries and marks which are imported, a
 - FlowLab parses numbers, `True`/`False`, quoted strings, lists, and dictionaries. Other text becomes an unquoted String.
 - Input blocks consume the active flow's queue in order. Execution shows `Waiting` when that queue is empty.
 - Function and Method arguments form a local input queue for that call. Place Input blocks at the start of the called flow to bind those arguments in order.
-- The sidebar switches to the active queue while stepping inside a call.
+- The sidebar switches to the active queue while stepping inside a call on the current canvas. A library's internal queue stays hidden unless the call is waiting for additional input; supply the missing values there and resume execution.
 - The input queue is editable before execution, immediately after Restart, after completion or an error, and when execution is waiting for queued input. During other active execution states it shows the active queue as read-only. Values typed while waiting in `main` are retained for the next Restart; a called function's queue belongs to that invocation.
 - `ask()` opens an input dialog and parses the submitted value with the same rules as the input queue. A blank submission returns an empty String; in the queue, use `""` because blank lines are skipped.
 
