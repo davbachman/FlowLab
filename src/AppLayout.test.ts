@@ -333,7 +333,7 @@ describe('app layout scrolling', () => {
 
     expect(declarationsFor('.workspace', compact)).toMatchObject({
       'grid-template-columns': 'minmax(0, 1fr)',
-      'grid-template-rows': 'minmax(0, 1fr)',
+      'grid-template-rows': 'minmax(0, 1fr) auto',
       overflow: 'hidden',
     })
     expect(declarationsFor('.canvas-shell', compact)).toMatchObject({

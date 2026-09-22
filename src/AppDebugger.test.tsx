@@ -88,6 +88,56 @@ describe('debugger controls and feedback', () => {
     expect(within(output()).getAllByText('first', { exact: true })).toHaveLength(1)
   })
 
+  it('shows output independently of a hidden sidebar or a large variable list', async () => {
+    render(<App />)
+    await loadProgram(makeProgram([
+      ['main', 'function', 'main'],
+      ['variables', 'process', Array.from({ length: 60 }, (_, index) => `value_${index} <- ${index}`).join('\n')],
+      ['output', 'output', '"Visible result"'], ['end', 'return', '0'],
+    ], [['main', 'variables'], ['variables', 'output'], ['output', 'end']]))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide right sidebar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Run' }))
+    expect(screen.getByRole('log', { name: 'Program output' })).toHaveTextContent('Visible result')
+    expect(screen.getByRole('log')).toBeVisible()
+    const sidebar = screen.getByLabelText('Runtime sidebar')
+    expect(sidebar).not.toBeVisible()
+    expect(sidebar).not.toContainElement(output())
+    fireEvent.click(screen.getByRole('button', { name: 'Show right sidebar' }))
+    expect(screen.getByLabelText('Variable values').querySelectorAll('dt')).toHaveLength(60)
+    expect(screen.getByRole('log')).toBeVisible()
+  })
+
+  it('keeps a manually collapsed drawer closed during a run and reopens it on the next run', async () => {
+    render(<App />)
+    await loadProgram(makeProgram([
+      ['main', 'function', 'main'], ['first', 'output', '"first"'],
+      ['second', 'output', '"second"'], ['end', 'return', '0'],
+    ], [['main', 'first'], ['first', 'second'], ['second', 'end']]))
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse output' }))
+    fireEvent.click(executionButton('Run'))
+    expect(screen.queryByRole('log')).not.toBeInTheDocument()
+    expect(within(output()).getByRole('status')).toHaveTextContent('1 new')
+    fireEvent.click(executionButton('Run'))
+    expect(screen.getByRole('log')).toBeVisible()
+    expect(within(output()).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('reveals runtime errors when the sidebar is hidden', async () => {
+    render(<App />)
+    await loadProgram(makeProgram([
+      ['main', 'function', 'main'], ['error', 'assignment', 'x <- 1 / 0'], ['end', 'return', '0'],
+    ], [['main', 'error'], ['error', 'end']]))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide right sidebar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Run menu' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Run' }))
+    expect(screen.getByRole('alert')).toHaveTextContent(/zero/i)
+    expect(screen.getByRole('alert')).toBeVisible()
+    expect(output()).toContainElement(screen.getByRole('alert'))
+  })
+
   it.each(['Run', 'Auto Step'])('honors a starting breakpoint after Restart with %s and continues from it', async (action) => {
     render(<App />)
     await loadProgram(makeProgram([

@@ -49,4 +49,22 @@ describe('compact workspace', () => {
     expect(tabs.getByRole('button', { name: 'Canvas' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('region', { name: 'Visual editor' })).toHaveAttribute('data-node-placement-active', 'true')
   })
+
+  it('keeps output visible below every compact workspace view', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Examples' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Basic' }))
+    const tabs = within(screen.getByRole('navigation', { name: 'Workspace view' }))
+    const canvas = within(screen.getByRole('region', { name: 'Visual editor' }))
+    await user.click(canvas.getByRole('button', { name: 'Run' }))
+    expect(screen.getByRole('log', { name: 'Program output' })).toBeVisible()
+    expect(tabs.getByRole('button', { name: 'Canvas' })).toHaveAttribute('aria-pressed', 'true')
+    for (const name of ['Console', /Blocks/, 'Canvas']) {
+      await user.click(tabs.getByRole('button', { name }))
+      expect(screen.getByRole('log', { name: 'Program output' })).toBeVisible()
+    }
+    await user.click(screen.getByRole('button', { name: 'Collapse output' }))
+    expect(screen.getByRole('button', { name: 'Expand output' })).toBeVisible()
+  })
 })

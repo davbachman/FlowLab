@@ -2487,13 +2487,13 @@ describe('App', () => {
       name: /Resize right sidebar/i,
     })
 
-    expect(sidebar).toHaveStyle({ width: '420px' })
+    expect(sidebar).toHaveStyle({ width: '340px' })
 
     fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 })
     fireEvent.pointerMove(window, { clientX: 420, pointerId: 1 })
     fireEvent.pointerUp(window, { clientX: 420, pointerId: 1 })
 
-    expect(sidebar).toHaveStyle({ width: '500px' })
+    expect(sidebar).toHaveStyle({ width: '420px' })
   })
 
   it('lets students resize the left sidebar', () => {
@@ -2504,15 +2504,15 @@ describe('App', () => {
       name: /Resize left sidebar/i,
     })
 
-    expect(sidebar).toHaveStyle({ width: '260px' })
-    expect(handle).toHaveAttribute('aria-valuenow', '260')
+    expect(sidebar).toHaveStyle({ width: '220px' })
+    expect(handle).toHaveAttribute('aria-valuenow', '220')
 
-    fireEvent.pointerDown(handle, { clientX: 260, pointerId: 1 })
-    fireEvent.pointerMove(window, { clientX: 340, pointerId: 1 })
-    fireEvent.pointerUp(window, { clientX: 340, pointerId: 1 })
+    fireEvent.pointerDown(handle, { clientX: 220, pointerId: 1 })
+    fireEvent.pointerMove(window, { clientX: 300, pointerId: 1 })
+    fireEvent.pointerUp(window, { clientX: 300, pointerId: 1 })
 
-    expect(sidebar).toHaveStyle({ width: '340px' })
-    expect(handle).toHaveAttribute('aria-valuenow', '340')
+    expect(sidebar).toHaveStyle({ width: '300px' })
+    expect(handle).toHaveAttribute('aria-valuenow', '300')
   })
 
   it('hides and restores either sidebar from the header controls', async () => {
@@ -2571,13 +2571,13 @@ describe('App', () => {
     const imageSlot = sidebar.querySelector<HTMLElement>(
       '[data-runtime-panel-id="image"]',
     )
-    const outputSlot = sidebar.querySelector<HTMLElement>(
-      '[data-runtime-panel-id="output"]',
+    const variablesSlot = sidebar.querySelector<HTMLElement>(
+      '[data-runtime-panel-id="variables"]',
     )
 
     expect(turtleSlot).not.toBeNull()
     expect(imageSlot).not.toBeNull()
-    expect(outputSlot).not.toBeNull()
+    expect(variablesSlot).not.toBeNull()
 
     const turtleHeader = within(turtleSlot as HTMLElement).getByTitle(
       /Drag to reposition the Turtle panel/i,
@@ -2599,8 +2599,8 @@ describe('App', () => {
     } as unknown as DataTransfer
 
     fireEvent.dragStart(turtleHeader, { dataTransfer })
-    fireEvent.dragOver(outputSlot as HTMLElement, { dataTransfer })
-    fireEvent.drop(outputSlot as HTMLElement, { dataTransfer })
+    fireEvent.dragOver(variablesSlot as HTMLElement, { dataTransfer })
+    fireEvent.drop(variablesSlot as HTMLElement, { dataTransfer })
     fireEvent.dragEnd(turtleHeader, { dataTransfer })
 
     const panelOrder = Array.from(

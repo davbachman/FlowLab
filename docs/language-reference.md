@@ -67,7 +67,7 @@ Step normally executes all the lines in a Process block together. A Function or 
 
 - Input blocks contain only a variable name, such as `answer`, which receives the next value from the active input queue. An empty queue pauses execution at that Input block; add values and use Step, Auto Step, or Run to resume.
 - The queue contains one value per nonblank line. Numbers, `True`/`False`, quoted Strings, Lists, and Dictionaries are parsed as values. Other text stays a String: `2 + 3` is text, while `[2 + 3]` is a List containing `5`. Use `""` to queue an empty String.
-- Output blocks contain an expression, such as `"Total: " + total`, and append its value to the Console output. Strings display without surrounding quotes; Strings nested in Lists or Dictionaries retain quotes. Object formatting is described in [Classes and objects](classes-and-objects.md).
+- Output blocks contain an expression, such as `"Total: " + total`, and append its value to the Output drawer below the canvas. Strings display without surrounding quotes; Strings nested in Lists or Dictionaries retain quotes. Object formatting is described in [Classes and objects](classes-and-objects.md).
 - Return evaluates an expression, ends the current Function or Method, and sends the value back to its caller.
 - Return from `main` halts the program.
 
@@ -87,7 +87,7 @@ A Function block contains its name only, such as `double`, and its outgoing wire
 
 Arguments become the called Function's input queue, in order. For example, build `Function: double → Input: number → Return: number * 2`, then use `result <- double(6)` in an Assignment or Process block to set `result` to `12`. For two arguments, put two Input blocks at the start of the called flow. A call with no arguments uses `helper()`.
 
-Each call has its own variables and queue, including recursive calls. It cannot read the caller's local variables directly; pass the values it needs as arguments. Return restores the caller's variables and queue and resumes the expression containing the call. Output from called Functions appears in the same Console. Functions can return any supported value, including a List, Dictionary, or Object.
+Each call has its own variables and queue, including recursive calls. It cannot read the caller's local variables directly; pass the values it needs as arguments. Return restores the caller's variables and queue and resumes the expression containing the call. Output from called Functions appears in the same Output drawer. Functions can return any supported value, including a List, Dictionary, or Object.
 
 ## Calls and built-ins
 

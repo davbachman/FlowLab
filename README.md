@@ -40,6 +40,7 @@ Open **FlowLab > Reference** inside the app to look up available functions and s
 - Functions, classes, objects, methods, fields, recursion, and Python-style special methods.
 - Numbers, strings, booleans, lists, dictionaries, and expandable object values.
 - Interruptible Run, Restart, Step, adjustable Auto Step, and breakpoints, with arrival-wire highlighting for every block, branch results, changed variables, call-stack breadcrumbs, and active-flow input.
+- A resizable Output drawer that opens for results and runtime errors independently of the sidebar, plus a separately scrolling variable list.
 - Clickable validation issues, connected block insertion, and a canvas-first tabbed layout on smaller screens.
 - Automatic local draft recovery, visible save status, and support for reopening unfinished programs.
 - File > Clear empties the current canvas while retaining imports and settings, with Undo to restore it.

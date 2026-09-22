@@ -83,6 +83,7 @@ import {
 } from './lib/turtle'
 import { LoopbackEdge } from './components/LoopbackEdge'
 import { AdaptiveSmoothStepEdge } from './components/AdaptiveSmoothStepEdge'
+import { OutputDrawer } from './components/OutputDrawer'
 import { cleanUpProgram } from './lib/codeCleanup'
 import { adaptiveFlowNodeWidth, minimumFlowNodeWidth } from './lib/flowLayout'
 import { combineNodesIntoProcess } from './lib/processConsolidation'
@@ -247,7 +248,7 @@ interface ViewportSize {
 
 type ToolbarMenuName = 'flowlab' | 'file' | 'edit' | 'run' | 'examples'
 
-type RuntimePanelId = 'turtle' | 'image' | 'variables' | 'output'
+type RuntimePanelId = 'turtle' | 'image' | 'variables'
 type ExpandableCanvasId = Extract<RuntimePanelId, 'turtle' | 'image'>
 type CanvasFocusTarget = HTMLElement | SVGSVGElement
 type AppShortcutCommand = 'reset' | 'step' | 'run'
@@ -353,11 +354,10 @@ const MULTI_SELECTION_KEY_CODES = [
   'Control',
   'Shift',
 ] satisfies KeyCode
-const DEFAULT_SIDEBAR_WIDTH = 420
+const DEFAULT_SIDEBAR_WIDTH = 340
 const MIN_SIDEBAR_WIDTH = 340
 const MAX_SIDEBAR_WIDTH = 720
-const DEFAULT_PALETTE_WIDTH = 260
-const TABLET_DEFAULT_PALETTE_WIDTH = 220
+const DEFAULT_PALETTE_WIDTH = 220
 const MIN_PALETTE_WIDTH = 180
 const MAX_PALETTE_WIDTH = 520
 const SIDEBAR_KEYBOARD_RESIZE_STEP = 16
@@ -377,8 +377,8 @@ const DEFAULT_RUNTIME_PANEL_ORDER: RuntimePanelId[] = [
   'turtle',
   'image',
   'variables',
-  'output',
 ]
+const EMPTY_OUTPUT: readonly string[] = []
 const RUNTIME_PANEL_DRAG_MIME = 'application/x-flowlab-runtime-panel'
 const EMPTY_IMPORT_RESOLUTION: ImportResolution = {
   files: [],
@@ -459,14 +459,13 @@ function App() {
   )
   const [importsLoading, setImportsLoading] = useState(!!recoveryStart.draft?.program.imports?.trim())
   const [execution, setExecution] = useState<ExecutionState | null>(null)
+  const [outputRunId, setOutputRunId] = useState(0)
   const [autoStepEnabled, setAutoStepEnabled] = useState(false)
   const [autoStepSpeed, setAutoStepSpeed] = useState(DEFAULT_AUTO_STEP_SPEED)
   const [runEnabled, setRunEnabled] = useState(false)
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set())
   const [pauseReason, setPauseReason] = useState('')
-  const [paletteWidth, setPaletteWidth] = useState(() =>
-    defaultPaletteWidthForViewport(viewportSize.width),
-  )
+  const [paletteWidth, setPaletteWidth] = useState(DEFAULT_PALETTE_WIDTH)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH)
   const [leftSidebarVisible, setLeftSidebarVisible] = useState(true)
   const [rightSidebarVisible, setRightSidebarVisible] = useState(true)
@@ -523,7 +522,6 @@ function App() {
   const quickAddRef = useRef<HTMLFormElement | null>(null)
   const quickAddTriggerRef = useRef<HTMLElement | null>(null)
   const lastNodePlacementAtRef = useRef(0)
-  const paletteWidthWasResizedRef = useRef(false)
   const processedImageSaveRequestsRef = useRef(
     new WeakSet<ImageSaveRequest>(),
   )
@@ -665,12 +663,6 @@ function App() {
   }, [edges, flowInstance, nodes])
 
   useEffect(() => {
-    if (!paletteWidthWasResizedRef.current) {
-      setPaletteWidth(defaultPaletteWidthForViewport(viewportSize.width))
-    }
-  }, [viewportSize.width])
-
-  useEffect(() => {
     if (!sidebarResizeDrag) {
       return
     }
@@ -681,7 +673,6 @@ function App() {
       const horizontalMovement = event.clientX - drag.startX
 
       if (drag.side === 'left') {
-        paletteWidthWasResizedRef.current = true
         setPaletteWidth(
           clampPaletteWidth(drag.startWidth + horizontalMovement),
         )
@@ -1833,6 +1824,7 @@ function App() {
     skipBreakpointRef.current = false
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
+    setOutputRunId((id) => id + 1)
     setExecution(
       createExecution(program, parseInputQueue(effectiveInputQueueText), {
         importedPrograms,
@@ -1899,6 +1891,7 @@ function App() {
     setPauseReason('')
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
+    if (!execution) setOutputRunId((id) => id + 1)
     setExecution((currentExecution) => {
       const activeExecution = currentExecution
         ? executionWithEditedInputQueue(currentExecution)
@@ -1917,6 +1910,7 @@ function App() {
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
     const canResume = execution && execution.status !== 'halted' && execution.status !== 'error'
+    if (!canResume) setOutputRunId((id) => id + 1)
     let initialExecution = canResume
       ? executionWithEditedInputQueue(execution)
       : createExecution(program, parseInputQueue(effectiveInputQueueText), {
@@ -1974,6 +1968,9 @@ function App() {
 
     setWaitingInputQueueDraft(null)
     setInputQueueText(effectiveInputQueueText)
+    if (!execution || execution.status === 'halted' || execution.status === 'error') {
+      setOutputRunId((id) => id + 1)
+    }
     setExecution((currentExecution) => {
       if (currentExecution?.status === 'waiting') {
         const suppliedExecution = replaceExecutionInputQueue(
@@ -2034,7 +2031,6 @@ function App() {
         : -SIDEBAR_KEYBOARD_RESIZE_STEP
 
     if (side === 'left') {
-      paletteWidthWasResizedRef.current = true
       setPaletteWidth((width) =>
         clampPaletteWidth(width + horizontalMovement),
       )
@@ -3600,7 +3596,6 @@ function App() {
           ) : null}
           {execution?.lastStep?.branch ? <p className="branch-feedback" aria-label="Last branch">{execution.lastStep.branch.expression} → {execution.lastStep.branch.label === 'true' ? 'True' : 'False'}</p> : null}
           {message ? <p className="notice">{message}</p> : null}
-          {execution?.error ? <p className="runtime-error">{execution.error}</p> : null}
 
           <div className="runtime-panel-list">
             {runtimePanelOrder.map((panelId) => {
@@ -3635,7 +3630,7 @@ function App() {
                   <section className="variables-panel" aria-label="Variables">
                     <h3>Variables</h3>
                     {variableEntries.length ? (
-                      <dl className="variable-list">
+                      <dl className="variable-list" tabIndex={0} aria-label="Variable values">
                         {variableEntries.map(([name, value]) => (
                           <div className={`variable-row${execution?.lastStep?.changedVariables.some((change) => change.name === name) ? ' variable-row-changed' : ''}`} key={name} title={execution?.lastStep?.changedVariables.some((change) => change.name === name) ? 'Changed in last step' : undefined}>
                             <dt>{name}</dt>
@@ -3652,20 +3647,7 @@ function App() {
                       <p className="empty-variables">No variables yet</p>
                     )}
                   </section>
-                ) : (
-                  <section className="output-log" aria-label="Output">
-                    <h3>Output</h3>
-                    {execution?.output.length ? (
-                      execution.output.map((line, index) => (
-                        <div className="console-line" key={`${line}-${index}`}>
-                          {renderConsoleLine(line)}
-                        </div>
-                      ))
-                    ) : (
-                      <p className="empty-output">No output yet</p>
-                    )}
-                  </section>
-                )
+                ) : null
 
               if (!panel) {
                 return null
@@ -3692,6 +3674,12 @@ function App() {
             })}
           </div>
         </aside>
+        <OutputDrawer
+          runId={execution ? outputRunId : null}
+          lines={execution?.output ?? EMPTY_OUTPUT}
+          error={execution?.error}
+          viewportHeight={viewportSize.height}
+        />
       </section>
       {quickAddRequest ? (
         <form
@@ -4916,17 +4904,6 @@ function TurtlePanel({
   )
 }
 
-function renderConsoleLine(line: string) {
-  const parts = line.split('\n')
-
-  return parts.map((part, index) => (
-    <Fragment key={`${part}-${index}`}>
-      {part}
-      {index < parts.length - 1 ? <br /> : null}
-    </Fragment>
-  ))
-}
-
 function turtleViewBoxBounds(turtle: TurtleState): TurtleViewBoxBounds {
   const points = [
     { x: 0, y: 0 },
@@ -5037,12 +5014,6 @@ function formatSvgNumber(value: number): string {
 
 function clampSidebarWidth(width: number): number {
   return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width))
-}
-
-function defaultPaletteWidthForViewport(viewportWidth: number): number {
-  return viewportWidth > 720 && viewportWidth <= 980
-    ? TABLET_DEFAULT_PALETTE_WIDTH
-    : DEFAULT_PALETTE_WIDTH
 }
 
 function clampPaletteWidth(width: number): number {

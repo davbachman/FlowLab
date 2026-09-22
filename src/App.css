@@ -6,6 +6,7 @@
   height: var(--app-viewport-height, 100vh);
   min-height: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr;
   overflow: hidden;
   background: #f6f7f9;
@@ -431,7 +432,8 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-columns: min(var(--palette-sidebar-width, 260px), 26vw) minmax(0, 1fr) min(var(--runtime-sidebar-width, 420px), 38vw);
+  grid-template-columns: min(var(--palette-sidebar-width, 220px), 26vw) minmax(0, 1fr) min(var(--runtime-sidebar-width, 340px), 38vw);
+  grid-template-rows: minmax(0, 1fr) auto;
   overflow: auto;
 }
 
@@ -447,6 +449,7 @@ button:disabled {
 .palette {
   position: relative;
   grid-column: 1;
+  grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
@@ -456,6 +459,7 @@ button:disabled {
 .console-panel {
   position: relative;
   grid-column: 3;
+  grid-row: 1 / span 2;
   border-left: 1px solid #d8dde6;
 }
 
@@ -665,6 +669,7 @@ button:disabled {
 .canvas-shell {
   position: relative;
   grid-column: 2;
+  grid-row: 1;
   min-height: 0;
   background: #eef2f7;
 }
@@ -1312,7 +1317,7 @@ textarea {
 
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr) minmax(0, 1fr);
   gap: 8px;
   margin: 14px 0;
 }
@@ -1370,18 +1375,12 @@ textarea {
 
 .runtime-panel-slot > .variables-panel,
 .runtime-panel-slot > .turtle-panel,
-.runtime-panel-slot > .image-panel,
-.runtime-panel-slot > .output-log {
+.runtime-panel-slot > .image-panel {
   margin-top: 0;
 }
 
-.output-log {
-  margin-top: 16px;
-}
-
 .variables-panel,
-.turtle-panel,
-.output-log {
+.turtle-panel {
   margin-top: 16px;
 }
 
@@ -1390,8 +1389,7 @@ textarea {
 }
 
 .variables-panel h3,
-.turtle-panel h3,
-.output-log h3 {
+.turtle-panel h3 {
   margin: 0 0 8px;
   font-size: 14px;
 }
@@ -1544,8 +1542,77 @@ textarea {
   margin: 0;
   border: 1px solid #e4e7ec;
   border-radius: 6px;
-  overflow: hidden;
+  max-height: min(360px, 35vh);
+  overflow: auto;
 }
+
+.output-drawer {
+  position: relative;
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-top: 1px solid #cbd5e1;
+  background: #ffffff;
+}
+
+.output-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 35px;
+  padding: 0 10px;
+}
+
+.output-drawer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 5px 6px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.output-line-count { color: #667085; font-weight: 400; }
+.output-unread { border-radius: 10px; background: #dbeafe; color: #1d4ed8; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+
+.output-drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px 12px;
+  background: #101828;
+  color: #f2f4f7;
+  overflow-wrap: anywhere;
+}
+
+.output-drawer-body[hidden] { display: none; }
+.output-drawer-body .console-line,
+.output-drawer-body .empty-output { padding: 2px 0; }
+.output-drawer-body .console-line + .console-line { margin-top: 2px; }
+.output-drawer-body .runtime-error { margin: 6px 0 0; }
+.output-drawer-body:focus-visible,
+.variable-list:focus-visible { outline: 2px solid #2f6fd6; outline-offset: -2px; }
+
+.output-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.output-resize-handle:hover,
+.output-resize-handle:focus-visible { background: #93c5fd; outline: none; }
 
 .variable-row {
   display: grid;
@@ -1674,9 +1741,10 @@ textarea {
 
 @media (max-width: 1100px) {
   .topbar { flex-wrap: wrap; gap: 6px 10px; }
-  .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+  .workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; overflow: hidden; }
   .palette, .console-panel { grid-column: 1; grid-row: 1; width: 100% !important; min-height: 0; overflow: auto; border: 0; }
   .canvas-shell { grid-column: 1; grid-row: 1; min-height: 0; }
+  .output-drawer { grid-column: 1; grid-row: 2; }
   .sidebar-resize-handle { display: none; }
   .imports-panel { margin-top: 18px; }
 }
