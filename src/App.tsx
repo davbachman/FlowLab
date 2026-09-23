@@ -55,10 +55,12 @@ import {
   displayFlowLabFileName,
   importWarnings,
   parseImportNames,
+  readFlowLabLibrary,
   registerFlowLabProgram,
   resolveFlowLabImports,
   type FlowLabDirectoryHandle,
   type ImportResolution,
+  type ImportedProgramFile,
 } from './lib/imports'
 import { stringifyValue } from './lib/expression'
 import {
@@ -453,6 +455,13 @@ function App() {
   const [importDirectoryHandle, setImportDirectoryHandle] =
     useState<FlowLabDirectoryHandle | null>(null)
   const [importDirectoryName, setImportDirectoryName] = useState('')
+  const [selectedLibraryFiles, setSelectedLibraryFiles] = useState<ImportedProgramFile[]>([])
+  const [libraryFileFeedback, setLibraryFileFeedback] = useState<{
+    draftId: string
+    status: 'loading' | 'success' | 'error'
+    message: string
+  } | null>(null)
+  const visibleLibraryFileFeedback = libraryFileFeedback?.draftId === draftId ? libraryFileFeedback : null
   const [importResolution, setImportResolution] = useState<ImportResolution>(
     EMPTY_IMPORT_RESOLUTION,
   )
@@ -520,6 +529,8 @@ function App() {
     Partial<Record<AppShortcutCommand, ShortcutCommand>>
   >({})
   const importFileInputRef = useRef<HTMLInputElement | null>(null)
+  const libraryFileInputRef = useRef<HTMLInputElement | null>(null)
+  const libraryFileRequestRef = useRef(0)
   const quickAddRef = useRef<HTMLFormElement | null>(null)
   const quickAddTriggerRef = useRef<HTMLElement | null>(null)
   const lastNodePlacementAtRef = useRef(0)
@@ -752,6 +763,7 @@ function App() {
 
     void resolveFlowLabImports(importNamesText, {
       directoryHandle: importDirectoryHandle,
+      selectedFiles: selectedLibraryFiles,
     })
       .then((resolution) => {
         if (cancelled) {
@@ -781,7 +793,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [draftId, importDirectoryHandle, importNamesText])
+  }, [draftId, importDirectoryHandle, importNamesText, selectedLibraryFiles])
 
   useEffect(() => {
     if (execution?.status !== 'loading' || !execution.textRequest) {
@@ -2852,6 +2864,35 @@ function App() {
     }
   }
 
+  async function addLibraryFile(file: File | undefined): Promise<void> {
+    if (!file) return
+    const request = ++libraryFileRequestRef.current
+    const documentRequest = documentLoadRequestRef.current
+    const targetDraftId = documentStateRef.current.draftId
+    const isCurrentRequest = () => request === libraryFileRequestRef.current &&
+      documentRequest === documentLoadRequestRef.current && targetDraftId === documentStateRef.current.draftId
+    setLibraryFileFeedback({ draftId: targetDraftId, status: 'loading', message: `Reading ${file.name}…` })
+    try {
+      const library = await readFlowLabLibrary(file)
+      if (!isCurrentRequest()) return
+      const currentImports = documentStateRef.current.imports
+      const alreadyListed = parseImportNames(currentImports).some((name) => displayFlowLabFileName(name) === library.name)
+      if (!alreadyListed) pushHistorySnapshot()
+      registerFlowLabProgram(file.name, library.program)
+      setSelectedLibraryFiles((files) => [...files.filter((item) => item.name !== library.name), library])
+      updateImportNames(alreadyListed ? currentImports : [currentImports.trimEnd(), library.name].filter(Boolean).join('\n'))
+      setImportsExpanded(true)
+      setLibraryFileFeedback({ draftId: targetDraftId, status: 'success', message: `Added ${file.name}.` })
+    } catch (error) {
+      if (!isCurrentRequest()) return
+      setLibraryFileFeedback({ draftId: targetDraftId, status: 'error', message: `Could not add ${file.name}: ${error instanceof Error ? error.message : String(error)}` })
+    } finally {
+      if (request === libraryFileRequestRef.current && !isCurrentRequest()) {
+        setLibraryFileFeedback(null)
+      }
+    }
+  }
+
   return (
     <main
       className="app-shell"
@@ -3361,6 +3402,29 @@ function App() {
               <span>Imports</span><span aria-hidden="true">{importsExpanded ? '▾' : '▸'}</span>
             </button></h2>
             <div id="imports-content" hidden={!importsExpanded}>
+            <button
+              type="button"
+              className="add-library-button"
+              disabled={visibleLibraryFileFeedback?.status === 'loading'}
+              onClick={() => libraryFileInputRef.current?.click()}
+            >
+              Add library…
+            </button>
+            <input
+              ref={libraryFileInputRef}
+              className="toolbar-file-input"
+              type="file"
+              accept="application/json,.json"
+              aria-label="Library file"
+              onChange={(event) => {
+                void addLibraryFile(event.target.files?.[0])
+                event.currentTarget.value = ''
+              }}
+            />
+            <p className="import-status">Choose a FlowLab JSON file from Downloads or another folder.</p>
+            {visibleLibraryFileFeedback ? (
+              <p className="import-status" role={visibleLibraryFileFeedback.status === 'error' ? 'alert' : 'status'}>{visibleLibraryFileFeedback.message}</p>
+            ) : null}
             <textarea
               id="imports-list"
               aria-label="Imports list"

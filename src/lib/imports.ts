@@ -47,6 +47,7 @@ export interface FlowLabDirectoryHandle {
 
 interface ImportResolutionOptions {
   directoryHandle?: FlowLabDirectoryHandle | null
+  selectedFiles?: readonly ImportedProgramFile[]
 }
 
 const FLOWLAB_FILE_STORAGE_PREFIX = 'flowlab:file:'
@@ -76,6 +77,16 @@ export function registerFlowLabProgram(name: string, program: Program): void {
       return
     }
   }
+}
+
+export async function readFlowLabLibrary(file: File): Promise<ImportedProgramFile> {
+  const name = displayFlowLabFileName(file.name)
+  if (isNativeLibraryImport(name)) {
+    throw new Error(`Rename this file: "${name}" is reserved for a built-in library.`)
+  }
+  const result = parseProgramSource(await file.text())
+  if (!result.program) throw new Error(result.error)
+  return { name, program: result.program }
 }
 
 export function displayFlowLabFileName(name: string): string {
@@ -111,7 +122,10 @@ export async function resolveFlowLabImports(
       continue
     }
 
-    const result = await loadFlowLabProgram(name, options.directoryHandle)
+    const selected = options.selectedFiles?.find((file) => file.name === displayName)
+    const result = selected
+      ? { program: selected.program, error: '' }
+      : await loadFlowLabProgram(name, options.directoryHandle)
 
     if (result.program) {
       files.push({ name: displayName, program: result.program })
@@ -373,7 +387,7 @@ async function loadFetchedProgram(
 ): Promise<{ program?: Program; error: string }> {
   if (!globalThis.fetch) {
     return {
-      error: 'FlowLab file was not found. Import the JSON file once before referencing it by name.',
+      error: 'FlowLab file was not found. Use Add library… in Imports to select its JSON file.',
     }
   }
 
@@ -397,7 +411,7 @@ async function loadFetchedProgram(
   }
 
   return {
-    error: 'FlowLab file was not found. Import the JSON file once before referencing it by name.',
+    error: 'FlowLab file was not found. Use Add library… in Imports to select its JSON file.',
   }
 }
 

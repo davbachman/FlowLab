@@ -666,6 +666,11 @@ button:disabled {
   font-size: 13px;
 }
 
+.add-library-button {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
 .canvas-shell {
   position: relative;
   grid-column: 2;

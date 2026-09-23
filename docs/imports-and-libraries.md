@@ -16,6 +16,7 @@
 ## Add imports
 
 - Open the Imports heading in the Blocks sidebar and enter imports one per line or comma-separated, for example `math, text, helpers`. The `.json` suffix is optional for FlowLab program files. Native library names are case-insensitive; use the function names exactly as listed below.
+- For a library saved on your computer, choose **Add library…** under Imports and select its FlowLab JSON file from Downloads or any other folder. FlowLab validates the file, adds its name to Imports, and makes its Functions and Classes available while keeping the current canvas and input queue. Select the file again to use an updated copy; its name is not added twice. Invalid files leave the current library unchanged. The names `math`, `text`, `image`, and `turtle` are reserved for built-in libraries, so use another filename for your own library.
 - The panel reports loading progress, resolved files and native libraries, available Classes and Functions, conflicts, and errors.
 - A JSON import contributes its non-`main` Functions and its Classes with the Methods attached to those Classes.
 - Imported calls run as part of the calling block in Step and Auto Step. Their internal blocks, local variables, branches, and call stack stay hidden during execution, just like native library calls. Results, output, and runtime errors remain visible. Input requests still pause execution, and Stop can interrupt a long call. To step through a library's implementation, open its FlowLab file as the current program.
@@ -28,11 +29,12 @@ Choose **FlowLab → Reference** for an in-app list of available function signat
 
 FlowLab resolves JSON names in this order:
 
-1. The chosen programs folder.
-2. Programs previously imported or exported in this browser.
-3. A URL or relative path the browser can fetch.
+1. A file explicitly selected with **Add library…** in the current tab.
+2. The chosen programs folder.
+3. Programs previously added, loaded, or saved in this browser.
+4. A URL or relative path the browser can fetch.
 
-Import a file once if the browser cannot otherwise find it by name. See [Saving and loading](saving-and-loading.md) for the programs-folder workflow.
+Downloading a program does not give FlowLab access to your Downloads folder. Use **Add library…** to select a file it cannot find by name. A copy is kept in browser storage when available; external edits to the file are picked up when you select it again. See [Saving and loading](saving-and-loading.md) for the programs-folder workflow.
 
 Imported JSON must be a valid, complete FlowLab program, including its own `main` and Return, even though its `main` is not imported. Its saved Imports list is not resolved recursively. Each imported file is validated on its own, so calls to another file or a native library can prevent it from loading; its call targets must be defined in that file or be [core functions](language-reference.md#calls-and-built-ins).
 

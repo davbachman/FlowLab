@@ -1,9 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   callableImportedClassNames,
   callableImportedFunctionNames,
   displayFlowLabFileName,
   importWarnings,
+  readFlowLabLibrary,
   resolveFlowLabImports,
 } from './imports'
 import type { Program } from './types'
@@ -56,6 +57,23 @@ const pointFunctionProgram: Program = {
 }
 
 describe('imports', () => {
+  it('reads a selected library and gives it priority over a same-named folder file', async () => {
+    const file = new File([JSON.stringify(helperProgram)], 'helpers.json')
+    const selected = await readFlowLabLibrary(file)
+    const directoryHandle = { getFileHandle: vi.fn() }
+    const resolution = await resolveFlowLabImports('helpers.json', { selectedFiles: [selected], directoryHandle })
+    expect(resolution.errors).toEqual([])
+    expect(resolution.files).toEqual([{ name: 'helpers', program: helperProgram }])
+    expect(directoryHandle.getFileHandle).not.toHaveBeenCalled()
+  })
+
+  it('rejects unfinished libraries and filenames reserved for native libraries', async () => {
+    await expect(readFlowLabLibrary(new File([JSON.stringify({ version: 1, nodes: [], edges: [] })], 'empty.json')))
+      .rejects.toThrow(/main/)
+    await expect(readFlowLabLibrary(new File([JSON.stringify(helperProgram)], 'Math.json')))
+      .rejects.toThrow(/reserved for a built-in library/)
+  })
+
   it('resolves turtle as a native library without loading a JSON file', async () => {
     const resolution = await resolveFlowLabImports('turtle')
 

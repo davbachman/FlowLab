@@ -57,7 +57,9 @@ Browser recovery is separate from a saved JSON file. It is specific to this brow
 
 When the browser supports folder access, the first Save can establish a programs folder. FlowLab reuses that folder to resolve later program imports by name.
 
-Import resolution also remembers programs previously imported or exported in the browser, then falls back to a URL or browser-readable relative path. See [Imports and native libraries](imports-and-libraries.md) for the full resolution and conflict rules.
+When Save downloads a file, FlowLab does not gain access to the Downloads folder. To use a local file as a library, open **Imports → Add library…** and select its JSON file. This adds the library without replacing the program on the canvas. Select the file again after editing it elsewhere.
+
+Files selected with Add library take priority in the current tab. Import resolution also remembers programs previously added, loaded, or saved in the browser, then falls back to a URL or browser-readable relative path. See [Imports and native libraries](imports-and-libraries.md) for the full resolution and conflict rules.
 
 ## What a file preserves
 

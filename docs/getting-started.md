@@ -68,7 +68,7 @@ Choose Edit > Clean up code to safely merge short, adjacent Process blocks and a
 
 Open **FlowLab > Reference** to see the functions currently available to your program, including core built-ins, functions on the canvas, imported FlowLab functions, and imported native-library functions. Entries show call syntax and short descriptions; user-defined functions use `name(…)`, so inspect their Input blocks for argument order.
 
-The library list shows all four native libraries and marks which are imported, along with loaded FlowLab files. Native-library functions appear in the function list only after you import their library. Open **Imports** in the left sidebar to change the list. The **Special methods** reference below the palette lists the supported object methods and their expected Input counts. See [Classes and objects](classes-and-objects.md) and [Imports and native libraries](imports-and-libraries.md) for complete examples.
+The library list shows all four native libraries and marks which are imported, along with loaded FlowLab files. Native-library functions appear in the function list only after you import their library. Open **Imports** in the left sidebar to change the list, or choose **Add library…** there to select a FlowLab JSON library from Downloads or another folder without replacing the current canvas. The **Special methods** reference below the palette lists the supported object methods and their expected Input counts. See [Classes and objects](classes-and-objects.md) and [Imports and native libraries](imports-and-libraries.md) for complete examples.
 
 ## Validate a program
 
