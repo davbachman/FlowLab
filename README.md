@@ -12,7 +12,7 @@ Created by David Bachman with GPT 5.5 and GPT 5.6 sol. Learn more about David at
 2. Add executable blocks below it. Use a Process block to keep several related assignments and function calls together.
 3. Connect the blocks with wires and add a Return block to finish the flow.
 4. Resolve every item shown under Validation.
-5. Press Step to inspect execution one block at a time, or Run to execute from the current position until completion, a breakpoint, or an input wait. Restart resets execution to the beginning.
+5. Press Step to inspect execution one block at a time, or Run to execute from the current position until completion, a breakpoint, or an input wait. Run hides debugger details and skips their computation for speed; Step and Auto Step show them. Restart resets execution to the beginning.
 
 See [Getting started](docs/getting-started.md) for the complete editor and execution walkthrough.
 

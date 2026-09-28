@@ -889,7 +889,7 @@ describe('App', () => {
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
-    const stepsStatus = within(runtimeSidebar())
+    const stepsStatus = () => within(runtimeSidebar())
       .getByText(/^Steps$/i)
       .closest('div')
 
@@ -904,7 +904,7 @@ describe('App', () => {
     expect(
       fireEvent.keyDown(window, { key: 'r', ctrlKey: true, shiftKey: true }),
     ).toBe(false)
-    expect(stepsStatus).toHaveTextContent('0')
+    expect(stepsStatus()).toHaveTextContent('0')
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute(
       'aria-current',
       'step',
@@ -917,7 +917,7 @@ describe('App', () => {
         shiftKey: true,
       }),
     ).toBe(false)
-    expect(stepsStatus).toHaveTextContent('1')
+    expect(stepsStatus()).toHaveTextContent('1')
     expect(screen.getByTestId('flow-node-input-n')).toHaveAttribute(
       'aria-current',
       'step',
@@ -1507,7 +1507,9 @@ describe('App', () => {
       'xy',
     )
 
-    await user.click(executionButton(/^Run$/i))
+    for (let i = 0; i < 100 && !screen.queryByText(/^Completed$/i); i++) {
+      await user.click(executionButton(/^Step$/i))
+    }
 
     const output = screen.getByRole('region', { name: /Output/i })
     expect(within(output).getByText('Point(7, 2)')).toBeInTheDocument()
@@ -2085,7 +2087,7 @@ describe('App', () => {
       await user.click(executionButton(/^Run$/i))
 
       expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
-      expect(screen.getByTestId('flow-node-input-n')).toHaveAttribute(
+      expect(screen.getByTestId('flow-node-input-n')).not.toHaveAttribute(
         'aria-current',
         'step',
       )
@@ -2143,7 +2145,7 @@ describe('App', () => {
 
     const inputQueue = screen.getByLabelText(/Input queue/i)
     await user.click(executionButton(/^Run$/i))
-    expect(screen.getByTestId('flow-node-input-a')).toHaveAttribute(
+    expect(screen.getByTestId('flow-node-input-a')).not.toHaveAttribute(
       'aria-current',
       'step',
     )
@@ -2220,7 +2222,7 @@ describe('App', () => {
     await user.click(executionButton(/^Run$/i))
     const inputQueue = screen.getByLabelText(/Input queue/i)
     expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
-    expect(screen.getByTestId('flow-node-input-list')).toHaveAttribute(
+    expect(screen.getByTestId('flow-node-input-list')).not.toHaveAttribute(
       'aria-current',
       'step',
     )
@@ -2351,9 +2353,7 @@ describe('App', () => {
     const imageCanvas = within(panel).getByTestId('image-canvas')
     expect(imageCanvas).toBeInTheDocument()
     expect(panel).toHaveTextContent('Image #1 · 2 × 1')
-    expect(screen.getByRole('region', { name: /Variables/i })).toHaveTextContent(
-      'Image #1 (2 × 1)',
-    )
+    expect(screen.queryByRole('region', { name: /Variables/i })).not.toBeInTheDocument()
     await waitFor(() => expect(click).toHaveBeenCalledTimes(1))
     expect(putImageData).toHaveBeenCalled()
     expect(screen.getByText(/Image saved as flowlab-image\.png/i)).toBeInTheDocument()
@@ -2695,7 +2695,9 @@ describe('App', () => {
 
     await user.clear(screen.getByLabelText(/Input queue/i))
     await user.type(screen.getByLabelText(/Input queue/i), '3')
-    await user.click(executionButton(/^Run$/i))
+    for (let i = 0; i < 100 && !screen.queryByText(/^Completed$/i); i++) {
+      await user.click(executionButton(/^Step$/i))
+    }
 
     const variables = screen.getByLabelText(/Variables/i)
 
@@ -2718,7 +2720,9 @@ describe('App', () => {
     )
 
     await screen.findByDisplayValue(/line one/)
-    await user.click(executionButton(/^Run$/i))
+    for (let i = 0; i < 100 && !screen.queryByText(/^Completed$/i); i++) {
+      await user.click(executionButton(/^Step$/i))
+    }
 
     const variables = screen.getByLabelText(/Variables/i)
     const value = within(variables).getByText((_, element) => {

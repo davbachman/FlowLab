@@ -179,11 +179,32 @@ describe('React Flow options', () => {
 
     await user.click(controls.getByRole('button', { name: 'Run' }))
     await screen.findByText('Completed', { exact: true })
-    expect(highlightedEdges()).toEqual([
-      expect.objectContaining({ source: 'show-total', target: 'return' }),
-    ])
+    expect(highlightedEdges()).toEqual([])
     await user.click(controls.getByRole('button', { name: 'Restart' }))
     expect(highlightedEdges()).toEqual([])
+  })
+
+  it('keeps canvas nodes and wires stable between fast Run chunks', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Examples' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Basic' }))
+    fireEvent.change(screen.getByLabelText('Input queue'), { target: { value: '100000' } })
+    const controls = within(screen.getByLabelText('Runtime sidebar'))
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(controls.getByRole('button', { name: 'Run' }))
+      const first = reactFlowProps.at(-1)!
+      await act(async () => { vi.runOnlyPendingTimers() })
+      const next = reactFlowProps.at(-1)!
+      expect(next.nodes).toBe(first.nodes)
+      expect(next.edges).toBe(first.edges)
+      expect((next.edges as EditorEdge[]).every(edge => edge.style?.stroke !== '#d97706')).toBe(true)
+      expect(screen.queryByRole('region', { name: 'Variables' })).not.toBeInTheDocument()
+      fireEvent.click(controls.getByRole('button', { name: 'Stop' }))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('replaces an occupied logical output when a new wire is connected', async () => {

@@ -365,6 +365,8 @@ export interface ExecutionState {
   /** Debugger boundary: library internals execute without becoming visible steps. */
   libraryCall?: { caller: ExecutionState; frame: SuspendedFrame }
   hiddenSteps?: number
+  /** False during Run: skip debugger snapshots, variable comparisons, and wire tracking. */
+  collectFeedback?: boolean
 }
 
 export interface ExecutionVariableChange {
@@ -816,9 +818,9 @@ function advance(
   return {
     ...state,
     currentNodeId: edge.target,
-    incomingEdge: { edgeId: edge.id, program: state.program },
+    incomingEdge: state.collectFeedback === false ? undefined : { edgeId: edge.id, program: state.program },
     status: 'running',
-    lastStep: {
+    lastStep: state.collectFeedback === false ? undefined : {
       ...feedbackForNode(state, node),
       ...(branchLabel ? {
         branch: {
@@ -1332,7 +1334,7 @@ function completeReturn(
       turtle,
       returnValue: value,
       status: 'halted',
-      lastStep: feedbackForNode(state, node),
+      lastStep: state.collectFeedback === false ? undefined : feedbackForNode(state, node),
     }
   }
 
@@ -2832,6 +2834,7 @@ function withStepFeedback(
   after: ExecutionState,
   node: ProgramNode,
 ): ExecutionState {
+  if (before.collectFeedback === false) return after
   return {
     ...after,
     lastStep: {

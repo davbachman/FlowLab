@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { runExecutionChunk } from './debugger'
+import { runExecutionChunk, stepExecutionChunk } from './debugger'
 import {
   answerAskExecution,
   completeTextLoadExecution,
@@ -216,5 +216,73 @@ describe('execution feedback', () => {
     expect(stepped.objectHeap[1].fields.value).toBe(2)
     expect(stepped.lastStep?.changedVariables.map((change) => change.name)).toEqual(['self'])
     expect(stepped.output).toEqual([])
+  })
+})
+
+
+describe('fast Run', () => {
+  it('skips traversing unchanged variables and clears prior feedback', () => {
+    const values = [1, 2, 3]
+    const compare = vi.spyOn(values, 'every')
+    const initial = { ...createExecution(loop, []), environment: { values } }
+    const stepped = stepExecutionChunk(initial).state
+    expect(compare).toHaveBeenCalled()
+    expect(stepped.incomingEdge).toBeDefined()
+    compare.mockClear()
+    const result = runExecutionChunk(stepped, { collectFeedback: false, maxMilliseconds: Infinity })
+    expect(compare).not.toHaveBeenCalled()
+    expect(result.state.status).toBe('halted')
+    expect(result.state.returnValue).toBe(0)
+    expect(result.state.lastStep).toBeUndefined()
+    expect(result.state.incomingEdge).toBeUndefined()
+  })
+
+  it('restores feedback when stepping from a fast Run breakpoint', () => {
+    const result = runExecutionChunk(createExecution(loop, []), {
+      collectFeedback: false, breakpoints: new Set(['condition']),
+    })
+    expect(result.reason).toBe('breakpoint')
+    expect(result.state.lastStep).toBeUndefined()
+    const stepped = stepExecutionChunk(result.state).state
+    expect(stepped.lastStep?.branch?.label).toBe('true')
+    expect(stepped.incomingEdge?.edgeId).toBe('condition-decrement')
+    expect(stepExecutionChunk(stepped).state.lastStep?.changedVariables).toEqual([
+      { name: 'n', before: 2, after: 1 },
+    ])
+  })
+
+  it('keeps feedback disabled through async input and recursive returns', () => {
+    const source = program([
+      ['main', 'function', 'main'], ['ask', 'assignment', 'answer <- ask()'],
+      ['output', 'output', 'answer'], ['end', 'return', 'answer'],
+    ], [['main', 'ask'], ['ask', 'output'], ['output', 'end']])
+    const blocked = runExecutionChunk(createExecution(source, []), { collectFeedback: false })
+    expect(blocked.state.status).toBe('asking')
+    const answered = answerAskExecution(blocked.state, '42')
+    expect(answered.lastStep).toBeUndefined()
+    expect(answered.incomingEdge).toBeUndefined()
+    const resumed = runExecutionChunk(answered)
+    expect(resumed.state.output).toEqual(['42'])
+    expect(resumed.state.lastStep).toBeUndefined()
+    const recursiveResult = runExecutionChunk(createExecution(recursive, []), {
+      collectFeedback: false, maxMilliseconds: Infinity,
+    })
+    expect(recursiveResult.state.output).toEqual(['24'])
+    expect(recursiveResult.state.lastStep).toBeUndefined()
+  })
+
+  it('uses a larger step budget while still yielding to the time budget', () => {
+    const cyclic = program([
+      ['main', 'function', 'main'], ['again', 'while', 'True'], ['end', 'return', '0'],
+    ], [['main', 'again'], ['again', 'again', 'true'], ['again', 'end', 'false']])
+    const now = vi.spyOn(performance, 'now').mockReturnValue(0)
+    const result = runExecutionChunk(createExecution(cyclic, []), { collectFeedback: false })
+    expect(result.reason).toBe('yield')
+    expect(result.state.steps).toBe(10000)
+    now.mockReturnValueOnce(0).mockReturnValue(9)
+    const timed = runExecutionChunk(result.state)
+    expect(timed.reason).toBe('yield')
+    expect(timed.state.steps).toBe(10001)
+    now.mockRestore()
   })
 })

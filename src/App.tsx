@@ -472,7 +472,8 @@ function App() {
   const [autoStepSpeed, setAutoStepSpeed] = useState(DEFAULT_AUTO_STEP_SPEED)
   const [runEnabled, setRunEnabled] = useState(false)
   const [libraryStepEnabled, setLibraryStepEnabled] = useState(false)
-  const displayedExecution = useMemo(() => execution ? visibleExecution(execution) : null, [execution])
+  const debugInformationHidden = execution?.collectFeedback === false
+  const displayedExecution = useMemo(() => execution && !debugInformationHidden ? visibleExecution(execution) : null, [execution, debugInformationHidden])
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set())
   const [pauseReason, setPauseReason] = useState('')
   const [paletteWidth, setPaletteWidth] = useState(DEFAULT_PALETTE_WIDTH)
@@ -1248,12 +1249,14 @@ function App() {
       : execution &&
           execution.status !== 'halted' &&
           execution.status !== 'error'
-        ? formatInputQueue(displayedExecution?.inputQueue ?? [])
+        ? debugInformationHidden
+          ? inputQueueText
+          : formatInputQueue(displayedExecution?.inputQueue ?? [])
         : inputQueueText
   const renderEdges = useMemo(() => programToEdges(program, edges).map((edge) => {
     const incomingEdge = displayedExecution?.incomingEdge
     const branch = displayedExecution?.lastStep?.branch
-    const active = incomingEdge?.program === execution?.rootProgram && incomingEdge?.edgeId === edge.id
+    const active = incomingEdge?.program === displayedExecution?.rootProgram && incomingEdge?.edgeId === edge.id
     const activeBranch = active && branch?.program === incomingEdge?.program && branch?.edgeId === edge.id
     return {
       ...edge,
@@ -1261,7 +1264,7 @@ function App() {
       ...(activeBranch ? { label: `${branch.expression} → ${branch.label === 'true' ? 'True' : 'False'}`, labelStyle: { fill: '#92400e', fontWeight: 700 } } : {}),
       interactionWidth: Math.max(edge.interactionWidth ?? 20, 24),
     }
-  }), [program, edges, execution, displayedExecution])
+  }), [program, edges, displayedExecution])
   const selectedEdges = edges.filter((edge) => edge.selected)
   const insertableSelection = selectedEdges.length === 1 && canInsertOnEdge(program, selectedEdges[0].id)
     ? selectedEdges[0]
@@ -1953,6 +1956,7 @@ function App() {
       initialExecution = { ...initialExecution, status: 'running' }
     }
     const result = runExecutionChunk(initialExecution, {
+      collectFeedback: false,
       breakpoints,
       skipCurrentBreakpoint: canContinueExecution,
     })
@@ -2003,6 +2007,7 @@ function App() {
       setOutputRunId((id) => id + 1)
     }
     setExecution((currentExecution) => {
+      if (currentExecution) currentExecution = { ...currentExecution, collectFeedback: true }
       if (currentExecution?.status === 'waiting') {
         const suppliedExecution = replaceExecutionInputQueue(
           currentExecution,
@@ -3662,14 +3667,18 @@ function App() {
               <dt>Status</dt>
               <dd>{executionStatusLabel}</dd>
             </div>
-            <div>
-              <dt>Steps</dt>
-              <dd>{displayedExecution?.steps ?? 0}</dd>
-            </div>
-            <div>
-              <dt>Flow</dt>
-              <dd>{displayedExecution?.functionName ?? '—'}</dd>
-            </div>
+            {!debugInformationHidden ? (
+              <>
+                <div>
+                  <dt>Steps</dt>
+                  <dd>{displayedExecution?.steps ?? 0}</dd>
+                </div>
+                <div>
+                  <dt>Flow</dt>
+                  <dd>{displayedExecution?.functionName ?? '—'}</dd>
+                </div>
+              </>
+            ) : null}
           </dl>
 
           {displayedExecution ? (
@@ -3709,7 +3718,7 @@ function App() {
                       onDragEnd={finishRuntimePanelDrag}
                     />
                   ) : null
-                ) : panelId === 'variables' ? (
+                ) : panelId === 'variables' && !debugInformationHidden ? (
                   <section className="variables-panel" aria-label="Variables">
                     <h3>Variables</h3>
                     {variableEntries.length ? (

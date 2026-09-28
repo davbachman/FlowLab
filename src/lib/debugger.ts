@@ -87,6 +87,8 @@ export interface ExecutionChunkOptions {
   maxMilliseconds?: number
   /** Complete one visible block, including any calls into imported libraries. */
   singleStep?: boolean
+  /** Disable debugger bookkeeping for fast Run; persists through asynchronous input. */
+  collectFeedback?: boolean
 }
 
 export interface ExecutionChunkResult {
@@ -95,7 +97,7 @@ export interface ExecutionChunkResult {
 }
 
 export function stepExecutionChunk(state: ExecutionState, options: ExecutionChunkOptions = {}): ExecutionChunkResult {
-  return runExecutionChunk(state, { ...options, singleStep: true, breakpoints: undefined })
+  return runExecutionChunk(state, { ...options, singleStep: true, breakpoints: undefined, collectFeedback: true })
 }
 
 export function hasPendingLibraryStep(result: ExecutionChunkResult): boolean {
@@ -112,9 +114,12 @@ export function runExecutionChunk(
   state: ExecutionState,
   options: ExecutionChunkOptions = {},
 ): ExecutionChunkResult {
-  const limit = Math.max(1, Math.floor(options.maxSteps ?? 100))
+  const collectFeedback = options.collectFeedback ?? state.collectFeedback
+  const limit = Math.max(1, Math.floor(options.maxSteps ?? (collectFeedback === false ? 10000 : 100)))
   const deadline = performance.now() + Math.max(0, options.maxMilliseconds ?? 8)
-  let next = finishLibraryCall(state)
+  let next = finishLibraryCall(collectFeedback === state.collectFeedback ? state : {
+    ...state, collectFeedback, lastStep: undefined, incomingEdge: undefined,
+  })
   // An asynchronous library return may have completed the requested step.
   if (options.singleStep && state.libraryCall && !next.libraryCall) {
     return { state: next, reason: 'completed' }

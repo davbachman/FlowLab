@@ -71,7 +71,7 @@ describe('adding a local library file', () => {
     expect(screen.getByLabelText('Imports list')).toHaveValue('math\nhelpers')
     expect(fileInput).toHaveValue('')
     fireEvent.click(runButton())
-    expect(screen.getByRole('log')).toHaveTextContent('42')
+    await waitFor(() => expect(screen.getByRole('log')).toHaveTextContent('42'))
     expect((await resolveFlowLabImports('helpers')).files[0].program).toEqual(library)
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Undo' }))
@@ -87,13 +87,13 @@ describe('adding a local library file', () => {
     selectLibrary()
     await waitFor(() => expect(runButton()).toBeEnabled())
     fireEvent.click(runButton())
-    expect(screen.getByRole('log')).toHaveTextContent('42')
+    await waitFor(() => expect(screen.getByRole('log')).toHaveTextContent('42'))
     selectLibrary({ ...library, nodes: library.nodes.map(node => node.id === 'helper-return' ? { ...node, text: '99' } : node) })
     await waitFor(() => expect(screen.getByRole('region', { name: 'Output' })).toHaveTextContent('No output yet'))
     await waitFor(() => expect(runButton()).toBeEnabled())
     expect(screen.getByLabelText('Imports list')).toHaveValue('math\nhelpers.json')
     fireEvent.click(runButton())
-    expect(screen.getByRole('log')).toHaveTextContent('99')
+    await waitFor(() => expect(screen.getByRole('log')).toHaveTextContent('99'))
   })
 
   it('keeps the current library and completed output when a replacement file is invalid', async () => {
@@ -107,7 +107,7 @@ describe('adding a local library file', () => {
     })
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not add helpers.json')
     expect(screen.getByLabelText('Imports list')).toHaveValue('math\nhelpers')
-    expect(screen.getByRole('log')).toHaveTextContent('42')
+    await waitFor(() => expect(screen.getByRole('log')).toHaveTextContent('42'))
     expect(runButton()).toBeEnabled()
     expect((await resolveFlowLabImports('helpers')).files[0].program).toEqual(library)
   })
@@ -119,7 +119,7 @@ describe('adding a local library file', () => {
     selectLibrary()
     await waitFor(() => expect(runButton()).toBeEnabled())
     fireEvent.click(runButton())
-    expect(screen.getByRole('log')).toHaveTextContent('42')
+    await waitFor(() => expect(screen.getByRole('log')).toHaveTextContent('42'))
   })
 
   it('does not add a slow-reading file to a different document', async () => {
