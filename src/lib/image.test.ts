@@ -58,6 +58,43 @@ describe('image native library', () => {
     ])
   })
 
+  it('uses row, column order consistently for non-square images', () => {
+    const rows = [
+      [[10, 0, 0, 255], [20, 0, 0, 255], [30, 0, 0, 128]],
+      [[40, 0, 0, 255], [50, 0, 0, 255], [60, 0, 0, 255]],
+    ]
+    const created = runImageFunction(initialImageRuntimeState(), 'image_from_pixels', [rows])
+    const image = created.value
+    expect(runImageFunction(created.state, 'imsize', [image]).value).toEqual([2, 3])
+    expect(runImageFunction(created.state, 'image_to_pixels', [image]).value).toEqual(rows)
+    rows.forEach((pixels, row) => pixels.forEach((pixel, col) => {
+      expect(runImageFunction(created.state, 'get_pixel', [image, row, col]).value).toEqual(pixel)
+    }))
+
+    const updated = runImageFunction(created.state, 'set_pixel', [image, 0, 2, [7, 8, 9, 100]])
+    expect(updated.value).toBe(image)
+    expect(runImageFunction(updated.state, 'get_pixel', [image, 0, 2]).value).toEqual([7, 8, 9, 100])
+    expect(runImageFunction(updated.state, 'image_to_pixels', [image]).value).toEqual([
+      [rows[0][0], rows[0][1], [7, 8, 9, 100]],
+      rows[1],
+    ])
+    expect(runImageFunction(created.state, 'get_pixel', [image, 0, 2]).value).toEqual(rows[0][2])
+
+    for (const name of ['get_pixel', 'set_pixel']) {
+      const color = name === 'set_pixel' ? [[1, 2, 3]] : []
+      for (const [row, col, error] of [
+        [2, 0, /row coordinate 2 is outside 0 through 1/],
+        [0, 3, /col coordinate 3 is outside 0 through 2/],
+        [-1, 0, /row coordinate -1/],
+        [0, -1, /col coordinate -1/],
+        [0.5, 0, /row must be an integer/],
+        [0, 0.5, /col must be an integer/],
+      ] as const) {
+        expect(() => runImageFunction(created.state, name, [image, row, col, ...color])).toThrow(error)
+      }
+    }
+  })
+
   it('gets and sets pixels while preserving image identity for aliases', () => {
     const created = runImageFunction(
       initialImageRuntimeState(),

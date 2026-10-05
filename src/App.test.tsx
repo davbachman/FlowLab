@@ -501,7 +501,7 @@ const imageDisplayProgram: Program = {
       id: 'make-image',
       type: 'process',
       text:
-        'photo <- image_from_pixels([[[255, 0, 0], [0, 255, 0, 128]]])\nset_pixel(photo, 1, 0, [1, 2, 3])\nimshow(photo)\nimsave(photo, "flowlab-image")',
+        'photo <- image_from_pixels([[[255, 0, 0], [0, 255, 0, 128]]])\nset_pixel(photo, 0, 1, [1, 2, 3])\nimshow(photo)\nimsave(photo, "flowlab-image")',
       position: { x: 0, y: 100 },
     },
     { id: 'return', type: 'return', text: 'photo', position: { x: 0, y: 240 } },
@@ -1150,7 +1150,7 @@ describe('App', () => {
       'ord(character)',
     ])
     expect(functionSignaturesFor(dialog, 'Image')).toEqual([
-      'get_pixel(image, x, y)',
+      'get_pixel(image, row, col)',
       'image_from_pixels(rows)',
       'image_to_pixels(image)',
       'imload()',
@@ -1158,7 +1158,7 @@ describe('App', () => {
       'imsave(image, filename)',
       'imshow(image)',
       'imsize(image)',
-      'set_pixel(image, x, y, color)',
+      'set_pixel(image, row, col, color)',
     ])
     expect(functionSignaturesFor(dialog, 'helpers')).toEqual(['helper(…)'])
     expect(

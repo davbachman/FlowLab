@@ -116,7 +116,7 @@ export function runImageFunction(
     case 'imsize': {
       const image = requireSingleImage(name, args)
       requireImageData(state, image)
-      return { state, value: [image.width, image.height] }
+      return { state, value: [image.height, image.width] }
     }
     case 'get_pixel':
       return { state, value: getPixel(state, args) }
@@ -175,14 +175,14 @@ function imageFromPixels(
   validateImageDimensions(width, height)
   const pixels = new Uint8ClampedArray(width * height * 4)
 
-  rows.forEach((row, y) => {
-    if (!Array.isArray(row) || row.length !== width) {
+  rows.forEach((pixelsInRow, row) => {
+    if (!Array.isArray(pixelsInRow) || pixelsInRow.length !== width) {
       throw new Error('image_from_pixels requires rows of equal length')
     }
 
-    row.forEach((pixel, x) => {
-      const color = requireColor(pixel, `Pixel at (${x}, ${y})`)
-      pixels.set(color, (y * width + x) * 4)
+    pixelsInRow.forEach((pixel, col) => {
+      const color = requireColor(pixel, `Pixel at (row ${row}, col ${col})`)
+      pixels.set(color, (row * width + col) * 4)
     })
   })
 
@@ -219,12 +219,12 @@ function imageToPixels(
   const data = requireImageData(state, image)
   const rows: RuntimeValue[] = []
 
-  for (let y = 0; y < data.height; y += 1) {
-    const row: RuntimeValue[] = []
-    for (let x = 0; x < data.width; x += 1) {
-      row.push(pixelAt(data, x, y))
+  for (let row = 0; row < data.height; row += 1) {
+    const pixelsInRow: RuntimeValue[] = []
+    for (let col = 0; col < data.width; col += 1) {
+      pixelsInRow.push(pixelAt(data, row, col))
     }
-    rows.push(row)
+    rows.push(pixelsInRow)
   }
 
   return rows
@@ -235,13 +235,13 @@ function getPixel(
   args: RuntimeValue[],
 ): RuntimeValue[] {
   if (args.length !== 3 || !isRuntimeImage(args[0])) {
-    throw new Error('get_pixel requires an image, x, and y')
+    throw new Error('get_pixel requires an image, row, and col')
   }
 
   const data = requireImageData(state, args[0])
-  const x = requireCoordinate('get_pixel', 'x', args[1], data.width)
-  const y = requireCoordinate('get_pixel', 'y', args[2], data.height)
-  return pixelAt(data, x, y)
+  const row = requireCoordinate('get_pixel', 'row', args[1], data.height)
+  const col = requireCoordinate('get_pixel', 'col', args[2], data.width)
+  return pixelAt(data, row, col)
 }
 
 function setPixel(
@@ -249,16 +249,16 @@ function setPixel(
   args: RuntimeValue[],
 ): ImageFunctionResult {
   if (args.length !== 4 || !isRuntimeImage(args[0])) {
-    throw new Error('set_pixel requires an image, x, y, and color list')
+    throw new Error('set_pixel requires an image, row, col, and color list')
   }
 
   const image = args[0]
   const data = requireImageData(state, image)
-  const x = requireCoordinate('set_pixel', 'x', args[1], data.width)
-  const y = requireCoordinate('set_pixel', 'y', args[2], data.height)
+  const row = requireCoordinate('set_pixel', 'row', args[1], data.height)
+  const col = requireCoordinate('set_pixel', 'col', args[2], data.width)
   const color = requireColor(args[3], 'set_pixel color')
   const pixels = new Uint8ClampedArray(data.pixels)
-  pixels.set(color, (y * data.width + x) * 4)
+  pixels.set(color, (row * data.width + col) * 4)
 
   return {
     state: {
@@ -361,8 +361,8 @@ function requireCoordinate(
   return value
 }
 
-function pixelAt(data: RuntimeImageData, x: number, y: number): number[] {
-  const offset = (y * data.width + x) * 4
+function pixelAt(data: RuntimeImageData, row: number, col: number): number[] {
+  const offset = (row * data.width + col) * 4
   return Array.from(data.pixels.slice(offset, offset + 4))
 }
 

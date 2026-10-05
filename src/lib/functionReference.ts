@@ -131,8 +131,8 @@ const TEXT_FUNCTION_DETAILS = {
 
 const IMAGE_FUNCTION_DETAILS = {
   get_pixel: {
-    signature: 'get_pixel(image, x, y)',
-    description: 'Returns one pixel as a red, green, blue, alpha List.',
+    signature: 'get_pixel(image, row, col)',
+    description: 'Returns the pixel at the zero-based row and column as a red, green, blue, alpha List.',
   },
   image_from_pixels: {
     signature: 'image_from_pixels(rows)',
@@ -140,7 +140,7 @@ const IMAGE_FUNCTION_DETAILS = {
   },
   image_to_pixels: {
     signature: 'image_to_pixels(image)',
-    description: 'Returns every Image pixel as rows of RGBA Lists.',
+    description: 'Returns RGBA pixels indexed as pixels[row][col].',
   },
   imload: {
     signature: 'imload()',
@@ -160,11 +160,11 @@ const IMAGE_FUNCTION_DETAILS = {
   },
   imsize: {
     signature: 'imsize(image)',
-    description: 'Returns the Image dimensions as [width, height].',
+    description: 'Returns the Image dimensions as [rows, columns].',
   },
   set_pixel: {
-    signature: 'set_pixel(image, x, y, color)',
-    description: 'Changes one RGB or RGBA pixel and returns the same Image.',
+    signature: 'set_pixel(image, row, col, color)',
+    description: 'Changes the pixel at the zero-based row and column and returns the same Image.',
   },
 } satisfies FunctionDetails<typeof IMAGE_FUNCTION_NAMES>
 

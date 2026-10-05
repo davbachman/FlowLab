@@ -105,12 +105,12 @@ Enter `image` in Imports to enable opaque Image values and the Image runtime pan
 | `imsave(image, filename)` | Downloads the current image pixels as a PNG and returns the same Image. A missing `.png` suffix is added. |
 | `imshow(image)` | Displays the image in the Image panel and returns the same Image. |
 | `image_from_pixels(rows)` | Creates an Image from a rectangular list of pixel rows. |
-| `image_to_pixels(image)` | Returns the pixels as rows of `[red, green, blue, alpha]` lists. |
-| `imsize(image)` | Returns `[width, height]`. |
-| `get_pixel(image, x, y)` | Returns one `[red, green, blue, alpha]` pixel. |
-| `set_pixel(image, x, y, color)` | Changes one pixel and returns the same Image. |
+| `image_to_pixels(image)` | Returns `pixels[row][col]`, with each pixel a `[red, green, blue, alpha]` list. |
+| `imsize(image)` | Returns `[rows, columns]`. |
+| `get_pixel(image, row, col)` | Returns the `[red, green, blue, alpha]` pixel at that row and column. |
+| `set_pixel(image, row, col, color)` | Changes the pixel at that row and column and returns the same Image. |
 
-Pixel coordinates are integers within the image bounds and are zero-based: `(0, 0)` is the upper-left corner, `x` increases to the right, and `y` increases downward. Color channels must be integers from 0 through 255. `image_from_pixels` and `set_pixel` accept RGB lists such as `[255, 0, 0]` or RGBA lists such as `[255, 0, 0, 128]`; omitted alpha defaults to 255. `image_to_pixels` and `get_pixel` always return RGBA. Pixel rows must be nonempty and all have the same length.
+All image functions use row, column order. Pixel indices are integers within the image bounds and are zero-based: `(0, 0)` is the upper-left corner, rows increase downward, and columns increase to the right. `imsize(image)` returns `[rows, columns]` (height, width), and `get_pixel(image, row, col)` matches `image_to_pixels(image)[row][col]`. Color channels must be integers from 0 through 255. `image_from_pixels` and `set_pixel` accept RGB lists such as `[255, 0, 0]` or RGBA lists such as `[255, 0, 0, 128]`; omitted alpha defaults to 255. `image_to_pixels` and `get_pixel` always return RGBA. Pixel rows must be nonempty and all have the same length.
 
 Images have identity and are shown in Variables as labels such as `Image #1 (640 × 480)`. Assignment creates an alias, so after `copy <- photo`, calling `set_pixel(copy, ...)` also changes `photo`. Use `image_to_pixels` followed by `image_from_pixels` when a separate Image is needed.
 
@@ -128,7 +128,7 @@ imshow(photo)
 imsave(photo, "edited-photo.png")
 ```
 
-`size` is `[2, 1]`. To edit a saved picture, replace the first line with `photo <- imload()`. To load from the web, use `photo <- imread("your-image-url")` with a browser-readable image URL.
+`size` is `[1, 2]` (one row and two columns). To edit a saved picture, replace the first line with `photo <- imload()`. To load from the web, use `photo <- imread("your-image-url")` with a browser-readable image URL.
 
 ## Turtle library
 

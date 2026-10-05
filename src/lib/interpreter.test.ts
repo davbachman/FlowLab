@@ -1642,7 +1642,7 @@ describe('interpreter', () => {
     )
 
     expect(state.status).toBe('halted')
-    expect(state.returnValue).toEqual([2, 1])
+    expect(state.returnValue).toEqual([1, 2])
     expect(displayedImageData(state.image!)!.pixels).toEqual(
       new Uint8ClampedArray([1, 2, 3, 255, 4, 5, 6, 128]),
     )
