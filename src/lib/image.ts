@@ -8,6 +8,7 @@ export const IMAGE_FUNCTION_NAMES = [
   'get_pixel',
   'image_from_pixels',
   'image_to_pixels',
+  'imload',
   'imread',
   'imsave',
   'imshow',
@@ -102,8 +103,9 @@ export function runImageFunction(
   }
 
   switch (name) {
+    case 'imload':
     case 'imread':
-      throw new Error('imread must be completed by the browser image loader')
+      throw new Error(`${name} must be completed by the browser image loader`)
     case 'image_from_pixels':
       return imageFromPixels(state, args)
     case 'image_to_pixels':
@@ -397,6 +399,10 @@ export async function loadImageFromUrl(url: string): Promise<LoadedImageData> {
   }
 
   const blob = await response.blob()
+  return loadImageFromBlob(blob)
+}
+
+export async function loadImageFromBlob(blob: Blob): Promise<LoadedImageData> {
   const source = await decodeImageBlob(blob)
 
   try {
@@ -467,7 +473,7 @@ async function decodeImageBlob(blob: Blob): Promise<ImageBitmap | HTMLImageEleme
     return await new Promise<HTMLImageElement>((resolve, reject) => {
       const image = new globalThis.Image()
       image.onload = () => resolve(image)
-      image.onerror = () => reject(new Error('The downloaded file is not a readable image'))
+      image.onerror = () => reject(new Error('The file is not a readable image'))
       image.src = url
     })
   } finally {

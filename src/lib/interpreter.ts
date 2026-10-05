@@ -294,7 +294,8 @@ interface TextLoadCallRequest {
 }
 
 interface ImageLoadCallRequest {
-  url: string
+  /** null requests a local file through imload(). */
+  url: string | null
   callIndex: number
 }
 
@@ -312,7 +313,7 @@ interface PendingTextLoad {
 }
 
 interface PendingImageLoad {
-  url: string
+  url: string | null
   pendingNode: PendingNode
   pendingExpressionKey: PendingExpressionKey
   pendingCallIndex: number
@@ -425,7 +426,7 @@ class ImageLoadSuspension extends Error {
   readonly imageLoad: ImageLoadCallRequest
 
   constructor(imageLoad: ImageLoadCallRequest) {
-    super(`Image URL load "${imageLoad.url}" suspended.`)
+    super(imageLoad.url === null ? 'Local image load suspended.' : `Image URL load "${imageLoad.url}" suspended.`)
     this.imageLoad = imageLoad
   }
 }
@@ -1474,6 +1475,15 @@ function evaluateProgramExpression(
           }
 
           if (isImageFunctionName(name)) {
+            if (name === 'imload') {
+              if (args.length !== 0) {
+                throw new Error('imload requires no arguments')
+              }
+              throw new ImageLoadSuspension({
+                url: null,
+                callIndex: currentCallIndex,
+              })
+            }
             if (name === 'imread') {
               throw new ImageLoadSuspension({
                 url: validateImreadArguments(args),

@@ -72,6 +72,7 @@ import {
   downloadImage,
   IMAGE_LIBRARY_NAME,
   initialImageRuntimeState,
+  loadImageFromBlob,
   loadImageFromUrl,
   paintImageCanvas,
   type ImageRuntimeState,
@@ -451,6 +452,10 @@ function App() {
     null,
   )
   const [askInputText, setAskInputText] = useState('')
+  const [localImageSelection, setLocalImageSelection] = useState<{
+    execution: ExecutionState
+    file: File
+  } | null>(null)
   const [importNamesText, setImportNamesText] = useState(recoveryStart.draft?.program.imports ?? '')
   const [importDirectoryHandle, setImportDirectoryHandle] =
     useState<FlowLabDirectoryHandle | null>(null)
@@ -846,6 +851,10 @@ function App() {
     }
   }, [execution])
 
+  const selectedImageFile = localImageSelection?.execution === execution
+    ? localImageSelection?.file
+    : undefined
+
   useEffect(() => {
     if (execution?.status !== 'loading' || !execution.imageRequest) {
       return
@@ -854,8 +863,12 @@ function App() {
     let cancelled = false
     const loadingExecution = execution
     const { url } = execution.imageRequest
+    const file = selectedImageFile
+    if (url === null && !file) {
+      return
+    }
 
-    void loadImageFromUrl(url)
+    void (url === null ? loadImageFromBlob(file!) : loadImageFromUrl(url))
       .then((image) => {
         if (cancelled) {
           return
@@ -884,7 +897,7 @@ function App() {
           currentExecution === loadingExecution
             ? failImageLoadExecution(
                 currentExecution,
-                imageLoadErrorMessage(url, error),
+                imageLoadErrorMessage(url ?? file!.name, error),
               )
             : currentExecution,
         )
@@ -894,7 +907,12 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [execution])
+  }, [execution, selectedImageFile])
+
+  // Release the selected file and its suspended execution once that request ends.
+  if (localImageSelection && localImageSelection.execution !== execution) {
+    setLocalImageSelection(null)
+  }
 
   useEffect(() => {
     const requests = execution?.image?.saveRequests ?? []
@@ -4059,6 +4077,50 @@ function App() {
               </button>
             </div>
           </form>
+        </div>
+      ) : null}
+      {execution?.status === 'loading' && execution.imageRequest?.url === null ? (
+        <div className="modal-backdrop">
+          <div
+            className="filename-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="imload-modal-title"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                setExecution((current) => current === execution
+                  ? failImageLoadExecution(current, 'Image loading cancelled.')
+                  : current)
+              } else {
+                trapDialogFocus(event)
+              }
+            }}
+          >
+            <h2 id="imload-modal-title">Load image</h2>
+            <p>Choose an image from your computer to continue the program.</p>
+            <label className="input-label" htmlFor="imload-file">Image file</label>
+            <input
+              id="imload-file"
+              type="file"
+              accept="image/*"
+              autoFocus
+              disabled={localImageSelection?.execution === execution}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) setLocalImageSelection({ execution, file })
+                event.target.value = ''
+              }}
+            />
+            {localImageSelection?.execution === execution ? <p role="status">Loading image…</p> : null}
+            <div className="modal-buttons">
+              <button type="button" onClick={() => {
+                setExecution((current) => current === execution
+                  ? failImageLoadExecution(current, 'Image loading cancelled.')
+                  : current)
+              }}>Cancel</button>
+            </div>
+          </div>
         </div>
       ) : null}
       {execution?.status === 'asking' ? (

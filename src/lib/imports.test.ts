@@ -122,6 +122,7 @@ describe('imports', () => {
           'get_pixel',
           'image_from_pixels',
           'image_to_pixels',
+          'imload',
           'imread',
           'imsave',
           'imshow',

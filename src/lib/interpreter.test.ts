@@ -1602,7 +1602,7 @@ describe('interpreter', () => {
     ])
   })
 
-  it('loads URL images through imread and resumes execution', () => {
+  it.each([['imread("https://example.edu/photo.png")', 'https://example.edu/photo.png'], ['imload()', null]])('loads images through %s and resumes execution', (call, url) => {
     const program: Program = {
       version: 1,
       nodes: [
@@ -1610,7 +1610,7 @@ describe('interpreter', () => {
         {
           id: 'load',
           type: 'assignment',
-          text: 'photo <- imread("https://example.edu/photo.png")',
+          text: `photo <- ${call}`,
           position: { x: 0, y: 100 },
         },
         { id: 'show', type: 'call', text: 'imshow(photo)', position: { x: 0, y: 200 } },
@@ -1628,7 +1628,7 @@ describe('interpreter', () => {
     )
 
     expect(state.status).toBe('loading')
-    expect(state.imageRequest?.url).toBe('https://example.edu/photo.png')
+    expect(state.imageRequest?.url).toBe(url)
 
     state = runExecution(
       completeImageLoadExecution(state, {
@@ -1649,6 +1649,30 @@ describe('interpreter', () => {
     const image = state.environment.photo
     expect(image).toMatchObject({ kind: 'image', width: 2, height: 1 })
     expect(requireImageData(state.image!, image as RuntimeImage).id).toBe(1)
+  })
+
+  it('resumes multiple imload calls in one expression without repeating earlier calls', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'end', type: 'return', text: '[imload(), imload()]', position: { x: 0, y: 100 } },
+      ],
+      edges: [{ id: 'e1', source: 'main', target: 'end' }],
+    }
+    const loaded = { width: 1, height: 1, pixels: new Uint8ClampedArray([1, 2, 3, 128]) }
+    const first = runExecution(createExecution(program, [], { nativeLibraries: ['image'] }))
+    const second = runExecution(completeImageLoadExecution(first, loaded))
+    expect(second.status).toBe('loading')
+    expect(second.imageRequest?.url).toBeNull()
+    const done = runExecution(completeImageLoadExecution(second, loaded))
+    expect(done.status).toBe('halted')
+    expect(done.returnValue).toMatchObject([{ kind: 'image', id: 1 }, { kind: 'image', id: 2 }])
+
+    program.nodes[1].text = 'imload("photo.png")'
+    const invalid = runExecution(createExecution(program, [], { nativeLibraries: ['image'] }))
+    expect(invalid.status).toBe('error')
+    expect(invalid.error).toContain('imload requires no arguments')
   })
 
   it('reports browser image load failures at the active block', () => {

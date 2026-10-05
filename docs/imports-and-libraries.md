@@ -100,6 +100,7 @@ Enter `image` in Imports to enable opaque Image values and the Image runtime pan
 
 | Call | Result or effect |
 | --- | --- |
+| `imload()` | Prompts for an image file on your computer and returns a new Image. Takes no arguments. |
 | `imread(url)` | Loads a browser-readable image URL and returns a new Image. |
 | `imsave(image, filename)` | Downloads the current image pixels as a PNG and returns the same Image. A missing `.png` suffix is added. |
 | `imshow(image)` | Displays the image in the Image panel and returns the same Image. |
@@ -113,6 +114,8 @@ Pixel coordinates are integers within the image bounds and are zero-based: `(0, 
 
 Images have identity and are shown in Variables as labels such as `Image #1 (640 × 480)`. Assignment creates an alias, so after `copy <- photo`, calling `set_pixel(copy, ...)` also changes `photo`. Use `image_to_pixels` followed by `image_from_pixels` when a separate Image is needed.
 
+`imload()` pauses execution at a Load image prompt. Choose a PNG or another browser-supported image file to resume with its decoded pixels; the file stays on your computer. Closing the file chooser leaves the prompt open so you can choose again. Cancel in the prompt (or Escape) ends the run with an image-loading cancellation message. An unreadable or oversized image produces an error at the calling block.
+
 `imread` pauses execution while the browser downloads and decodes the file. The server must allow the browser request, including any required cross-origin permissions. An Image may contain at most 16,777,216 pixels. The Image panel remains empty until `imshow` is called. Drag the panel by its heading to reposition it in the runtime sidebar, or double-click a displayed image to enlarge it over the app. Choose Close or press Escape to leave the enlarged view.
 
 This Process block creates and edits a two-pixel image without downloading a source file:
@@ -125,7 +128,7 @@ imshow(photo)
 imsave(photo, "edited-photo.png")
 ```
 
-`size` is `[2, 1]`. To edit an existing picture, replace the first line with `photo <- imread("your-image-url")` using a browser-readable image URL.
+`size` is `[2, 1]`. To edit a saved picture, replace the first line with `photo <- imload()`. To load from the web, use `photo <- imread("your-image-url")` with a browser-readable image URL.
 
 ## Turtle library
 

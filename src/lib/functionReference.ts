@@ -142,6 +142,10 @@ const IMAGE_FUNCTION_DETAILS = {
     signature: 'image_to_pixels(image)',
     description: 'Returns every Image pixel as rows of RGBA Lists.',
   },
+  imload: {
+    signature: 'imload()',
+    description: 'Prompts for a local image file and returns a new Image. Cancel ends the run.',
+  },
   imread: {
     signature: 'imread(url)',
     description: 'Loads a browser-readable image URL and returns a new Image.',

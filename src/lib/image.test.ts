@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   displayedImageData,
   initialImageRuntimeState,
+  loadImageFromBlob,
   loadImageFromUrl,
   requireImageData,
   runImageFunction,
@@ -176,5 +177,30 @@ describe('image native library', () => {
       pixels: new Uint8ClampedArray([1, 2, 3, 255, 4, 5, 6, 128]),
     })
     expect(close).toHaveBeenCalled()
+  })
+
+  it('decodes local files without fetching and preserves alpha', async () => {
+    const file = new File(['png'], 'saved.png', { type: 'image/png' })
+    const close = vi.fn()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const decode = vi.fn().mockResolvedValue({ width: 1, height: 1, close })
+    vi.stubGlobal('createImageBitmap', decode)
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: vi.fn(),
+      getImageData: () => ({ data: new Uint8ClampedArray([20, 40, 60, 128]) }),
+    } as unknown as CanvasRenderingContext2D)
+    expect(await loadImageFromBlob(file)).toEqual({
+      width: 1, height: 1, pixels: new Uint8ClampedArray([20, 40, 60, 128]),
+    })
+    expect(decode).toHaveBeenCalledWith(file)
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(close).toHaveBeenCalledOnce()
+
+    decode.mockRejectedValueOnce(new Error('Unreadable image'))
+    await expect(loadImageFromBlob(file)).rejects.toThrow('Unreadable image')
+    decode.mockResolvedValueOnce({ width: 20_000, height: 20_000, close })
+    await expect(loadImageFromBlob(file)).rejects.toThrow(/pixel limit/i)
+    expect(close).toHaveBeenCalledTimes(2)
   })
 })

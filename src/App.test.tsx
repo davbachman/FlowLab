@@ -1153,6 +1153,7 @@ describe('App', () => {
       'get_pixel(image, x, y)',
       'image_from_pixels(rows)',
       'image_to_pixels(image)',
+      'imload()',
       'imread(url)',
       'imsave(image, filename)',
       'imshow(image)',
@@ -2321,6 +2322,63 @@ describe('App', () => {
     )
     expect(screen.getByText(/Completed/i)).toBeInTheDocument()
   })
+
+  it.each(['load', 'cancel', 'invalid', 'cancel while decoding'])(
+    'handles imload file selection: %s', async (scenario) => {
+      const user = userEvent.setup()
+      let finishDecode: ((value: unknown) => void) | undefined
+      const bitmap = { width: 1, height: 1, close: vi.fn() }
+      const decode = vi.fn(() => scenario === 'invalid'
+        ? Promise.reject(new Error('Unreadable image'))
+        : scenario === 'cancel while decoding'
+          ? new Promise((resolve) => { finishDecode = resolve })
+          : Promise.resolve(bitmap))
+      vi.stubGlobal('createImageBitmap', decode)
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+        drawImage: vi.fn(),
+        getImageData: () => ({ data: new Uint8ClampedArray([20, 40, 60, 128]) }),
+      } as unknown as CanvasRenderingContext2D)
+      const program: Program = {
+        version: 1,
+        imports: 'image',
+        nodes: [
+          { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+          { id: 'load', type: 'process', text: 'photo <- imload()\nother <- imload()', position: { x: 0, y: 100 } },
+          { id: 'pixels', type: 'output', text: '[get_pixel(photo, 0, 0), imsize(other)]', position: { x: 0, y: 200 } },
+          { id: 'end', type: 'return', text: '0', position: { x: 0, y: 300 } },
+        ],
+        edges: [{ id: 'e1', source: 'main', target: 'load' }, { id: 'e2', source: 'load', target: 'pixels' }, { id: 'e3', source: 'pixels', target: 'end' }],
+      }
+      render(<App />)
+      importProgramFromFileMenu(new File([JSON.stringify(program)], 'local-image.json', { type: 'application/json' }))
+      await screen.findByText(/Native libraries: image/i)
+      await user.click(executionButton(/^Run$/i))
+      const dialog = await screen.findByRole('dialog', { name: /^Load image$/i })
+      expect(executionButton(/^Run$/i)).toBeDisabled()
+      const file = new File(['png'], 'saved.png', { type: 'image/png' })
+      if (scenario === 'cancel') {
+        await user.keyboard('{Escape}')
+      } else {
+        await user.upload(within(dialog).getByLabelText('Image file'), file)
+        if (scenario === 'cancel while decoding') {
+          await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+          await act(async () => { finishDecode!(bitmap) })
+        }
+      }
+      if (scenario === 'load') {
+        await waitFor(() => expect(screen.getByLabelText('Image file')).toBeEnabled())
+        await user.upload(screen.getByLabelText('Image file'), file)
+        await screen.findByText(/^Completed$/i)
+        expect(decode).toHaveBeenCalledTimes(2)
+        expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('[20, 40, 60, 128]')
+        expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('[1, 1]')
+      } else {
+        await screen.findByText(scenario === 'invalid' ? /Image load failed.*saved.png.*Unreadable image/ : /Image loading cancelled/)
+        expect(screen.queryByText(/^Completed$/i)).not.toBeInTheDocument()
+      }
+      expect(screen.queryByRole('dialog', { name: /^Load image$/i })).not.toBeInTheDocument()
+    },
+  )
 
   it('renders, enlarges, and downloads imshow output as PNG', async () => {
     const createImageData = vi.fn((width: number, height: number) => ({
