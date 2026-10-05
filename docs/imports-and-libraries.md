@@ -103,14 +103,29 @@ Enter `image` in Imports to enable opaque Image values and the Image runtime pan
 | `imload()` | Prompts for an image file on your computer and returns a new Image. Takes no arguments. |
 | `imread(url)` | Loads a browser-readable image URL and returns a new Image. |
 | `imsave(image, filename)` | Downloads the current image pixels as a PNG and returns the same Image. A missing `.png` suffix is added. |
-| `imshow(image)` | Displays the image in the Image panel and returns the same Image. |
-| `image_from_pixels(rows)` | Creates an Image from a rectangular list of pixel rows. |
+| `imshow(image_or_rows)` | Displays an Image or rectangular pixel rows in the Image panel. Returns the existing Image, or a new Image when given rows. |
+| `image_from_pixels(rows)` | Creates an Image from rectangular rows of grayscale values, RGB lists, or RGBA lists. |
 | `image_to_pixels(image)` | Returns `pixels[row][col]`, with each pixel a `[red, green, blue, alpha]` list. |
 | `imsize(image)` | Returns `[rows, columns]`. |
 | `get_pixel(image, row, col)` | Returns the `[red, green, blue, alpha]` pixel at that row and column. |
 | `set_pixel(image, row, col, color)` | Changes the pixel at that row and column and returns the same Image. |
 
 All image functions use row, column order. Pixel indices are integers within the image bounds and are zero-based: `(0, 0)` is the upper-left corner, rows increase downward, and columns increase to the right. `imsize(image)` returns `[rows, columns]` (height, width), and `get_pixel(image, row, col)` matches `image_to_pixels(image)[row][col]`. Color channels must be integers from 0 through 255. `image_from_pixels` and `set_pixel` accept RGB lists such as `[255, 0, 0]` or RGBA lists such as `[255, 0, 0, 128]`; omitted alpha defaults to 255. `image_to_pixels` and `get_pixel` always return RGBA. Pixel rows must be nonempty and all have the same length.
+
+`imshow` and `image_from_pixels` accept two kinds of nested lists:
+
+- Grayscale: `rows[row][col]` is an integer from 0 through 255. Zero is black, 255 is white, and intermediate values are gray. Values use this fixed range and are never automatically rescaled.
+- Color: `rows[row][col]` is an RGB or RGBA list, such as `[255, 0, 0, 128]`. Use square brackets for the three or four channels.
+
+Do not mix scalar grayscale values and color lists in one image. Grayscale pixels become `[value, value, value, 255]`, so `get_pixel` and `image_to_pixels` still return RGBA. Converting or displaying rows copies their values; later edits to the original list do not change the Image. `imshow` accepts an existing Image as before.
+
+These Process block calls display a grayscale image and then a color image:
+
+```text
+gray <- imshow([[0, 128, 255], [255, 128, 0]])
+color <- imshow([[[255, 0, 0, 255], [0, 0, 255, 128]]])
+imsave(color, "color.png")
+```
 
 Images have identity and are shown in Variables as labels such as `Image #1 (640 × 480)`. Assignment creates an alias, so after `copy <- photo`, calling `set_pixel(copy, ...)` also changes `photo`. Use `image_to_pixels` followed by `image_from_pixels` when a separate Image is needed.
 

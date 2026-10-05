@@ -136,7 +136,7 @@ const IMAGE_FUNCTION_DETAILS = {
   },
   image_from_pixels: {
     signature: 'image_from_pixels(rows)',
-    description: 'Creates an Image from rectangular rows of RGB or RGBA pixels.',
+    description: 'Creates an Image from rectangular rows of grayscale integers (0–255), RGB lists, or RGBA lists.',
   },
   image_to_pixels: {
     signature: 'image_to_pixels(image)',
@@ -156,7 +156,7 @@ const IMAGE_FUNCTION_DETAILS = {
   },
   imshow: {
     signature: 'imshow(image)',
-    description: 'Displays an Image in the Image panel and returns it.',
+    description: 'Displays an Image or rectangular rows of grayscale integers (0–255), RGB lists, or RGBA lists. Returns the displayed Image.',
   },
   imsize: {
     signature: 'imsize(image)',

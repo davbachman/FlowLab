@@ -123,6 +123,14 @@ export function runImageFunction(
     case 'set_pixel':
       return setPixel(state, args)
     case 'imshow': {
+      if (args.length === 1 && Array.isArray(args[0])) {
+        const result = imageFromPixels(state, args, 'imshow')
+        const image = result.value as RuntimeImage
+        return { state: { ...result.state, displayedImage: image }, value: image }
+      }
+      if (args.length !== 1 || !isRuntimeImage(args[0])) {
+        throw new Error('imshow requires exactly one image or list of pixel rows')
+      }
       const image = requireSingleImage(name, args)
       requireImageData(state, image)
       return { state: { ...state, displayedImage: image }, value: image }
@@ -160,28 +168,42 @@ export function displayedImageData(
 function imageFromPixels(
   state: ImageRuntimeState,
   args: RuntimeValue[],
+  functionName = 'image_from_pixels',
 ): ImageFunctionResult {
   if (args.length !== 1 || !Array.isArray(args[0])) {
-    throw new Error('image_from_pixels requires exactly one list of pixel rows')
+    throw new Error(`${functionName} requires exactly one list of pixel rows`)
   }
 
   const rows = args[0]
   if (!rows.length || !Array.isArray(rows[0]) || !rows[0].length) {
-    throw new Error('image_from_pixels requires at least one non-empty row')
+    throw new Error(`${functionName} requires at least one non-empty row`)
   }
 
   const width = rows[0].length
   const height = rows.length
   validateImageDimensions(width, height)
+  const grayscale = typeof rows[0][0] === 'number'
   const pixels = new Uint8ClampedArray(width * height * 4)
 
   rows.forEach((pixelsInRow, row) => {
     if (!Array.isArray(pixelsInRow) || pixelsInRow.length !== width) {
-      throw new Error('image_from_pixels requires rows of equal length')
+      throw new Error(`${functionName} requires rows of equal length`)
     }
 
     pixelsInRow.forEach((pixel, col) => {
-      const color = requireColor(pixel, `Pixel at (row ${row}, col ${col})`)
+      const label = `Pixel at (row ${row}, col ${col})`
+      if (grayscale !== (typeof pixel === 'number')) {
+        throw new Error(`${functionName} cannot mix grayscale values and color pixels (${label})`)
+      }
+      let color: Uint8ClampedArray
+      if (grayscale) {
+        if (typeof pixel !== 'number' || !Number.isInteger(pixel) || pixel < 0 || pixel > 255) {
+          throw new Error(`${label} grayscale value must be an integer from 0 through 255`)
+        }
+        color = new Uint8ClampedArray([pixel, pixel, pixel, 255])
+      } else {
+        color = requireColor(pixel, label)
+      }
       pixels.set(color, (row * width + col) * 4)
     })
   })

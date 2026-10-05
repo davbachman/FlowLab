@@ -1550,6 +1550,24 @@ describe('interpreter', () => {
     expect(state.returnValue).toBe(128578)
   })
 
+  it('displays grayscale and color lists and saves the returned image', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'images', type: 'process', text: 'gray <- imshow([[0, 128, 255]])\npixel <- get_pixel(gray, 0, 1)\ncolor <- imshow([[[255, 0, 0, 255], [0, 0, 255, 128]]])\nimsave(color, "color")', position: { x: 0, y: 100 } },
+        { id: 'end', type: 'return', text: 'imsize(color)', position: { x: 0, y: 200 } },
+      ],
+      edges: [{ id: 'e1', source: 'main', target: 'images' }, { id: 'e2', source: 'images', target: 'end' }],
+    }
+    const state = runExecution(createExecution(program, [], { nativeLibraries: ['image'] }))
+    expect(state.status).toBe('halted')
+    expect(state.environment.pixel).toEqual([128, 128, 128, 255])
+    expect(state.returnValue).toEqual([1, 2])
+    expect(displayedImageData(state.image!)?.pixels).toEqual(new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 255, 128]))
+    expect(state.image?.saveRequests[0].fileName).toBe('color.png')
+  })
+
   it('runs image creation, pixel, display, and save functions together', () => {
     const program: Program = {
       version: 1,

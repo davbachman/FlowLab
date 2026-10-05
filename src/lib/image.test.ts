@@ -95,6 +95,39 @@ describe('image native library', () => {
     }
   })
 
+  it.each(['image_from_pixels', 'imshow'])('accepts fixed-range grayscale rows in %s', (name) => {
+    const rows = [[0, 64, 255], [128, 192, 32]]
+    const result = runImageFunction(initialImageRuntimeState(), name, [rows])
+    expect(runImageFunction(result.state, 'imsize', [result.value]).value).toEqual([2, 3])
+    expect(runImageFunction(result.state, 'image_to_pixels', [result.value]).value).toEqual(
+      rows.map((row) => row.map((value) => [value, value, value, 255])),
+    )
+    expect(result.state.displayedImage).toEqual(name === 'imshow' ? result.value : undefined)
+    const constant = runImageFunction(result.state, name, [[[80, 80]]])
+    expect(runImageFunction(constant.state, 'get_pixel', [constant.value, 0, 1]).value).toEqual([80, 80, 80, 255])
+    rows[0][0] = 200
+    expect(runImageFunction(result.state, 'get_pixel', [result.value, 0, 0]).value).toEqual([0, 0, 0, 255])
+  })
+
+  it('displays RGB and RGBA lists directly and returns an editable, saveable image', () => {
+    const rows = [[[255, 0, 0], [0, 255, 0, 128]]]
+    const shown = runImageFunction(initialImageRuntimeState(), 'imshow', [rows])
+    expect(displayedImageData(shown.state)?.pixels).toEqual(new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 128]))
+    const edited = runImageFunction(shown.state, 'set_pixel', [shown.value, 0, 1, [0, 0, 255, 64]])
+    const saved = runImageFunction(edited.state, 'imsave', [shown.value, 'colors'])
+    expect(saved.state.saveRequests[0].image.pixels).toEqual(new Uint8ClampedArray([255, 0, 0, 255, 0, 0, 255, 64]))
+    expect(rows[0][1]).toEqual([0, 255, 0, 128])
+    const reshown = runImageFunction(saved.state, 'imshow', [shown.value])
+    expect(reshown.value).toBe(shown.value)
+    expect(reshown.state.nextImageId).toBe(2)
+  })
+
+  it.each(['image_from_pixels', 'imshow'])('rejects malformed pixel rows in %s', (name) => {
+    for (const rows of [[], [[]], [[0, 1], [2]], [[-1]], [[256]], [[0.5]], [[NaN]], [[Infinity]], [[0, [1, 2, 3]]], [[[1, 2, 3], 0]], [[[1, 2]]]]) {
+      expect(() => runImageFunction(initialImageRuntimeState(), name, [rows])).toThrow()
+    }
+  })
+
   it('gets and sets pixels while preserving image identity for aliases', () => {
     const created = runImageFunction(
       initialImageRuntimeState(),
