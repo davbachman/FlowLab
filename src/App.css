@@ -1505,6 +1505,17 @@ textarea {
   font-size: 12px;
 }
 
+.image-file-choices {
+  margin-top: 10px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.image-file-choices p {
+  margin: 0 0 6px;
+  color: #667085;
+}
+
 .turtle-canvas {
   width: 100%;
   aspect-ratio: 1 / 1;

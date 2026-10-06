@@ -100,7 +100,7 @@ Enter `image` in Imports to enable opaque Image values and the Image runtime pan
 
 | Call | Result or effect |
 | --- | --- |
-| `imload()` | Prompts for an image file on your computer and returns a new Image. Takes no arguments. |
+| `imload()` | Returns a new Image from a local file, prompting on the first use of each call. Reuses the choice across reruns while this program is open. Takes no arguments. |
 | `imread(url)` | Loads a browser-readable image URL and returns a new Image. |
 | `imsave(image, filename)` | Downloads the current image pixels as a PNG and returns the same Image. A missing `.png` suffix is added. |
 | `imshow(image_or_rows)` | Displays an Image or rectangular pixel rows in the Image panel. Returns the existing Image, or a new Image when given rows. |
@@ -129,7 +129,9 @@ imsave(color, "color.png")
 
 Images have identity and are shown in Variables as labels such as `Image #1 (640 × 480)`. Assignment creates an alias, so after `copy <- photo`, calling `set_pixel(copy, ...)` also changes `photo`. Use `image_to_pixels` followed by `image_from_pixels` when a separate Image is needed.
 
-`imload()` pauses execution at a Load image prompt. Choose a PNG or another browser-supported image file to resume with its decoded pixels; the file stays on your computer. Closing the file chooser leaves the prompt open so you can choose again. Cancel in the prompt (or Escape) ends the run with an image-loading cancellation message. An unreadable or oversized image produces an error at the calling block.
+`imload()` pauses execution at a Load image prompt the first time each call is reached. Choose a PNG or another browser-supported image file to resume with its decoded pixels; the file stays on your computer. Closing the file chooser leaves the prompt open so you can choose again. Cancel in the prompt (or Escape) ends the run with an image-loading cancellation message. An unreadable or oversized image produces an error at the calling block.
+
+After a successful load, FlowLab remembers that call’s file for reruns, Restart, and repeated calls in loops. Each load starts from the original file pixels, so edits made during one run do not carry over. Separate `imload()` calls can remember different files. Choose **Forget selected images** in the Image panel while execution is idle to pick replacements on the next run. Reloading the page or opening another program clears the choices; image files are not included in saved program JSON. Changing or moving a load expression can also require a new choice.
 
 `imread` pauses execution while the browser downloads and decodes the file. The server must allow the browser request, including any required cross-origin permissions. An Image may contain at most 16,777,216 pixels. The Image panel remains empty until `imshow` is called. Drag the panel by its heading to reposition it in the runtime sidebar, or double-click a displayed image to enlarge it over the app. Choose Close or press Escape to leave the enlarged view.
 

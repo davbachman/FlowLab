@@ -2367,14 +2367,44 @@ describe('App', () => {
       }
       if (scenario === 'load') {
         await waitFor(() => expect(screen.getByLabelText('Image file')).toBeEnabled())
-        await user.upload(screen.getByLabelText('Image file'), file)
+        const otherFile = new File(['other png'], 'other.png', { type: 'image/png' })
+        await user.upload(screen.getByLabelText('Image file'), otherFile)
         await screen.findByText(/^Completed$/i)
         expect(decode).toHaveBeenCalledTimes(2)
         expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('[20, 40, 60, 128]')
         expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('[1, 1]')
+        const imagePanel = screen.getByRole('region', { name: /^Image$/i })
+        expect(imagePanel).toHaveTextContent('Selected files: saved.png, other.png')
+
+        await user.click(executionButton(/^Restart$/i))
+        await user.click(executionButton(/^Run$/i))
+        await screen.findByText(/^Completed$/i)
+        expect(screen.queryByRole('dialog', { name: /^Load image$/i })).not.toBeInTheDocument()
+        expect(decode).toHaveBeenCalledTimes(4)
+        expect(decode).toHaveBeenNthCalledWith(3, file)
+        expect(decode).toHaveBeenNthCalledWith(4, otherFile)
+
+        await user.click(within(imagePanel).getByRole('button', { name: 'Forget selected images' }))
+        await user.click(executionButton(/^Restart$/i))
+        await user.click(executionButton(/^Run$/i))
+        await screen.findByRole('dialog', { name: /^Load image$/i })
+        await user.upload(screen.getByLabelText('Image file'), otherFile)
+        await waitFor(() => expect(screen.getByLabelText('Image file')).toBeEnabled())
+        await user.upload(screen.getByLabelText('Image file'), file)
+        await screen.findByText(/^Completed$/i)
+        expect(decode).toHaveBeenNthCalledWith(5, otherFile)
+        expect(decode).toHaveBeenNthCalledWith(6, file)
+
+        // Reopening a program must not inherit another document's choices.
+        importProgramFromFileMenu(new File([JSON.stringify(program)], 'another-program.json', { type: 'application/json' }))
+        await screen.findByText('another-program')
+        await user.click(executionButton(/^Run$/i))
+        const freshDialog = await screen.findByRole('dialog', { name: /^Load image$/i })
+        await user.click(within(freshDialog).getByRole('button', { name: 'Cancel' }))
       } else {
         await screen.findByText(scenario === 'invalid' ? /Image load failed.*saved.png.*Unreadable image/ : /Image loading cancelled/)
         expect(screen.queryByText(/^Completed$/i)).not.toBeInTheDocument()
+        expect(screen.queryByRole('button', { name: 'Forget selected images' })).not.toBeInTheDocument()
       }
       expect(screen.queryByRole('dialog', { name: /^Load image$/i })).not.toBeInTheDocument()
     },

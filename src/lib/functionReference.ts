@@ -144,7 +144,7 @@ const IMAGE_FUNCTION_DETAILS = {
   },
   imload: {
     signature: 'imload()',
-    description: 'Prompts for a local image file and returns a new Image. Cancel ends the run.',
+    description: 'Loads a local image, remembering the chosen file across reruns while this program is open. Use Forget selected images in the Image panel to choose again. Cancel ends the run.',
   },
   imread: {
     signature: 'imread(url)',

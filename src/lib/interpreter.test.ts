@@ -1683,6 +1683,9 @@ describe('interpreter', () => {
     const second = runExecution(completeImageLoadExecution(first, loaded))
     expect(second.status).toBe('loading')
     expect(second.imageRequest?.url).toBeNull()
+    expect(second.imageRequest?.selectionKey).not.toBe(first.imageRequest?.selectionKey)
+    const rerun = runExecution(createExecution(program, [], { nativeLibraries: ['image'] }))
+    expect(rerun.imageRequest?.selectionKey).toBe(first.imageRequest?.selectionKey)
     const done = runExecution(completeImageLoadExecution(second, loaded))
     expect(done.status).toBe('halted')
     expect(done.returnValue).toMatchObject([{ kind: 'image', id: 1 }, { kind: 'image', id: 2 }])
@@ -1691,6 +1694,22 @@ describe('interpreter', () => {
     const invalid = runExecution(createExecution(program, [], { nativeLibraries: ['image'] }))
     expect(invalid.status).toBe('error')
     expect(invalid.error).toContain('imload requires no arguments')
+  })
+
+  it('keeps image choices stable when other Process statements change', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'load', type: 'process', text: 'photo <- imload()\nx <- 1', position: { x: 0, y: 100 } },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 200 } },
+      ],
+      edges: [{ id: 'e1', source: 'main', target: 'load' }, { id: 'e2', source: 'load', target: 'end' }],
+    }
+    const first = runExecution(createExecution(program, [], { nativeLibraries: ['image'] }))
+    program.nodes[1].text = 'photo <- imload()\nx <- 2'
+    const edited = runExecution(createExecution(program, [], { nativeLibraries: ['image'] }))
+    expect(edited.imageRequest?.selectionKey).toBe(first.imageRequest?.selectionKey)
   })
 
   it('reports browser image load failures at the active block', () => {

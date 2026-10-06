@@ -314,6 +314,7 @@ interface PendingTextLoad {
 
 interface PendingImageLoad {
   url: string | null
+  selectionKey: string
   pendingNode: PendingNode
   pendingExpressionKey: PendingExpressionKey
   pendingCallIndex: number
@@ -1758,6 +1759,18 @@ function startImageLoad(
     currentNodeId: pendingNode.node.id,
     imageRequest: {
       url: imageLoad.url,
+      // Stable across reruns, distinct for each call within a Process block.
+      // Ignore other statements so editing image processing keeps the chosen file.
+      selectionKey: JSON.stringify([
+        state.program === state.rootProgram ? 'root' : state.functionName,
+        pendingNode.node.id,
+        pendingExpressionKey === 'representation'
+          ? pendingNode.node.text
+          : expressionProgressForKey(pendingNode, pendingExpressionKey).source,
+        'process' in pendingNode ? pendingNode.process?.statementIndex : null,
+        pendingExpressionKey,
+        imageLoad.callIndex,
+      ]),
       pendingNode,
       pendingExpressionKey,
       pendingCallIndex: imageLoad.callIndex,

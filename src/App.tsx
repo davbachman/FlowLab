@@ -456,6 +456,10 @@ function App() {
     execution: ExecutionState
     file: File
   } | null>(null)
+  const [rememberedImages, setRememberedImages] = useState<{
+    draftId: string
+    files: Record<string, File>
+  }>({ draftId, files: {} })
   const [importNamesText, setImportNamesText] = useState(recoveryStart.draft?.program.imports ?? '')
   const [importDirectoryHandle, setImportDirectoryHandle] =
     useState<FlowLabDirectoryHandle | null>(null)
@@ -851,9 +855,17 @@ function App() {
     }
   }, [execution])
 
+  if (rememberedImages.draftId !== draftId) {
+    setRememberedImages({ draftId, files: {} })
+  }
+  const rememberedImageFiles = rememberedImages.draftId === draftId ? rememberedImages.files : {}
+  const imageSelectionKey = execution?.imageRequest?.url === null
+    ? execution.imageRequest.selectionKey
+    : undefined
+  const rememberedImageFile = imageSelectionKey ? rememberedImageFiles[imageSelectionKey] : undefined
   const selectedImageFile = localImageSelection?.execution === execution
     ? localImageSelection?.file
-    : undefined
+    : rememberedImageFile
 
   useEffect(() => {
     if (execution?.status !== 'loading' || !execution.imageRequest) {
@@ -874,6 +886,11 @@ function App() {
           return
         }
 
+        if (file && imageSelectionKey) {
+          setRememberedImages((current) => current.draftId === draftId
+            ? { ...current, files: { ...current.files, [imageSelectionKey]: file } }
+            : current)
+        }
         setExecution((currentExecution) => {
           if (currentExecution !== loadingExecution) {
             return currentExecution
@@ -893,6 +910,14 @@ function App() {
           return
         }
 
+        if (imageSelectionKey) {
+          setRememberedImages((current) => {
+            if (current.draftId !== draftId || !current.files[imageSelectionKey]) return current
+            const files = { ...current.files }
+            delete files[imageSelectionKey]
+            return { ...current, files }
+          })
+        }
         setExecution((currentExecution) =>
           currentExecution === loadingExecution
             ? failImageLoadExecution(
@@ -907,7 +932,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [execution, selectedImageFile])
+  }, [execution, selectedImageFile, imageSelectionKey, draftId])
 
   // Release the selected file and its suspended execution once that request ends.
   if (localImageSelection && localImageSelection.execution !== execution) {
@@ -3727,6 +3752,9 @@ function App() {
                   visibleImageState ? (
                     <ImagePanel
                       imageState={visibleImageState}
+                      selectedFileNames={Object.values(rememberedImageFiles).map((file) => file.name)}
+                      canForgetImages={!executionIsBusy && !runEnabled && !autoStepIsActive && !libraryStepEnabled}
+                      onForgetImages={() => setRememberedImages({ draftId, files: {} })}
                       expanded={activeExpandedCanvas === 'image'}
                       onExpand={(trigger) => expandCanvas('image', trigger)}
                       onClose={closeExpandedCanvas}
@@ -4079,7 +4107,7 @@ function App() {
           </form>
         </div>
       ) : null}
-      {execution?.status === 'loading' && execution.imageRequest?.url === null ? (
+      {execution?.status === 'loading' && execution.imageRequest?.url === null && !rememberedImageFile ? (
         <div className="modal-backdrop">
           <div
             className="filename-modal"
@@ -4099,6 +4127,7 @@ function App() {
           >
             <h2 id="imload-modal-title">Load image</h2>
             <p>Choose an image from your computer to continue the program.</p>
+            <p>This choice will be reused while this program is open. Use “Forget selected images” in the Image panel to choose again.</p>
             <label className="input-label" htmlFor="imload-file">Image file</label>
             <input
               id="imload-file"
@@ -4724,12 +4753,20 @@ interface RuntimeCanvasPanelProps {
 
 function ImagePanel({
   imageState,
+  selectedFileNames,
+  canForgetImages,
+  onForgetImages,
   expanded,
   onExpand,
   onClose,
   onDragStart,
   onDragEnd,
-}: RuntimeCanvasPanelProps & { imageState: ImageRuntimeState }) {
+}: RuntimeCanvasPanelProps & {
+  imageState: ImageRuntimeState
+  selectedFileNames: string[]
+  canForgetImages: boolean
+  onForgetImages: () => void
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const image = displayedImageData(imageState)
 
@@ -4799,6 +4836,14 @@ function ImagePanel({
       ) : (
         <p className="empty-image">No image displayed</p>
       )}
+      {selectedFileNames.length ? (
+        <div className="image-file-choices">
+          <p>Selected files: {selectedFileNames.join(', ')}</p>
+          <button type="button" disabled={!canForgetImages} onClick={onForgetImages}>
+            Forget selected images
+          </button>
+        </div>
+      ) : null}
     </section>
   )
 }
