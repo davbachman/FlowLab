@@ -268,6 +268,7 @@ export function availableFunctionReferenceSections(
       availability: 'Defined on the current canvas.',
       functions: userFunctionEntries(
         currentFunctionNames,
+        program,
         'Defined in the current program.',
       ),
     })
@@ -326,6 +327,7 @@ export function availableFunctionReferenceSections(
         availability: `Available from the imported ${file.name} FlowLab file.`,
         functions: userFunctionEntries(
           names.sort((left, right) => left.localeCompare(right)),
+          file.program,
           'Imported FlowLab function.',
         ),
       })
@@ -360,11 +362,14 @@ export function availableLibraryReferences(
 
 function userFunctionEntries(
   names: readonly string[],
-  description: string,
+  program: Program,
+  fallbackDescription: string,
 ): FunctionReferenceEntry[] {
   return names.map((name) => ({
     name,
     signature: `${name}(…)`,
-    description,
+    description: program.nodes.find(
+      (node) => node.type === 'function' && node.text.trim() === name,
+    )?.comment?.trim() || fallbackDescription,
   }))
 }

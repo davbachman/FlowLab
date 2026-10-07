@@ -1119,7 +1119,13 @@ describe('App', () => {
 
   it('lists functions only from imported native and FlowLab libraries', async () => {
     const user = userEvent.setup()
-    registerFlowLabProgram('helpers.json', importedHelperProgram)
+    const docstring = 'Adds one to the input.\nInput: x\nReturns: x + 1'
+    registerFlowLabProgram('helpers.json', {
+      ...importedHelperProgram,
+      nodes: importedHelperProgram.nodes.map((node) => node.id === 'import-helper'
+        ? { ...node, comment: docstring }
+        : node),
+    })
     render(<App />)
 
     await user.type(
@@ -1161,6 +1167,9 @@ describe('App', () => {
       'set_pixel(image, row, col, color)',
     ])
     expect(functionSignaturesFor(dialog, 'helpers')).toEqual(['helper(…)'])
+    const helperReference = within(dialog).getByRole('region', { name: /^helpers$/i })
+    expect(helperReference.querySelector('dd')?.textContent).toBe(docstring)
+    expect(helperReference).not.toHaveTextContent('Imported FlowLab function.')
     expect(
       within(dialog).queryByRole('region', { name: /^Turtle$/i }),
     ).not.toBeInTheDocument()
@@ -3721,6 +3730,70 @@ describe('App', () => {
       methodNode.querySelector(`[data-handleid="${METHOD_OWNER_HANDLE}"]`),
     ).toHaveAttribute('data-handlepos', 'top')
     expect(methodNode.querySelector('[data-handlepos="bottom"]')).toBeInTheDocument()
+  })
+
+  it('collapses and expands functions while preserving comments and execution', async () => {
+    const user = userEvent.setup()
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'output', type: 'output', text: 'helper()', position: { x: 0, y: 100 } },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 200 } },
+        { id: 'helper', type: 'function', text: 'helper', comment: 'Returns seven.\nNo inputs needed.', position: { x: 350, y: 0 } },
+        { id: 'helper-end', type: 'return', text: '7', position: { x: 350, y: 100 } },
+      ],
+      edges: [
+        { id: 'start', source: 'main', target: 'output' },
+        { id: 'end-wire', source: 'output', target: 'end' },
+        { id: 'helper-wire', source: 'helper', target: 'helper-end' },
+      ],
+    }
+    render(<App />)
+    importProgramFromFileMenu(new File([JSON.stringify(program)], 'collapse.json', { type: 'application/json' }))
+    const helper = await screen.findByTestId('flow-node-helper')
+    const beforePosition = screen.getByTestId('flow-node-helper-end').closest('.react-flow__node')?.getAttribute('style')
+    fireEvent.doubleClick(helper)
+    expect(helper).toHaveAttribute('data-collapsed', 'true')
+    expect(helper).toHaveTextContent('Collapsed')
+    expect(helper).toHaveTextContent('Returns seven. No inputs needed.')
+    expect(screen.queryByTestId('flow-node-helper-end')).not.toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-output')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /Add block/i })).not.toBeInTheDocument()
+
+    await user.click(executionButton(/^Run$/i))
+    await screen.findByText(/^Completed$/i)
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('7')
+    expect(helper).toHaveAttribute('data-collapsed', 'true')
+    fireEvent.doubleClick(helper)
+    const restored = await screen.findByTestId('flow-node-helper-end')
+    expect(restored).toHaveTextContent('Return')
+    expect(within(restored).getByRole('textbox', { hidden: true })).toHaveValue('7')
+    expect(restored.closest('.react-flow__node')?.getAttribute('style')).toBe(beforePosition)
+    expect(helper).toHaveTextContent('Returns seven. No inputs needed.')
+
+    // Editing the function name keeps ordinary text double-click behavior.
+    await user.dblClick(within(helper).getByRole('textbox', { hidden: true }))
+    expect(helper).toHaveAttribute('data-collapsed', 'false')
+    await user.click(within(helper).getByLabelText('Collapse function helper'))
+    const helperWrapper = helper.closest('.react-flow__node') as HTMLElement
+    fireEvent.keyDown(helperWrapper, { key: 'Enter' })
+    fireEvent.keyDown(helperWrapper, { key: 'ArrowRight' })
+    fireEvent.keyDown(helperWrapper, { key: 'ArrowDown' })
+    expect(helperWrapper.style.transform).toBe('translate(355px,5px)')
+    fireEvent.doubleClick(screen.getByTestId('flow-node-main'))
+    expect(screen.queryByTestId('flow-node-output')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-helper-end')).not.toBeInTheDocument()
+    expect(helper).toBeInTheDocument()
+    await user.dblClick(within(helper).getByLabelText('Expand function helper'))
+    expect(screen.getByTestId('flow-node-helper-end')).toBeInTheDocument()
+    expect((screen.getByTestId('flow-node-helper-end').closest('.react-flow__node') as HTMLElement).style.transform)
+      .toBe('translate(355px,105px)')
+    expect(screen.queryByTestId('flow-node-output')).not.toBeInTheDocument()
+
+    importProgramFromFileMenu(new File([JSON.stringify(program)], 'fresh.json', { type: 'application/json' }))
+    await screen.findByTestId('flow-node-output')
+    expect(screen.getByTestId('flow-node-main')).toHaveAttribute('data-collapsed', 'false')
   })
 
   it('opens a right-click comment dialog and shows comments inside blocks', async () => {

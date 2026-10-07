@@ -25,6 +25,8 @@
 
 Choose **FlowLab → Reference** for an in-app list of available function signatures and descriptions. It groups the always-available core functions, functions defined on the current canvas, and functions from imported libraries and JSON files. The Available libraries section lists the four native libraries and resolved JSON imports, with their import status. Add a native library in Imports to see its functions in the reference.
 
+A comment on a Function block serves as its docstring. Right-click the Function block and enter its description in **Block comment**. The reference displays that comment, preserving line breaks, for functions on the current canvas and functions imported from a saved library. Functions without a comment keep the default description. After editing a library’s comments, save it and reload the library to see the updated docstrings.
+
 ## Resolve JSON imports
 
 FlowLab resolves JSON names in this order:

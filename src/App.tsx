@@ -89,6 +89,7 @@ import { OutputDrawer } from './components/OutputDrawer'
 import { cleanUpProgram } from './lib/codeCleanup'
 import { adaptiveFlowNodeWidth, minimumFlowNodeWidth } from './lib/flowLayout'
 import { combineNodesIntoProcess } from './lib/processConsolidation'
+import { collapsedFunctionBodies } from './lib/functionCollapse'
 import {
   DELETE_KEY_CODES,
   programToEdges,
@@ -150,6 +151,8 @@ interface FlowNodeData extends Record<string, unknown> {
   textValidationMessage?: string
   hasBreakpoint?: boolean
   onToggleBreakpoint?: (nodeId: string) => void
+  isCollapsed?: boolean
+  onToggleCollapse?: (nodeId: string) => void
 }
 
 interface AttachedMethodHandle {
@@ -438,6 +441,9 @@ function App() {
   const [compactView, setCompactView] = useState<CompactView>('canvas')
   const [importsExpanded, setImportsExpanded] = useState(!!recoveryStart.draft?.program.imports?.trim())
   const [nodes, setNodes] = useState<EditorNode[]>(() => recoveryStart.draft ? programToNodes(recoveryStart.draft.program) : [])
+  const [collapsedFunctions, setCollapsedFunctions] = useState<{ draftId: string; ids: Set<string> }>(
+    () => ({ draftId, ids: new Set() }),
+  )
   const [edges, setEdges] = useState<EditorEdge[]>(() => recoveryStart.draft ? programToEdges(recoveryStart.draft.program) : [])
   const [inputQueueText, setInputQueueText] = useState(recoveryStart.draft?.program.inputQueue ?? '')
   const [waitingInputQueueDraft, setWaitingInputQueueDraft] =
@@ -1085,6 +1091,25 @@ function App() {
   }, [])
 
   const program = useMemo(() => toProgram(nodes, edges), [nodes, edges])
+  if (collapsedFunctions.draftId !== draftId) {
+    setCollapsedFunctions({ draftId, ids: new Set() })
+  }
+  const collapsedBodies = useMemo(
+    () => collapsedFunctionBodies(program, collapsedFunctions.draftId === draftId ? collapsedFunctions.ids : new Set()),
+    [program, collapsedFunctions, draftId],
+  )
+  const hiddenNodeIds = useMemo(() => new Set([...collapsedBodies.values()].flatMap((body) => [...body])), [collapsedBodies])
+  const toggleFunctionCollapse = useCallback((nodeId: string) => {
+    const ids = new Set(collapsedFunctions.draftId === draftId ? collapsedFunctions.ids : [])
+    if (ids.has(nodeId)) ids.delete(nodeId)
+    else ids.add(nodeId)
+    setCollapsedFunctions({ draftId, ids })
+    // Hidden selections must not remain targets of Delete, Copy, or Combine.
+    const bodies = collapsedFunctionBodies(toProgram(nodesRef.current, edgesRef.current), ids)
+    const hidden = new Set([...bodies.values()].flatMap((body) => [...body]))
+    setNodes((current) => current.map((node) => hidden.has(node.id) && node.selected ? { ...node, selected: false } : node))
+    setEdges((current) => current.map((edge) => (hidden.has(edge.source) || hidden.has(edge.target)) && edge.selected ? { ...edge, selected: false } : edge))
+  }, [collapsedFunctions, draftId])
   const nativeLibraryNames = useMemo(
     () => importResolution.nativeLibraries.map((library) => library.name),
     [importResolution.nativeLibraries],
@@ -1172,6 +1197,7 @@ function App() {
       return
     }
     if (!issue.nodeId) return
+    setCollapsedFunctions({ draftId, ids: new Set() })
     setCompactView('canvas')
     setNodes((current) => current.map((node) => ({ ...node, selected: node.id === issue.nodeId })))
     setEdges((current) => current.map((edge) => ({ ...edge, selected: edge.id === issue.edgeId })))
@@ -1187,7 +1213,7 @@ function App() {
         }
       }
     })
-  }, [flowInstance])
+  }, [flowInstance, draftId])
   const executionIsBusy =
     execution?.status === 'asking' || execution?.status === 'loading'
   const canResetExecution = validation.valid && !executionIsBusy
@@ -1303,11 +1329,12 @@ function App() {
     const activeBranch = active && branch?.program === incomingEdge?.program && branch?.edgeId === edge.id
     return {
       ...edge,
+      hidden: hiddenNodeIds.has(edge.source) || hiddenNodeIds.has(edge.target),
       ...(active ? { style: { ...edge.style, stroke: '#d97706', strokeWidth: 3 } } : {}),
       ...(activeBranch ? { label: `${branch.expression} → ${branch.label === 'true' ? 'True' : 'False'}`, labelStyle: { fill: '#92400e', fontWeight: 700 } } : {}),
       interactionWidth: Math.max(edge.interactionWidth ?? 20, 24),
     }
-  }), [program, edges, displayedExecution])
+  }), [program, edges, displayedExecution, hiddenNodeIds])
   const selectedEdges = edges.filter((edge) => edge.selected)
   const insertableSelection = selectedEdges.length === 1 && canInsertOnEdge(program, selectedEdges[0].id)
     ? selectedEdges[0]
@@ -1363,9 +1390,12 @@ function App() {
     () =>
       nodes.map((node) => ({
         ...node,
+        hidden: hiddenNodeIds.has(node.id),
         data: {
           ...node.data,
-          isCurrent: node.id === currentNodeId && displayedExecution?.program === displayedExecution?.rootProgram,
+          isCurrent: (node.id === currentNodeId || (currentNodeId !== null && collapsedBodies.get(node.id)?.has(currentNodeId))) && displayedExecution?.program === displayedExecution?.rootProgram,
+          isCollapsed: collapsedBodies.has(node.id),
+          onToggleCollapse: toggleFunctionCollapse,
           isWidthCustomized: node.width !== undefined,
           trueBranchHandle: trueBranchHandleForNode(node, edges),
           attachedMethods:
@@ -1389,6 +1419,9 @@ function App() {
       validationFeedback,
       breakpoints,
       toggleBreakpoint,
+      hiddenNodeIds,
+      collapsedBodies,
+      toggleFunctionCollapse,
     ],
   )
   const combinableSelection = useMemo(
@@ -1402,12 +1435,30 @@ function App() {
 
   const onNodesChange = useCallback(
     (changes: NodeChange<EditorNode>[]) => {
-      setNodes((currentNodes) => applyNodeChanges(changes, currentNodes))
+      setNodes((currentNodes) => {
+        const nextNodes = applyNodeChanges(changes, currentNodes)
+        if (!changes.some((change) => change.type === 'position')) return nextNodes
+        const bodies = collapsedFunctionBodies(
+          toProgram(currentNodes, edgesRef.current),
+          collapsedFunctions.draftId === draftId ? collapsedFunctions.ids : new Set(),
+        )
+        const offsets = new Map<string, { x: number; y: number }>()
+        for (const [rootId, body] of bodies) {
+          const before = currentNodes.find((node) => node.id === rootId)!.position
+          const after = nextNodes.find((node) => node.id === rootId)?.position
+          if (!after || (before.x === after.x && before.y === after.y)) continue
+          for (const id of body) offsets.set(id, { x: after.x - before.x, y: after.y - before.y })
+        }
+        return nextNodes.map((node) => {
+          const offset = offsets.get(node.id)
+          return offset ? { ...node, position: { x: node.position.x + offset.x, y: node.position.y + offset.y } } : node
+        })
+      })
       if (changes.some((change) => change.type !== 'select' && change.type !== 'dimensions')) {
         setExecution(null)
       }
     },
-    [setNodes],
+    [setNodes, collapsedFunctions, draftId],
   )
 
   const onEdgesChange = useCallback(
@@ -3571,7 +3622,12 @@ function App() {
             onInit={setFlowInstance}
             onPaneClick={placePendingNode}
             onNodeClick={selectClickedNode}
-            onNodeDoubleClick={(event) => event.stopPropagation()}
+            onNodeDoubleClick={(event, node) => {
+              event.stopPropagation()
+              if (node.data.nodeType === 'function' && !(event.target as HTMLElement).closest('input, textarea, button, .react-flow__handle')) {
+                toggleFunctionCollapse(node.id)
+              }
+            }}
             onNodeContextMenu={openNodeCommentDialog}
             onNodeDragStart={recordCanvasChangeStart}
             onSelectionDragStart={recordCanvasChangeStart}
@@ -4464,7 +4520,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
     if (typeof window.DOMMatrixReadOnly === 'function') {
       updateNodeInternals(id)
     }
-  }, [attachedMethodIds, id, updateNodeInternals])
+  }, [attachedMethodIds, data.isCollapsed, id, updateNodeInternals])
 
   return (
     <div
@@ -4474,6 +4530,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
       data-testid={`flow-node-${id}`}
       data-current={data.isCurrent ? 'true' : 'false'}
       data-breakpoint={!!data.hasBreakpoint}
+      data-collapsed={!!data.isCollapsed}
       data-shape={
         isBranchNodeType(data.nodeType)
           ? 'diamond'
@@ -4562,6 +4619,18 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
       {data.nodeType !== 'class' ? <button type="button" className="node-breakpoint nodrag nopan" aria-pressed={!!data.hasBreakpoint} aria-label={`${data.hasBreakpoint ? 'Remove' : 'Add'} breakpoint on ${data.text.trim().split('\n')[0] || label}`} title={data.hasBreakpoint ? 'Remove breakpoint' : 'Pause before this block'} onClick={(event) => { event.stopPropagation(); data.onToggleBreakpoint?.(id) }}>●</button> : null}
       <div className="node-content">
         <div className="node-label">{label}</div>
+        {isFunctionRoot ? (
+          <button
+            type="button"
+            className="node-collapse-toggle nodrag nopan"
+            aria-label={`${data.isCollapsed ? 'Expand' : 'Collapse'} function ${data.text.trim() || 'unnamed'}`}
+            aria-expanded={!data.isCollapsed}
+            title={data.isCollapsed ? 'Double-click the block to expand its flow' : 'Double-click the block to collapse its flow'}
+            onClick={(event) => { event.stopPropagation(); if (event.detail < 2) data.onToggleCollapse?.(id) }}
+          >
+            {data.isCollapsed ? '▸ Collapsed' : '▾ Collapse'}
+          </button>
+        ) : null}
         {data.comment ? <div className="node-comment">{data.comment}</div> : null}
         {editable ? (
           <>
@@ -4674,6 +4743,8 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
       ) : data.nodeType !== 'return' && !isDeclaration ? (
         <Handle
           className="node-handle"
+          style={data.isCollapsed ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
+          isConnectable={!data.isCollapsed}
           type="source"
           position={Position.Bottom}
         />
