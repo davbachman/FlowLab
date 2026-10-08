@@ -9,7 +9,8 @@ import { WHILE_TRUE_RIGHT_HANDLE } from './lib/flowRouting'
 interface TestNode {
   id: string
   position: { x: number; y: number }
-  data: { nodeType: string; text: string }
+  hidden?: boolean
+  data: { nodeType: string; text: string; onToggleCollapse?: (id: string) => void }
 }
 
 const flowProps: Record<string, unknown>[] = []
@@ -103,6 +104,27 @@ describe('connected block insertion', () => {
     flowProps.length = 0
     window.localStorage.clear()
     flowInstance.screenToFlowPosition.mockImplementation((point) => point)
+  })
+
+  it('places connected blocks over hidden function bodies without moving or removing those bodies', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await openBasicExample(user)
+    const hiddenBlock = currentNodes().find((node) => node.id === 'input-n')!
+    const main = currentNodes().find((node) => node.id === 'main')!
+    act(() => main.data.onToggleCollapse!(main.id))
+    expect(currentNodes().find((node) => node.id === hiddenBlock.id)?.hidden).toBe(true)
+
+    await user.click(screen.getByRole('button', { name: 'Function' }))
+    const place = flowProps.at(-1)?.onPaneClick as (event: globalThis.MouseEvent) => void
+    act(() => place(new window.MouseEvent('click', { clientX: 2000, clientY: 1000 })))
+    const source = currentNodes().at(-1)!
+    dragOutputIntoBlankCanvas(source.id, null, { x: hiddenBlock.position.x + 142, y: hiddenBlock.position.y + 56 })
+    await user.click(screen.getByRole('option', { name: 'Process' }))
+    expect(currentNodes().at(-1)?.position).toEqual(hiddenBlock.position)
+    expect(currentNodes().find((node) => node.id === hiddenBlock.id)).toMatchObject({
+      hidden: true, position: hiddenBlock.position,
+    })
   })
 
   it.each([

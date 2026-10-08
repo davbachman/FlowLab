@@ -3796,6 +3796,43 @@ describe('App', () => {
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute('data-collapsed', 'false')
   })
 
+  it('expands only the function containing a validation target', async () => {
+    const user = userEvent.setup()
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'main-end', type: 'return', text: '0', position: { x: 0, y: 200 } },
+        { id: 'helper', type: 'function', text: 'helper', position: { x: 350, y: 0 } },
+        { id: 'bad-output', type: 'output', text: '(', position: { x: 350, y: 100 } },
+        { id: 'helper-end', type: 'return', text: '0', position: { x: 350, y: 200 } },
+        { id: 'visible-error', type: 'output', text: ')', position: { x: 700, y: 100 } },
+      ],
+      edges: [
+        { id: 'main-wire', source: 'main', target: 'main-end' },
+        { id: 'helper-wire', source: 'helper', target: 'bad-output' },
+        { id: 'return-wire', source: 'bad-output', target: 'helper-end' },
+      ],
+    }
+    render(<App />)
+    importProgramFromFileMenu(new File([JSON.stringify(program)], 'errors.json', { type: 'application/json' }))
+    fireEvent.doubleClick(await screen.findByTestId('flow-node-main'))
+    fireEvent.doubleClick(screen.getByTestId('flow-node-helper'))
+    expect(screen.queryByTestId('flow-node-bad-output')).not.toBeInTheDocument()
+
+    // A visible target must leave every collapsed function alone.
+    await user.click(screen.getByTitle(/Output node "visible-error" has invalid text/))
+    expect(screen.getByTestId('flow-node-main')).toHaveAttribute('data-collapsed', 'true')
+    expect(screen.getByTestId('flow-node-helper')).toHaveAttribute('data-collapsed', 'true')
+
+    await user.click(screen.getByTitle(/Output node "bad-output" has invalid text/))
+    const revealed = await screen.findByTestId('flow-node-bad-output')
+    expect(screen.getByTestId('flow-node-helper')).toHaveAttribute('data-collapsed', 'false')
+    expect(screen.getByTestId('flow-node-main')).toHaveAttribute('data-collapsed', 'true')
+    expect(screen.queryByTestId('flow-node-main-end')).not.toBeInTheDocument()
+    await waitFor(() => expect(within(revealed).getByRole('textbox', { hidden: true })).toHaveFocus())
+  })
+
   it('opens a right-click comment dialog and shows comments inside blocks', async () => {
     const user = userEvent.setup()
     render(<App />)

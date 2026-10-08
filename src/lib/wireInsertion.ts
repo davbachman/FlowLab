@@ -32,10 +32,11 @@ export function findFreeNodePosition(
   program: Program,
   newNode: ProgramNode,
   measuredDimensions?: ReadonlyMap<string, FlowNodeDimensions>,
+  hiddenNodeIds?: ReadonlySet<string>,
 ): ProgramPosition {
   const gap = 24
   const addedSize = estimateProgramNodeDimensions(program, newNode)
-  const existingBounds = program.nodes.map((node) => {
+  const existingBounds = program.nodes.filter((node) => !hiddenNodeIds?.has(node.id)).map((node) => {
     const measured = measuredDimensions?.get(node.id)
     const size = measured && Number.isFinite(measured.width) && measured.width > 0 &&
       Number.isFinite(measured.height) && measured.height > 0
@@ -94,6 +95,7 @@ export function insertNodeOnEdge(
   edgeId: string,
   newNode: ProgramNode,
   measuredDimensions?: ReadonlyMap<string, FlowNodeDimensions>,
+  hiddenNodeIds?: ReadonlySet<string>,
 ): Program | null {
   if (
     !WIRE_INSERT_NODE_TYPES.includes(newNode.type) ||
@@ -112,7 +114,7 @@ export function insertNodeOnEdge(
 
   return {
     ...program,
-    nodes: [...program.nodes, { ...newNode, position: findFreeNodePosition(program, newNode, measuredDimensions) }],
+    nodes: [...program.nodes, { ...newNode, position: findFreeNodePosition(program, newNode, measuredDimensions, hiddenNodeIds) }],
     edges: program.edges.flatMap((edge) =>
       edge.id === edgeId
         ? [{ ...edge, target: newNode.id }, continuation]
@@ -128,6 +130,7 @@ export function connectNewNode(
   newNode: ProgramNode,
   label?: BranchLabel,
   measuredDimensions?: ReadonlyMap<string, FlowNodeDimensions>,
+  hiddenNodeIds?: ReadonlySet<string>,
 ): Program | null {
   const source = program.nodes.find((node) => node.id === sourceId)
   if (
@@ -156,7 +159,7 @@ export function connectNewNode(
 
   return {
     ...program,
-    nodes: [...program.nodes, { ...newNode, position: findFreeNodePosition(program, newNode, measuredDimensions) }],
+    nodes: [...program.nodes, { ...newNode, position: findFreeNodePosition(program, newNode, measuredDimensions, hiddenNodeIds) }],
     edges: [...retainedEdges, edge],
   }
 }

@@ -1197,7 +1197,14 @@ function App() {
       return
     }
     if (!issue.nodeId) return
-    setCollapsedFunctions({ draftId, ids: new Set() })
+    setCollapsedFunctions((current) => {
+      if (current.draftId !== draftId) return current
+      const ids = new Set(current.ids)
+      for (const [rootId, body] of collapsedBodies) {
+        if (body.has(issue.nodeId!)) ids.delete(rootId)
+      }
+      return { ...current, ids }
+    })
     setCompactView('canvas')
     setNodes((current) => current.map((node) => ({ ...node, selected: node.id === issue.nodeId })))
     setEdges((current) => current.map((edge) => ({ ...edge, selected: edge.id === issue.edgeId })))
@@ -1213,7 +1220,7 @@ function App() {
         }
       }
     })
-  }, [flowInstance, draftId])
+  }, [flowInstance, draftId, collapsedBodies])
   const executionIsBusy =
     execution?.status === 'asking' || execution?.status === 'loading'
   const canResetExecution = validation.valid && !executionIsBusy
@@ -1760,8 +1767,8 @@ function App() {
           : [],
       ))
       const updated = quickAddRequest.edgeId
-        ? insertNodeOnEdge(program, quickAddRequest.edgeId, newNode, measuredDimensions)
-        : connectNewNode(program, quickAddRequest.sourceId!, newNode, quickAddRequest.branchLabel, measuredDimensions)
+        ? insertNodeOnEdge(program, quickAddRequest.edgeId, newNode, measuredDimensions, hiddenNodeIds)
+        : connectNewNode(program, quickAddRequest.sourceId!, newNode, quickAddRequest.branchLabel, measuredDimensions, hiddenNodeIds)
       if (!updated) {
         setMessage('This connection has changed. Choose a wire again.')
         setQuickAddRequest(null)

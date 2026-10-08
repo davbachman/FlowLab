@@ -33,6 +33,19 @@ const newNode: ProgramNode = {
 }
 
 describe('wire insertion', () => {
+  it.each(['insert', 'connect'])('ignores hidden blocks during %s without removing them from the program', (operation) => {
+    const hiddenNode = program.nodes.find((node) => node.id === 'add')!
+    const added = { ...newNode, position: hiddenNode.position }
+    const hidden = new Set(['add'])
+    const updated = operation === 'insert'
+      ? insertNodeOnEdge(program, 'finish', added, undefined, hidden)!
+      : connectNewNode(program, 'show', added, undefined, undefined, hidden)!
+    expect(updated.nodes.at(-1)?.position).toEqual(added.position)
+    expect(updated.nodes.slice(0, -1)).toEqual(program.nodes)
+    // Once the body is expanded, the same block occupies canvas space again.
+    expect(findFreeNodePosition(program, added)).not.toEqual(added.position)
+  })
+
   it('finds nearby space without overlapping existing blocks or changing their positions', () => {
     const updated = insertNodeOnEdge(program, 'true', newNode)!
     const inserted = updated.nodes.find((node) => node.id === newNode.id)!
