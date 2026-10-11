@@ -134,7 +134,7 @@ import {
 } from './lib/drafts'
 import { initialRecoveryState, recoveryStorage } from './lib/documentRecovery'
 import { validationFeedbackForProgram, type ValidationFeedback } from './lib/validationFeedback'
-import { hasPendingLibraryStep, runExecutionChunk, stepExecutionChunk, visibleExecution } from './lib/debugger'
+import { hasPendingStepOver, runExecutionChunk, stepExecutionChunk, visibleExecution } from './lib/debugger'
 import { canInsertOnEdge, connectNewNode, insertNodeOnEdge, CONNECTED_NODE_TYPES, WIRE_INSERT_NODE_TYPES } from './lib/wireInsertion'
 import './App.css'
 
@@ -486,7 +486,7 @@ function App() {
   const [autoStepEnabled, setAutoStepEnabled] = useState(false)
   const [autoStepSpeed, setAutoStepSpeed] = useState(DEFAULT_AUTO_STEP_SPEED)
   const [runEnabled, setRunEnabled] = useState(false)
-  const [libraryStepEnabled, setLibraryStepEnabled] = useState(false)
+  const [stepOverEnabled, setStepOverEnabled] = useState(false)
   const debugInformationHidden = execution?.collectFeedback === false
   const displayedExecution = useMemo(() => execution && !debugInformationHidden ? visibleExecution(execution) : null, [execution, debugInformationHidden])
   const [breakpoints, setBreakpoints] = useState<Set<string>>(new Set())
@@ -986,7 +986,7 @@ function App() {
   useEffect(() => {
     if (
       !autoStepIsActive ||
-      libraryStepEnabled ||
+      stepOverEnabled ||
       execution?.status !== 'running' ||
       !execution.currentNodeId
     ) {
@@ -1002,34 +1002,34 @@ function App() {
           return currentExecution
         }
 
-        if (!skipBreakpointRef.current && !currentExecution.libraryCall && currentExecution.program === currentExecution.rootProgram && breakpoints.has(currentExecution.currentNodeId)) {
+        if (!skipBreakpointRef.current && !currentExecution.stepOverCall && currentExecution.program === currentExecution.rootProgram && breakpoints.has(currentExecution.currentNodeId)) {
           setAutoStepEnabled(false)
           setPauseReason('Breakpoint')
           return currentExecution
         }
         skipBreakpointRef.current = false
         const result = stepExecutionChunk(currentExecution)
-        setLibraryStepEnabled(hasPendingLibraryStep(result))
+        setStepOverEnabled(hasPendingStepOver(result))
         return result.state
       })
     }, 1000 / autoStepSpeed)
 
     return () => window.clearTimeout(timeout)
-  }, [autoStepIsActive, autoStepSpeed, execution, breakpoints, libraryStepEnabled])
+  }, [autoStepIsActive, autoStepSpeed, execution, breakpoints, stepOverEnabled])
 
   useEffect(() => {
-    if (!libraryStepEnabled || !execution || execution.status !== 'running') return
+    if (!stepOverEnabled || !execution || execution.status !== 'running') return
     const timer = window.setTimeout(() => {
       const result = stepExecutionChunk(execution)
       setExecution(result.state)
-      setLibraryStepEnabled(hasPendingLibraryStep(result))
+      setStepOverEnabled(hasPendingStepOver(result))
     }, 0)
     return () => window.clearTimeout(timer)
-  }, [execution, libraryStepEnabled])
+  }, [execution, stepOverEnabled])
 
   useEffect(() => {
     if (!execution || execution.status === 'halted' || execution.status === 'error') {
-      const timer = window.setTimeout(() => { setRunEnabled(false); setAutoStepEnabled(false); setLibraryStepEnabled(false) }, 0)
+      const timer = window.setTimeout(() => { setRunEnabled(false); setAutoStepEnabled(false); setStepOverEnabled(false) }, 0)
       return () => window.clearTimeout(timer)
     }
     if (!runEnabled || execution.status !== 'running') return
@@ -1225,16 +1225,16 @@ function App() {
     execution?.status === 'asking' || execution?.status === 'loading'
   const canResetExecution = validation.valid && !executionIsBusy
   const canStepExecution =
-    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled && !libraryStepEnabled && execution?.status !== 'halted' && execution?.status !== 'error'
+    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled && !stepOverEnabled && execution?.status !== 'halted' && execution?.status !== 'error'
   const canToggleAutoStep =
-    validation.valid && !runEnabled && (!libraryStepEnabled || autoStepIsActive) && (!executionIsBusy || autoStepIsActive)
+    validation.valid && !runEnabled && (!stepOverEnabled || autoStepIsActive) && (!executionIsBusy || autoStepIsActive)
   const canRunExecution =
-    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled && !libraryStepEnabled
+    validation.valid && !executionIsBusy && !autoStepIsActive && !runEnabled && !stepOverEnabled
   const canContinueExecution = !!execution &&
     execution.status !== 'halted' && execution.status !== 'error' &&
     (!isFreshRootExecution(execution) || pauseReason === 'Breakpoint')
-  const canStopExecution = runEnabled || autoStepIsActive || libraryStepEnabled
-  const executionStatusLabel = (runEnabled || autoStepIsActive || libraryStepEnabled) && execution?.status === 'running'
+  const canStopExecution = runEnabled || autoStepIsActive || stepOverEnabled
+  const executionStatusLabel = (runEnabled || autoStepIsActive || stepOverEnabled) && execution?.status === 'running'
     ? 'Running'
     : execution?.status === 'running'
       ? pauseReason || (execution.steps === 0 ? 'Ready' : 'Paused')
@@ -1940,7 +1940,7 @@ function App() {
     setExecution(null)
     setAutoStepEnabled(false)
     setRunEnabled(false)
-    setLibraryStepEnabled(false)
+    setStepOverEnabled(false)
     setPendingNodeType(null)
     setPendingNodePosition(null)
     setQuickAddRequest(null)
@@ -1951,7 +1951,7 @@ function App() {
     setMessage('')
     setAutoStepEnabled(false)
     setRunEnabled(false)
-    setLibraryStepEnabled(false)
+    setStepOverEnabled(false)
     setPauseReason('')
     skipBreakpointRef.current = false
     setInputQueueText(effectiveInputQueueText)
@@ -2032,14 +2032,14 @@ function App() {
         })
     const result = stepExecutionChunk(activeExecution)
     setExecution(result.state)
-    setLibraryStepEnabled(hasPendingLibraryStep(result))
+    setStepOverEnabled(hasPendingStepOver(result))
   }
 
   function runProgram(): void {
     setMessage('')
     setPauseReason('')
     setAutoStepEnabled(false)
-    setLibraryStepEnabled(false)
+    setStepOverEnabled(false)
     setInputQueueText(effectiveInputQueueText)
     setWaitingInputQueueDraft(null)
     const canResume = execution && execution.status !== 'halted' && execution.status !== 'error'
@@ -2070,7 +2070,7 @@ function App() {
   function stopProgram(): void {
     setRunEnabled(false)
     setAutoStepEnabled(false)
-    setLibraryStepEnabled(false)
+    setStepOverEnabled(false)
     setPauseReason('Stopped')
   }
 
@@ -2078,7 +2078,7 @@ function App() {
     setMessage('')
     setPauseReason('')
     setRunEnabled(false)
-    setLibraryStepEnabled(false)
+    setStepOverEnabled(false)
     skipBreakpointRef.current = canContinueExecution
 
     if (autoStepIsActive) {
@@ -3609,7 +3609,7 @@ function App() {
             <div className="compact-execution-bar">
               <div className="execution-buttons">
                 <button type="button" className="primary-execution" onClick={runProgram} disabled={!canRunExecution}>Run</button>
-                <button type="button" onClick={stepProgram} disabled={!canStepExecution} title="Advance one block, entering functions defined on this canvas">Step</button>
+                <button type="button" onClick={stepProgram} disabled={!canStepExecution} title="Advance one block; enter local functions called by main and step over other calls">Step</button>
                 {canStopExecution ? <button type="button" onClick={stopProgram}>Stop</button> : <button type="button" onClick={resetExecution} disabled={!canResetExecution}>Restart</button>}
               </div>
               <span className="compact-execution-status">{executionStatusLabel}{displayedExecution ? ` · ${displayedExecution.steps} steps` : ''}</span>
@@ -3705,7 +3705,7 @@ function App() {
                 type="button"
                 onClick={stepProgram}
                 aria-keyshortcuts="Shift+Space"
-                title="Advance one block, entering functions defined on this canvas"
+                title="Advance one block; enter local functions called by main and step over other calls"
                 disabled={!canStepExecution}
               >
                 Step
@@ -3816,7 +3816,7 @@ function App() {
                     <ImagePanel
                       imageState={visibleImageState}
                       selectedFileNames={Object.values(rememberedImageFiles).map((file) => file.name)}
-                      canForgetImages={!executionIsBusy && !runEnabled && !autoStepIsActive && !libraryStepEnabled}
+                      canForgetImages={!executionIsBusy && !runEnabled && !autoStepIsActive && !stepOverEnabled}
                       onForgetImages={() => setRememberedImages({ draftId, files: {} })}
                       expanded={activeExpandedCanvas === 'image'}
                       onExpand={(trigger) => expandCanvas('image', trigger)}

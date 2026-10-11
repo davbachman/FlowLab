@@ -33,6 +33,107 @@ function finishStep(state: ExecutionState): ExecutionState {
   return result.state
 }
 
+function localConsumer(library = helper, expression = 'helper(4)'): Program {
+  const outer = program([
+    ['main', 'function', 'main'], ['main-call', 'assignment', 'answer <- outer()'],
+    ['main-end', 'return', 'answer'], ['outer', 'function', 'outer'],
+    ['call', 'assignment', `result <- ${expression}`], ['end', 'return', 'result'],
+  ], [['main', 'main-call'], ['main-call', 'main-end'], ['outer', 'call'], ['call', 'end']])
+  return {
+    ...outer,
+    nodes: [...outer.nodes, ...library.nodes.map(node => ({ ...node, id: `local-${node.id}` }))],
+    edges: [...outer.edges, ...library.edges.map(edge => ({ ...edge, id: `local-${edge.id}`, source: `local-${edge.source}`, target: `local-${edge.target}` }))],
+  }
+}
+
+function atNestedCall(source = localConsumer()): ExecutionState {
+  let state = createExecution(source, [], { nativeLibraries: ['text'] })
+  state = finishStep(state)
+  state = finishStep(state)
+  expect(state.functionName).toBe('outer')
+  expect(state.currentNodeId).toBe('outer')
+  state = finishStep(state)
+  expect(state.currentNodeId).toBe('call')
+  return state
+}
+
+describe('calls made by local functions', () => {
+  it('enters the function called by main but completes its local calls in one visible step', () => {
+    const state = finishStep(atNestedCall())
+    expect(state.currentNodeId).toBe('end')
+    expect(state.functionName).toBe('outer')
+    expect(state.callStack.map(frame => frame.functionName)).toEqual(['main'])
+    expect(state.environment).toEqual({ result: 5 })
+    expect(state.lastStep?.changedVariables).toEqual([{ name: 'result', before: undefined, after: 5 }])
+    expect(state.incomingEdge?.edgeId).toBe('call-end')
+    expect(visibleExecution(state).steps).toBe(4)
+    const returned = finishStep(state)
+    expect(returned.currentNodeId).toBe('main-end')
+    expect(returned.environment.answer).toBe(5)
+  })
+
+  it('keeps the caller visible across chunks and completes repeated calls in the same expression', () => {
+    const before = atNestedCall(localConsumer(helper, 'helper(4) + helper(5)'))
+    const partial = stepExecutionChunk(before, { maxSteps: 1, maxMilliseconds: Infinity })
+    expect(partial.reason).toBe('yield')
+    const visible = visibleExecution(partial.state)
+    expect(visible.currentNodeId).toBe('call')
+    expect(visible.functionName).toBe('outer')
+    expect(visible.environment).toEqual({})
+    expect(visible.callStack.map(frame => frame.functionName)).toEqual(['main'])
+    expect(visible.steps).toBe(4)
+    const state = finishStep(partial.state)
+    expect(state.currentNodeId).toBe('end')
+    expect(state.environment.result).toBe(11)
+    expect(visibleExecution(state).steps).toBe(4)
+  })
+
+  it('skips breakpoints inside stepped-over calls and stops at the next visible block', () => {
+    const result = runExecutionChunk(atNestedCall(), { ...unlimited, breakpoints: new Set(['local-helper', 'local-input', 'end']) })
+    expect(result.reason).toBe('breakpoint')
+    expect(result.state.currentNodeId).toBe('end')
+    expect(result.state.environment.result).toBe(5)
+  })
+
+  it.each(['ask()', 'text_from_url("https://example.com/data")'])('resumes %s in a local call without advancing past the calling block', expression => {
+    const local = program([['helper', 'function', 'helper'], ['input', 'input', 'n'], ['end', 'return', expression]],
+      [['helper', 'input'], ['input', 'end']])
+    const blocked = finishStep(atNestedCall(localConsumer(local)))
+    expect(['asking', 'loading']).toContain(blocked.status)
+    expect(visibleExecution(blocked).currentNodeId).toBe('call')
+    const answered = expression === 'ask()' ? answerAskExecution(blocked, '42') : completeTextLoadExecution(blocked, '42')
+    const state = finishStep(answered)
+    expect(state.currentNodeId).toBe('end')
+    expect(state.environment.result).toBe(expression === 'ask()' ? 42 : '42')
+    expect(visibleExecution(state).steps).toBe(4)
+  })
+
+  it('steps over recursive calls made by the function that main entered', () => {
+    const recursive = program([
+      ['main', 'function', 'main'], ['call', 'assignment', 'result <- factorial(4)'], ['end', 'return', 'result'],
+      ['factorial', 'function', 'factorial'], ['input', 'input', 'n'], ['condition', 'if', 'n > 1'],
+      ['recurse', 'return', 'n * factorial(n - 1)'], ['base', 'return', '1'],
+    ], [['main', 'call'], ['call', 'end'], ['factorial', 'input'], ['input', 'condition'], ['condition', 'recurse', 'true'], ['condition', 'base', 'false']])
+    let state = createExecution(recursive, [])
+    for (let i = 0; i < 5; i++) state = finishStep(state)
+    expect(state.currentNodeId).toBe('recurse')
+    state = finishStep(state)
+    expect(state.currentNodeId).toBe('end')
+    expect(state.environment.result).toBe(24)
+    expect(state.lastStep?.changedVariables).toEqual([{ name: 'result', before: undefined, after: 24 }])
+    expect(visibleExecution(state).steps).toBe(6)
+  })
+
+  it('keeps errors inside local calls at the caller', () => {
+    const local = program([['helper', 'function', 'helper'], ['input', 'input', 'n'], ['end', 'return', '1 / 0']],
+      [['helper', 'input'], ['input', 'end']])
+    const state = finishStep(atNestedCall(localConsumer(local)))
+    expect(state.status).toBe('error')
+    expect(visibleExecution(state).currentNodeId).toBe('call')
+    expect(visibleExecution(state).environment).toEqual({})
+  })
+})
+
 describe('opaque imported library execution', () => {
   it('finishes an imported call in one visible step with caller feedback and the arrival wire', () => {
     const state = finishStep(atCall())
@@ -90,12 +191,12 @@ describe('opaque imported library execution', () => {
     const run = runExecutionChunk(initial, { ...unlimited, breakpoints: new Set(['local']) })
     expect(run.reason).toBe('breakpoint')
     expect(run.state.callStack).toHaveLength(1)
-    expect(run.state.libraryCall).toBeUndefined()
+    expect(run.state.stepOverCall).toBeUndefined()
     expect(visibleExecution(run.state).steps).toBe(2)
     const stepped = finishStep(initial)
     expect(stepped.currentNodeId).toBe('local')
     expect(stepped.callStack).toHaveLength(1)
-    expect(stepped.libraryCall).toBeUndefined()
+    expect(stepped.stepOverCall).toBeUndefined()
   })
 
   it('still steps into a function defined on the current canvas when it overrides an import', () => {
@@ -103,7 +204,7 @@ describe('opaque imported library execution', () => {
     const state = finishStep(atCall(helper, source))
     expect(state.currentNodeId).toBe('local-helper')
     expect(state.functionName).toBe('helper')
-    expect(state.libraryCall).toBeUndefined()
+    expect(state.stepOverCall).toBeUndefined()
   })
 
   it('shows the ancestor caller when a local Return starts the next library call', () => {

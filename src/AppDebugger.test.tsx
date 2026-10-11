@@ -344,7 +344,36 @@ describe('debugger controls and feedback', () => {
     fireEvent.click(executionButton('Pause'))
   })
 
-  it('shows nested calls while stepping and continues recursive calls to completion', async () => {
+  it.each(['Step', 'Auto Step'])('steps over nested local calls during %s, including calls that span chunks', async action => {
+    const source = makeProgram([
+      ['main', 'function', 'main'], ['main-call', 'assignment', 'answer <- outer()'], ['main-end', 'return', 'answer'],
+      ['outer', 'function', 'outer'], ['call', 'assignment', 'result <- helper(150)'], ['output', 'output', 'result'], ['outer-end', 'return', 'result'],
+    ], [['main', 'main-call'], ['main-call', 'main-end'], ['outer', 'call'], ['call', 'output'], ['output', 'outer-end']])
+    source.nodes.push(...libraryProgram.nodes.filter(node => !node.id.startsWith('library-main')))
+    source.edges.push(...libraryProgram.edges.filter(edge => edge.source !== 'library-main'))
+    render(<App />)
+    await loadProgram(source)
+    for (let i = 0; i < 3; i++) fireEvent.click(executionButton('Step'))
+    expect(screen.getByTestId('flow-node-call')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByLabelText('Call stack')).toHaveTextContent('outer')
+    toggleBreakpoint('output')
+    toggleBreakpoint('helper')
+    fireEvent.change(screen.getByLabelText('Auto Step speed'), { target: { value: '10' } })
+    fireEvent.click(executionButton(action))
+    if (action === 'Step') {
+      expect(screen.getByTestId('flow-node-call')).toHaveAttribute('aria-current', 'step')
+      expect(screen.getByLabelText('Call stack')).not.toHaveTextContent('helper')
+    }
+    await waitFor(() => expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step'))
+    if (action === 'Auto Step') await screen.findByText('Breakpoint', { exact: true })
+    expect(steps()).toBe(4)
+    expect(output()).toHaveTextContent('No output yet')
+    expect(screen.getByLabelText('Variable values')).toHaveTextContent('result99')
+    expect(screen.getByLabelText('Variable values')).not.toHaveTextContent('internalN')
+    expect(screen.getByLabelText('Call stack')).not.toHaveTextContent('helper')
+  })
+
+  it('enters the first local call and completes its recursion in one step', async () => {
     const source = makeProgram([
       ['main', 'function', 'main'], ['calculate', 'assignment', 'result <- factorial(4)'],
       ['output', 'output', 'result'], ['end', 'return', 'result'],
@@ -362,6 +391,13 @@ describe('debugger controls and feedback', () => {
     const stack = screen.getByRole('navigation', { name: 'Call stack' })
     expect(stack).toHaveTextContent('main')
     expect(stack).toHaveTextContent('factorial')
+    for (let i = 0; i < 3; i++) fireEvent.click(executionButton('Step'))
+    expect(screen.getByTestId('flow-node-recursive')).toHaveAttribute('aria-current', 'step')
+    fireEvent.click(executionButton('Step'))
+    await waitFor(() => expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step'))
+    expect(steps()).toBe(6)
+    expect(screen.getByLabelText('Variable values')).toHaveTextContent('result24')
+    expect(screen.getByLabelText('Call stack')).toHaveTextContent(/^main$/)
     fireEvent.click(executionButton('Run'))
     await screen.findByText('Completed', { exact: true })
     expect(output()).toHaveTextContent('24')

@@ -1,9 +1,9 @@
 import { executionVariableChanges, stepExecution, type ExecutionState } from './interpreter'
 
-/** Keep the editable caller visible during a library call, including waits/errors. */
+/** Keep the caller visible while stepping over a call, including waits/errors. */
 export function visibleExecution(state: ExecutionState): ExecutionState {
-  const current = finishLibraryCall(state)
-  const caller = current.libraryCall?.caller
+  const current = finishStepOverCall(state)
+  const caller = current.stepOverCall?.caller
   return {
     ...current,
     ...(caller ? {
@@ -23,16 +23,17 @@ export function visibleExecution(state: ExecutionState): ExecutionState {
   }
 }
 
-function finishLibraryCall(state: ExecutionState): ExecutionState {
-  const boundary = state.libraryCall
+function finishStepOverCall(state: ExecutionState): ExecutionState {
+  const boundary = state.stepOverCall
   if (!boundary || state.callStack.includes(boundary.frame)) return state
-  if (state.program !== state.rootProgram) {
-    // A resumed expression can immediately call another imported function.
-    return { ...state, libraryCall: libraryBoundary(boundary.caller, state) }
+  const nextBoundary = stepOverBoundary(boundary.caller, state)
+  if (nextBoundary) {
+    // A resumed expression can immediately start another call to step over.
+    return { ...state, stepOverCall: nextBoundary }
   }
   return {
     ...state,
-    libraryCall: undefined,
+    stepOverCall: undefined,
     lastStep: state.lastStep ? {
       ...state.lastStep,
       changedVariables: executionVariableChanges(boundary.caller, state),
@@ -40,15 +41,16 @@ function finishLibraryCall(state: ExecutionState): ExecutionState {
   }
 }
 
-function libraryBoundary(before: ExecutionState, after: ExecutionState): ExecutionState['libraryCall'] {
+function stepOverBoundary(before: ExecutionState, after: ExecutionState): ExecutionState['stepOverCall'] {
   const depth = after.callStack.findIndex((frame, index) =>
-    frame.program === after.rootProgram &&
+    frame.functionName !== 'main' ||
+    frame.program !== after.rootProgram ||
     (after.callStack[index + 1]?.program ?? after.program) !== after.rootProgram,
   )
   if (depth < 0) return undefined
   const frame = after.callStack[depth]
-  // A local Return may resume an ancestor expression that immediately calls a
-  // library. Keep that ancestor's calling block visible, not the local Return.
+  // A Return may resume an ancestor expression that immediately starts another
+  // call. Keep that ancestor's calling block visible, not the Return.
   const sameCaller = before.callStack.length === depth && before.program === frame.program && before.currentNodeId === frame.currentNodeId
   const caller = sameCaller ? before : {
     ...before,
@@ -67,15 +69,15 @@ function libraryBoundary(before: ExecutionState, after: ExecutionState): Executi
 }
 
 function stepDebuggerExecution(state: ExecutionState): ExecutionState {
-  const before = finishLibraryCall(state)
+  const before = finishStepOverCall(state)
   let next = stepExecution(before)
-  if (before.libraryCall) {
+  if (before.stepOverCall) {
     next = { ...next, hiddenSteps: (before.hiddenSteps ?? 0) + next.steps - before.steps }
   }
-  if (!next.libraryCall && next.program !== next.rootProgram) {
-    next = { ...next, libraryCall: libraryBoundary(before, next) }
+  if (!next.stepOverCall) {
+    next = { ...next, stepOverCall: stepOverBoundary(before, next) }
   }
-  return finishLibraryCall(next)
+  return finishStepOverCall(next)
 }
 
 export interface ExecutionChunkOptions {
@@ -85,7 +87,7 @@ export interface ExecutionChunkOptions {
   skipCurrentBreakpoint?: boolean
   maxSteps?: number
   maxMilliseconds?: number
-  /** Complete one visible block, including any calls into imported libraries. */
+  /** Complete one visible block, stepping over imported and non-main calls. */
   singleStep?: boolean
   /** Disable debugger bookkeeping for fast Run; persists through asynchronous input. */
   collectFeedback?: boolean
@@ -100,8 +102,8 @@ export function stepExecutionChunk(state: ExecutionState, options: ExecutionChun
   return runExecutionChunk(state, { ...options, singleStep: true, breakpoints: undefined, collectFeedback: true })
 }
 
-export function hasPendingLibraryStep(result: ExecutionChunkResult): boolean {
-  return result.reason === 'yield' || !!result.state.libraryCall &&
+export function hasPendingStepOver(result: ExecutionChunkResult): boolean {
+  return result.reason === 'yield' || !!result.state.stepOverCall &&
     (result.state.status === 'asking' || result.state.status === 'loading')
 }
 
@@ -117,11 +119,11 @@ export function runExecutionChunk(
   const collectFeedback = options.collectFeedback ?? state.collectFeedback
   const limit = Math.max(1, Math.floor(options.maxSteps ?? (collectFeedback === false ? 10000 : 100)))
   const deadline = performance.now() + Math.max(0, options.maxMilliseconds ?? 8)
-  let next = finishLibraryCall(collectFeedback === state.collectFeedback ? state : {
+  let next = finishStepOverCall(collectFeedback === state.collectFeedback ? state : {
     ...state, collectFeedback, lastStep: undefined, incomingEdge: undefined,
   })
-  // An asynchronous library return may have completed the requested step.
-  if (options.singleStep && state.libraryCall && !next.libraryCall) {
+  // An asynchronous return may have completed the requested step.
+  if (options.singleStep && state.stepOverCall && !next.stepOverCall) {
     return { state: next, reason: 'completed' }
   }
   let executed = 0
@@ -138,7 +140,7 @@ export function runExecutionChunk(
     }
     if (
       !(executed === 0 && options.skipCurrentBreakpoint) &&
-      !next.libraryCall && next.program === next.rootProgram && options.breakpoints?.has(next.currentNodeId)
+      !next.stepOverCall && next.program === next.rootProgram && options.breakpoints?.has(next.currentNodeId)
     ) {
       return { state: next, reason: 'breakpoint' }
     }
@@ -148,7 +150,7 @@ export function runExecutionChunk(
     }
     next = stepDebuggerExecution(next)
     executed += 1
-    if (options.singleStep && !next.libraryCall) {
+    if (options.singleStep && !next.stepOverCall) {
       return { state: next, reason: 'completed' }
     }
   }
