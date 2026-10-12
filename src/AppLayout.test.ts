@@ -259,7 +259,7 @@ describe('app layout scrolling', () => {
         '.flow-node-width-custom.flow-node-if .node-content,\n.flow-node-width-custom.flow-node-while .node-content,\n.flow-node-width-custom.flow-node-for .node-content',
       ),
     ).toMatchObject({
-      width: 'min(calc(100% - 64px), 540px)',
+      width: 'min(calc((100% - 30px) * 0.55), 540px)',
     })
   })
 

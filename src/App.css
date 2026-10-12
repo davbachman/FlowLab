@@ -1032,7 +1032,7 @@ button:disabled {
 .flow-node-width-custom.flow-node-if .node-content,
 .flow-node-width-custom.flow-node-while .node-content,
 .flow-node-width-custom.flow-node-for .node-content {
-  width: min(calc(100% - 64px), 540px);
+  width: min(calc((100% - 30px) * 0.55), 540px);
 }
 
 .flow-node-width-custom.flow-node-if::before,
@@ -1146,12 +1146,17 @@ button:disabled {
 
 .node-textarea {
   display: block;
-  min-height: 48px;
+  margin-inline: auto;
+  min-height: 31px;
   resize: none;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
   text-align: left;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.node-textarea-process {
+  min-height: 48px;
 }
 
 .flow-node-call {

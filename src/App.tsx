@@ -2,6 +2,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -4467,8 +4468,53 @@ function trapDialogFocus(event: ReactKeyboardEvent<HTMLDivElement>): void {
   }
 }
 
+function BlockTextEditor({ id, value, multiline, onChange, ...attributes }: {
+  id: string
+  value: string
+  multiline: boolean
+  onChange: (value: string) => void
+  'aria-invalid': boolean
+  title?: string
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const resize = useCallback(() => {
+    const field = ref.current
+    if (!field) return
+    field.style.height = '0px'
+    field.style.height = `${field.scrollHeight + 2}px`
+  }, [])
+  useLayoutEffect(resize, [resize, value])
+  useLayoutEffect(() => {
+    const field = ref.current
+    if (!field) return
+    let width = field.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth === width) return
+      width = field.clientWidth
+      resize()
+    })
+    observer.observe(field)
+    return () => observer.disconnect()
+  }, [resize])
+  return (
+    <textarea
+      {...attributes}
+      id={id}
+      ref={ref}
+      className={`node-input node-textarea nodrag${multiline ? ' node-textarea-process' : ''}`}
+      value={value}
+      rows={multiline ? Math.max(2, value.split(/\r?\n/).length) : 1}
+      wrap="soft"
+      onChange={(event) => onChange(multiline ? event.target.value : event.target.value.replace(/[\r\n]/g, ''))}
+      onKeyDown={(event) => { if (!multiline && event.key === 'Enter') event.preventDefault() }}
+      spellCheck={false}
+    />
+  )
+}
+
 function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
   const updateNodeInternals = useUpdateNodeInternals()
+  const contentRef = useRef<HTMLDivElement>(null)
   const [text, setText] = useState(data.text)
   const [lastProgramText, setLastProgramText] = useState(data.text)
 
@@ -4510,6 +4556,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
   const isInputOutput =
     data.nodeType === 'input' || data.nodeType === 'output'
   const isProcess = data.nodeType === 'process'
+  const isBranch = isBranchNodeType(data.nodeType)
   const classSignature = isDeclaration
     ? tryParseClassDeclaration(data.text)
     : null
@@ -4523,6 +4570,21 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
     .map((method) => method.nodeId)
     .join('\u0000')
 
+  useLayoutEffect(() => {
+    const content = contentRef.current
+    const block = content?.parentElement
+    if (!content || !block || !isBranch) return
+    const resize = () => {
+      // At 55% of the diamond's width, the content needs this much vertical
+      // space for its corners to stay inside the sloping edges.
+      block.style.height = `${Math.max(142, Math.ceil((content.offsetHeight + 8) / 0.45))}px`
+    }
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [isBranch])
+
   useEffect(() => {
     if (typeof window.DOMMatrixReadOnly === 'function') {
       updateNodeInternals(id)
@@ -4532,7 +4594,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
   return (
     <div
       className={`flow-node flow-node-${data.nodeType}${
-        data.isWidthCustomized ? ' flow-node-width-custom' : ''
+        data.isWidthCustomized || isBranch ? ' flow-node-width-custom' : ''
       }`}
       data-testid={`flow-node-${id}`}
       data-current={data.isCurrent ? 'true' : 'false'}
@@ -4556,10 +4618,10 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
                 attachedMethods.length,
               )}px`,
             } as CSSProperties)
-          : undefined
+          : isBranch && !data.isWidthCustomized ? { width: minimumWidth } : undefined
       }
     >
-      {data.isWidthCustomized && isBranchNodeType(data.nodeType) ? (
+      {isBranch ? (
         <span className="flow-node-custom-diamond" aria-hidden="true">
           <svg
             className="flow-node-custom-diamond-svg"
@@ -4624,7 +4686,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
         />
       ) : null}
       {data.nodeType !== 'class' ? <button type="button" className="node-breakpoint nodrag nopan" aria-pressed={!!data.hasBreakpoint} aria-label={`${data.hasBreakpoint ? 'Remove' : 'Add'} breakpoint on ${data.text.trim().split('\n')[0] || label}`} title={data.hasBreakpoint ? 'Remove breakpoint' : 'Pause before this block'} onClick={(event) => { event.stopPropagation(); data.onToggleBreakpoint?.(id) }}>●</button> : null}
-      <div className="node-content">
+      <div className="node-content" ref={contentRef}>
         <div className="node-label">{label}</div>
         {isFunctionRoot ? (
           <button
@@ -4644,28 +4706,14 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
             <label className="sr-only" htmlFor={`${id}-text`}>
               {label} text
             </label>
-            {isProcess ? (
-              <textarea
+              <BlockTextEditor
                 id={`${id}-text`}
                 aria-invalid={!!data.textValidationMessage}
                 title={data.textValidationMessage}
-                className="node-input node-textarea nodrag"
                 value={text}
-                rows={Math.max(2, text.split(/\r?\n/).length)}
-                onChange={(event) => changeText(event.target.value)}
-                spellCheck={false}
+                multiline={isProcess}
+                onChange={changeText}
               />
-            ) : (
-              <input
-                id={`${id}-text`}
-                aria-invalid={!!data.textValidationMessage}
-                title={data.textValidationMessage}
-                className="node-input nodrag"
-                value={text}
-                onChange={(event) => changeText(event.target.value)}
-                spellCheck={false}
-              />
-            )}
             {classSignature?.fields.length ? (
               <div className="class-fields" aria-label="Declared fields">
                 {classSignature.fields.map((field) => (

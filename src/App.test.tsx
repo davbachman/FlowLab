@@ -1649,6 +1649,39 @@ describe('App', () => {
     expect(screen.getByDisplayValue('total <- 1')).toBeInTheDocument()
   })
 
+  it('keeps wrapped expressions as one statement and preserves Process line breaks', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const message = 'A long value that wraps inside the block. '.repeat(8)
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'process', type: 'process', text: `message <- ${JSON.stringify(message)}\ncount <- 1`, position: { x: 0, y: 100 } },
+        { id: 'output', type: 'output', text: 'message', position: { x: 0, y: 200 } },
+        { id: 'end', type: 'return', text: JSON.stringify(message), position: { x: 0, y: 300 } },
+      ],
+      edges: [
+        { id: 'start', source: 'main', target: 'process' },
+        { id: 'show', source: 'process', target: 'output' },
+        { id: 'finish', source: 'output', target: 'end' },
+      ],
+    }
+    importProgramFromFileMenu(new File([JSON.stringify(program)], 'wrapped.json', { type: 'application/json' }))
+    const returned = await screen.findByLabelText('Return text')
+    expect(returned.tagName).toBe('TEXTAREA')
+    await user.click(returned)
+    await user.keyboard('{Enter}')
+    expect(returned).toHaveValue(JSON.stringify(message))
+    const process = screen.getByLabelText('Process text')
+    await user.click(process)
+    await user.keyboard('{End}{Enter}count <- 2')
+    expect(process).toHaveValue(`${program.nodes[1].text}\ncount <- 2`)
+    await user.click(executionButton(/^Run$/i))
+    await screen.findByText(/^Completed$/i)
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(message.trim())
+  })
+
   it.each([
     { label: 'Assignment text', original: 'total <- 0', minimumWidth: 214, maximumWidth: 680 },
     { label: 'Process text', original: 'total <- total + n\nn <- n - 1', minimumWidth: 284, maximumWidth: 760 },

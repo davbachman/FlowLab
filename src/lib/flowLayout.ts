@@ -1427,17 +1427,24 @@ function requiredDimensions(
 }
 
 function estimatedNodeHeight(node: ProgramNode, width: number): number {
+  const contentWidth = isBranchNodeType(node.type) ? (width - 30) * 0.55 : width - 24
+  const inputWidth = node.type === 'function' || node.type === 'return'
+    ? contentWidth * 0.75
+    : node.type === 'input' || node.type === 'output' ? contentWidth - 24 : contentWidth
+  const textLines = Math.max(node.type === 'process' ? 2 : 1, estimatedWrappedLineCount(
+    node.text, Math.max(1, Math.floor((inputWidth - 18) / MONOSPACE_CHARACTER_WIDTH)),
+  ))
+  const wrappedHeight = (textLines - 1) * 17
   const commentLines = estimatedWrappedLineCount(
     node.comment ?? '',
-    Math.max(1, Math.floor((width - 32) / COMMENT_CHARACTER_WIDTH)),
+    Math.max(1, Math.floor((contentWidth - 8) / COMMENT_CHARACTER_WIDTH)),
   )
   const commentHeight = commentLines ? commentLines * 15 + 6 : 0
 
   if (isBranchNodeType(node.type)) {
-    return Math.max(142, 122 + commentHeight)
+    return Math.max(142, Math.ceil((59 + wrappedHeight + commentHeight) / 0.45))
   }
   if (node.type === 'process') {
-    const textLines = Math.max(2, node.text.split(/\r?\n/).length)
     return 80 + textLines * 16 + commentHeight
   }
   if (node.type === 'class') {
@@ -1448,9 +1455,9 @@ function estimatedNodeHeight(node: ProgramNode, width: number): number {
         return 0
       }
     })()
-    return 114 + fieldsHeight + commentHeight
+    return 114 + fieldsHeight + commentHeight + wrappedHeight
   }
-  return 82 + commentHeight
+  return 82 + commentHeight + wrappedHeight
 }
 
 function estimatedWrappedLineCount(text: string, columns: number): number {
