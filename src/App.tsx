@@ -442,9 +442,6 @@ function App() {
   const [compactView, setCompactView] = useState<CompactView>('canvas')
   const [importsExpanded, setImportsExpanded] = useState(!!recoveryStart.draft?.program.imports?.trim())
   const [nodes, setNodes] = useState<EditorNode[]>(() => recoveryStart.draft ? programToNodes(recoveryStart.draft.program) : [])
-  const [collapsedFunctions, setCollapsedFunctions] = useState<{ draftId: string; ids: Set<string> }>(
-    () => ({ draftId, ids: new Set() }),
-  )
   const [edges, setEdges] = useState<EditorEdge[]>(() => recoveryStart.draft ? programToEdges(recoveryStart.draft.program) : [])
   const [inputQueueText, setInputQueueText] = useState(recoveryStart.draft?.program.inputQueue ?? '')
   const [waitingInputQueueDraft, setWaitingInputQueueDraft] =
@@ -1092,25 +1089,22 @@ function App() {
   }, [])
 
   const program = useMemo(() => toProgram(nodes, edges), [nodes, edges])
-  if (collapsedFunctions.draftId !== draftId) {
-    setCollapsedFunctions({ draftId, ids: new Set() })
-  }
   const collapsedBodies = useMemo(
-    () => collapsedFunctionBodies(program, collapsedFunctions.draftId === draftId ? collapsedFunctions.ids : new Set()),
-    [program, collapsedFunctions, draftId],
+    () => collapsedFunctionBodies(program),
+    [program],
   )
   const hiddenNodeIds = useMemo(() => new Set([...collapsedBodies.values()].flatMap((body) => [...body])), [collapsedBodies])
   const toggleFunctionCollapse = useCallback((nodeId: string) => {
-    const ids = new Set(collapsedFunctions.draftId === draftId ? collapsedFunctions.ids : [])
-    if (ids.has(nodeId)) ids.delete(nodeId)
-    else ids.add(nodeId)
-    setCollapsedFunctions({ draftId, ids })
+    pushHistorySnapshot()
+    const updated = nodesRef.current.map((node) => node.id === nodeId
+      ? { ...node, data: { ...node.data, isCollapsed: !node.data.isCollapsed } }
+      : node)
     // Hidden selections must not remain targets of Delete, Copy, or Combine.
-    const bodies = collapsedFunctionBodies(toProgram(nodesRef.current, edgesRef.current), ids)
+    const bodies = collapsedFunctionBodies(toProgram(updated, edgesRef.current))
     const hidden = new Set([...bodies.values()].flatMap((body) => [...body]))
-    setNodes((current) => current.map((node) => hidden.has(node.id) && node.selected ? { ...node, selected: false } : node))
+    setNodes(updated.map((node) => hidden.has(node.id) && node.selected ? { ...node, selected: false } : node))
     setEdges((current) => current.map((edge) => (hidden.has(edge.source) || hidden.has(edge.target)) && edge.selected ? { ...edge, selected: false } : edge))
-  }, [collapsedFunctions, draftId])
+  }, [pushHistorySnapshot])
   const nativeLibraryNames = useMemo(
     () => importResolution.nativeLibraries.map((library) => library.name),
     [importResolution.nativeLibraries],
@@ -1198,16 +1192,12 @@ function App() {
       return
     }
     if (!issue.nodeId) return
-    setCollapsedFunctions((current) => {
-      if (current.draftId !== draftId) return current
-      const ids = new Set(current.ids)
-      for (const [rootId, body] of collapsedBodies) {
-        if (body.has(issue.nodeId!)) ids.delete(rootId)
-      }
-      return { ...current, ids }
-    })
     setCompactView('canvas')
-    setNodes((current) => current.map((node) => ({ ...node, selected: node.id === issue.nodeId })))
+    setNodes((current) => current.map((node) => ({
+      ...node,
+      selected: node.id === issue.nodeId,
+      ...(collapsedBodies.get(node.id)?.has(issue.nodeId!) ? { data: { ...node.data, isCollapsed: false } } : {}),
+    })))
     setEdges((current) => current.map((edge) => ({ ...edge, selected: edge.id === issue.edgeId })))
     window.requestAnimationFrame(() => {
       void flowInstance?.fitView({ nodes: [{ id: issue.nodeId! }], padding: 0.5, maxZoom: 1.2, duration: 200 })
@@ -1221,7 +1211,7 @@ function App() {
         }
       }
     })
-  }, [flowInstance, draftId, collapsedBodies])
+  }, [flowInstance, collapsedBodies])
   const executionIsBusy =
     execution?.status === 'asking' || execution?.status === 'loading'
   const canResetExecution = validation.valid && !executionIsBusy
@@ -1448,7 +1438,6 @@ function App() {
         if (!changes.some((change) => change.type === 'position')) return nextNodes
         const bodies = collapsedFunctionBodies(
           toProgram(currentNodes, edgesRef.current),
-          collapsedFunctions.draftId === draftId ? collapsedFunctions.ids : new Set(),
         )
         const offsets = new Map<string, { x: number; y: number }>()
         for (const [rootId, body] of bodies) {
@@ -1466,7 +1455,7 @@ function App() {
         setExecution(null)
       }
     },
-    [setNodes, collapsedFunctions, draftId],
+    [setNodes],
   )
 
   const onEdgesChange = useCallback(
@@ -5640,6 +5629,7 @@ function programToNodes(program: Program): EditorNode[] {
         nodeType: node.type,
         text: node.text,
         comment: node.comment,
+        isCollapsed: node.type === 'function' ? node.collapsed : undefined,
       },
     }
   })
@@ -5714,6 +5704,7 @@ function toProgram(nodes: EditorNode[], edges: EditorEdge[]): Program {
         type: node.data.nodeType,
         text: node.data.text,
         ...(comment ? { comment: node.data.comment } : {}),
+        ...(node.data.nodeType === 'function' && node.data.isCollapsed !== undefined ? { collapsed: node.data.isCollapsed } : {}),
         ...(node.width === undefined ? {} : { width: node.width }),
         position: node.position,
       }

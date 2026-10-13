@@ -54,6 +54,7 @@ export function documentFingerprint(program: Program, documentName: string): str
         type: node.type,
         text: node.text,
         ...(node.comment ? { comment: node.comment } : {}),
+        ...(node.collapsed === undefined ? {} : { collapsed: node.collapsed }),
         ...(node.width === undefined ? {} : { width: node.width }),
         position: { x: node.position.x, y: node.position.y },
       })),
@@ -106,6 +107,7 @@ export function parseProgramDraft(value: unknown): Program {
       typeof node.position.y !== 'number' ||
       !Number.isFinite(node.position.y) ||
       (node.comment !== undefined && typeof node.comment !== 'string') ||
+      (node.collapsed !== undefined && typeof node.collapsed !== 'boolean') ||
       (node.width !== undefined &&
         (typeof node.width !== 'number' ||
           !Number.isFinite(node.width) ||
@@ -123,6 +125,7 @@ export function parseProgramDraft(value: unknown): Program {
       text: node.text,
       position: { x: node.position.x, y: node.position.y },
       ...(node.comment === undefined ? {} : { comment: node.comment }),
+      ...(node.collapsed === undefined ? {} : { collapsed: node.collapsed }),
       ...(node.width === undefined ? {} : { width: node.width }),
     }
   })

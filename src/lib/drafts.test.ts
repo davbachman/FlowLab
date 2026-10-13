@@ -61,6 +61,7 @@ describe('draft loading', () => {
     { version: 2, nodes: [], edges: [] },
     { version: 1, nodes: [null], edges: [] },
     { ...incompleteProgram, imports: ['wrong type'] },
+    { ...incompleteProgram, nodes: [{ ...incompleteProgram.nodes[0], collapsed: 'true' }] },
     { ...incompleteProgram, nodes: [{ ...incompleteProgram.nodes[0], position: { x: Infinity, y: 0 } }] },
     { ...incompleteProgram, nodes: [incompleteProgram.nodes[0], incompleteProgram.nodes[0]] },
     { ...incompleteProgram, edges: [{ id: 'edge', source: 'condition', target: 'condition', label: 'maybe' }] },

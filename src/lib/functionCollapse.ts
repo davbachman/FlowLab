@@ -3,7 +3,7 @@ import type { Program } from './types'
 /** Follow control-flow wires, stopping at other function/class declarations. */
 export function collapsedFunctionBodies(
   program: Program,
-  collapsedIds: ReadonlySet<string>,
+  collapsedIds: ReadonlySet<string> = new Set(program.nodes.filter(node => node.type === 'function' && node.collapsed).map(node => node.id)),
 ): Map<string, Set<string>> {
   const nodes = new Map(program.nodes.map((node) => [node.id, node]))
   const outgoing = new Map<string, string[]>()

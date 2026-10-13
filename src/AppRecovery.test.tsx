@@ -231,6 +231,68 @@ describe('document recovery and editable drafts', () => {
     expect(screen.getByLabelText('Save status')).toHaveTextContent('Unsaved changes')
   })
 
+  it('saves and restores individual collapsed functions with their complete bodies and positions', async () => {
+    const write = vi.fn<(blob: Blob) => Promise<void>>().mockResolvedValue(undefined)
+    const close = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    ;(window as TestSaveWindow).showSaveFilePicker = async () => ({
+      name: 'collapsed.json', createWritable: async () => ({ write, close }),
+    })
+    const source: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'main-end', type: 'return', text: 'helper()', position: { x: 0, y: 150 } },
+        { id: 'helper', type: 'function', text: 'helper', comment: 'Returns seven.', position: { x: 350, y: 0 } },
+        { id: 'helper-end', type: 'return', text: '7', position: { x: 350, y: 150 } },
+      ],
+      edges: [
+        { id: 'main-wire', source: 'main', target: 'main-end' },
+        { id: 'helper-wire', source: 'helper', target: 'helper-end' },
+      ],
+    }
+    const first = render(<App />)
+    loadFile(JSON.stringify(source), 'collapsed.json')
+    fireEvent.doubleClick(await screen.findByTestId('flow-node-helper'))
+    expect(screen.queryByTestId('flow-node-helper-end')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Save status')).toHaveTextContent('Unsaved changes')
+    toolbarAction('Edit', 'Undo')
+    expect(screen.getByTestId('flow-node-helper-end')).toBeInTheDocument()
+    toolbarAction('Edit', 'Redo')
+    expect(screen.queryByTestId('flow-node-helper-end')).not.toBeInTheDocument()
+
+    fileAction('Save')
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
+    const saved = JSON.parse(await write.mock.calls[0][0].text()) as Program
+    expect(saved.nodes).toEqual(source.nodes.map(node => node.id === 'helper' ? { ...node, collapsed: true } : node))
+    expect(saved.edges).toEqual(source.edges)
+    expect(screen.getByLabelText('Save status')).toHaveTextContent('Saved to file')
+
+    fireEvent.doubleClick(screen.getByTestId('flow-node-helper'))
+    expect(screen.getByTestId('flow-node-helper-end')).toBeInTheDocument()
+    loadFile(JSON.stringify(saved), 'collapsed.json')
+    await waitFor(() => expect(screen.getByLabelText('Save status')).toHaveTextContent('Saved to file'))
+    expect(screen.getByTestId('flow-node-helper')).toHaveAttribute('data-collapsed', 'true')
+    expect(screen.getByTestId('flow-node-helper')).toHaveTextContent('Returns seven.')
+    expect(screen.queryByTestId('flow-node-helper-end')).not.toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-main-end')).toBeInTheDocument()
+    await screen.findByText('Recovery saved')
+    first.unmount()
+    render(<App />)
+    expect(screen.getByTestId('flow-node-helper')).toHaveAttribute('data-collapsed', 'true')
+    expect(screen.queryByTestId('flow-node-helper-end')).not.toBeInTheDocument()
+    fireEvent.doubleClick(screen.getByTestId('flow-node-helper'))
+    expect(screen.getByTestId('flow-node-helper-end')).toBeInTheDocument()
+    expect(screen.getByLabelText('Save status')).toHaveTextContent('Unsaved changes')
+    fileAction('Save')
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(2))
+    const expanded = JSON.parse(await write.mock.calls[1][0].text()) as Program
+    expect(expanded.nodes.find(node => node.id === 'helper')?.collapsed).toBe(false)
+    fireEvent.doubleClick(screen.getByTestId('flow-node-helper'))
+    loadFile(JSON.stringify(expanded), 'collapsed.json')
+    await waitFor(() => expect(screen.getByLabelText('Save status')).toHaveTextContent('Saved to file'))
+    expect(screen.getByTestId('flow-node-helper-end')).toBeInTheDocument()
+  })
+
   it('reopens a named browser draft from File Recover draft', async () => {
     writeRecoveryDraft(localStorage, {
       version: 1,
