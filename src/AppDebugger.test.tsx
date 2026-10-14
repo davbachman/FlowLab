@@ -373,7 +373,7 @@ describe('debugger controls and feedback', () => {
     expect(screen.getByLabelText('Call stack')).not.toHaveTextContent('helper')
   })
 
-  it('enters the first local call and completes its recursion in one step', async () => {
+  it.each(['Step', 'Auto Step'])('%s enters recursive self-calls and shows their stack and variables', async action => {
     const source = makeProgram([
       ['main', 'function', 'main'], ['calculate', 'assignment', 'result <- factorial(4)'],
       ['output', 'output', 'result'], ['end', 'return', 'result'],
@@ -393,11 +393,25 @@ describe('debugger controls and feedback', () => {
     expect(stack).toHaveTextContent('factorial')
     for (let i = 0; i < 3; i++) fireEvent.click(executionButton('Step'))
     expect(screen.getByTestId('flow-node-recursive')).toHaveAttribute('aria-current', 'step')
-    fireEvent.click(executionButton('Step'))
-    await waitFor(() => expect(screen.getByTestId('flow-node-output')).toHaveAttribute('aria-current', 'step'))
+    if (action === 'Auto Step') {
+      toggleBreakpoint('factorial')
+      vi.useFakeTimers()
+    }
+    fireEvent.click(executionButton(action))
+    if (action === 'Auto Step') {
+      await act(async () => { vi.advanceTimersByTime(1000) })
+      await act(async () => { vi.advanceTimersByTime(1000) })
+      expect(screen.getByText('Breakpoint', { exact: true })).toBeInTheDocument()
+      vi.useRealTimers()
+      fireEvent.click(within(screen.getByTestId('flow-node-factorial')).getByLabelText(/Remove breakpoint/))
+    }
+    expect(screen.getByTestId('flow-node-factorial')).toHaveAttribute('aria-current', 'step')
     expect(steps()).toBe(6)
-    expect(screen.getByLabelText('Variable values')).toHaveTextContent('result24')
-    expect(screen.getByLabelText('Call stack')).toHaveTextContent(/^main$/)
+    expect(within(stack).getAllByText('factorial')).toHaveLength(2)
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(executionButton('Step'))
+    expect(screen.getByTestId('flow-node-condition')).toHaveAttribute('aria-current', 'step')
+    expect(screen.getByLabelText('Variable values')).toHaveTextContent('n3')
     fireEvent.click(executionButton('Run'))
     await screen.findByText('Completed', { exact: true })
     expect(output()).toHaveTextContent('24')

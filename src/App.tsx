@@ -3599,7 +3599,7 @@ function App() {
             <div className="compact-execution-bar">
               <div className="execution-buttons">
                 <button type="button" className="primary-execution" onClick={runProgram} disabled={!canRunExecution}>Run</button>
-                <button type="button" onClick={stepProgram} disabled={!canStepExecution} title="Advance one block; enter local functions called by main and step over other calls">Step</button>
+                <button type="button" onClick={stepProgram} disabled={!canStepExecution} title="Advance one block; enter local calls from main and self-calls, stepping over other calls">Step</button>
                 {canStopExecution ? <button type="button" onClick={stopProgram}>Stop</button> : <button type="button" onClick={resetExecution} disabled={!canResetExecution}>Restart</button>}
               </div>
               <span className="compact-execution-status">{executionStatusLabel}{displayedExecution ? ` · ${displayedExecution.steps} steps` : ''}</span>
@@ -3695,7 +3695,7 @@ function App() {
                 type="button"
                 onClick={stepProgram}
                 aria-keyshortcuts="Shift+Space"
-                title="Advance one block; enter local functions called by main and step over other calls"
+                title="Advance one block; enter local calls from main and self-calls, stepping over other calls"
                 disabled={!canStepExecution}
               >
                 Step

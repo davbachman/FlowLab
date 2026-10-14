@@ -115,6 +115,20 @@ describe('bounded debugger execution', () => {
     expect(resumed.state.output).toEqual(['24'])
   })
 
+  it('honors the same breakpoint in each recursive invocation', () => {
+    const options = { breakpoints: new Set(['condition']), maxSteps: 100, maxMilliseconds: Infinity }
+    let result = runExecutionChunk(createExecution(recursive, []), options)
+    for (let n = 4; n >= 1; n--) {
+      expect(result.reason).toBe('breakpoint')
+      expect(result.state.environment.n).toBe(n)
+      expect(result.state.callStack).toHaveLength(5 - n)
+      expect(result.state.stepOverCall).toBeUndefined()
+      result = runExecutionChunk(result.state, { ...options, skipCurrentBreakpoint: true })
+    }
+    expect(result.reason).toBe('completed')
+    expect(result.state.output).toEqual(['24'])
+  })
+
   it('resumes after ask and pauses at the next breakpoint', () => {
     const source = program([
       ['main', 'function', 'main'], ['ask', 'assignment', 'answer <- ask()'],

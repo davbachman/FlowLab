@@ -42,11 +42,14 @@ function finishStepOverCall(state: ExecutionState): ExecutionState {
 }
 
 function stepOverBoundary(before: ExecutionState, after: ExecutionState): ExecutionState['stepOverCall'] {
-  const depth = after.callStack.findIndex((frame, index) =>
-    frame.functionName !== 'main' ||
-    frame.program !== after.rootProgram ||
-    (after.callStack[index + 1]?.program ?? after.program) !== after.rootProgram,
-  )
+  const depth = after.callStack.findIndex((frame, index) => {
+    const callee = after.callStack[index + 1] ?? after
+    // Enter local calls from main and direct self-calls. An earlier opaque
+    // boundary still hides everything underneath it, including recursion.
+    return frame.program !== after.rootProgram ||
+      callee.program !== after.rootProgram ||
+      (frame.functionName !== 'main' && frame.functionName !== callee.functionName)
+  })
   if (depth < 0) return undefined
   const frame = after.callStack[depth]
   // A Return may resume an ancestor expression that immediately starts another
@@ -87,7 +90,7 @@ export interface ExecutionChunkOptions {
   skipCurrentBreakpoint?: boolean
   maxSteps?: number
   maxMilliseconds?: number
-  /** Complete one visible block, stepping over imported and non-main calls. */
+  /** Complete one visible block, entering local calls from main and self-calls. */
   singleStep?: boolean
   /** Disable debugger bookkeeping for fast Run; persists through asynchronous input. */
   collectFeedback?: boolean

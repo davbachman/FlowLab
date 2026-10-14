@@ -108,21 +108,72 @@ describe('calls made by local functions', () => {
     expect(visibleExecution(state).steps).toBe(4)
   })
 
-  it('steps over recursive calls made by the function that main entered', () => {
+  it('reveals every block in direct recursive calls made by the function that main entered', () => {
     const recursive = program([
       ['main', 'function', 'main'], ['call', 'assignment', 'result <- factorial(4)'], ['end', 'return', 'result'],
       ['factorial', 'function', 'factorial'], ['input', 'input', 'n'], ['condition', 'if', 'n > 1'],
       ['recurse', 'return', 'n * factorial(n - 1)'], ['base', 'return', '1'],
     ], [['main', 'call'], ['call', 'end'], ['factorial', 'input'], ['input', 'condition'], ['condition', 'recurse', 'true'], ['condition', 'base', 'false']])
     let state = createExecution(recursive, [])
-    for (let i = 0; i < 5; i++) state = finishStep(state)
-    expect(state.currentNodeId).toBe('recurse')
+    state = finishStep(finishStep(state))
+    for (let n = 4; n >= 1; n--) {
+      expect(state.currentNodeId).toBe('factorial')
+      expect(state.callStack.map(frame => frame.functionName)).toEqual(['main', ...Array(4 - n).fill('factorial')])
+      state = finishStep(state)
+      expect(state.currentNodeId).toBe('input')
+      state = finishStep(state)
+      expect(state.currentNodeId).toBe('condition')
+      expect(state.environment.n).toBe(n)
+      state = finishStep(state)
+      expect(state.currentNodeId).toBe(n > 1 ? 'recurse' : 'base')
+      if (n > 1) state = finishStep(state)
+      expect(state.stepOverCall).toBeUndefined()
+    }
     state = finishStep(state)
     expect(state.currentNodeId).toBe('end')
     expect(state.environment.result).toBe(24)
     expect(state.lastStep?.changedVariables).toEqual([{ name: 'result', before: undefined, after: 24 }])
-    expect(visibleExecution(state).steps).toBe(6)
+    expect(visibleExecution(state).steps).toBe(18)
+    expect(state.hiddenSteps ?? 0).toBe(0)
   })
+
+  it('keeps recursion hidden inside a call to a different local function', () => {
+    const recursiveHelper = program([
+      ['helper', 'function', 'helper'], ['input', 'input', 'n'], ['condition', 'if', 'n > 1'],
+      ['recurse', 'return', 'n * helper(n - 1)'], ['base', 'return', '1'],
+    ], [['helper', 'input'], ['input', 'condition'], ['condition', 'recurse', 'true'], ['condition', 'base', 'false']])
+    const state = finishStep(atNestedCall(localConsumer(recursiveHelper)))
+    expect(state.currentNodeId).toBe('end')
+    expect(state.functionName).toBe('outer')
+    expect(state.environment.result).toBe(24)
+    expect(visibleExecution(state).steps).toBe(4)
+  })
+
+  it.each(['helper(n) * factorial(n - 1)', 'factorial(n - 1) * helper(n)'])(
+    'steps over other functions alongside visible self-calls in %s', expression => {
+      const source = program([
+        ['main', 'function', 'main'], ['call', 'assignment', 'result <- factorial(4)'], ['end', 'return', 'result'],
+        ['factorial', 'function', 'factorial'], ['input', 'input', 'n'], ['condition', 'if', 'n > 1'],
+        ['recurse', 'return', expression], ['base', 'return', '1'],
+        ['helper', 'function', 'helper'], ['helper-input', 'input', 'value'], ['helper-end', 'return', 'value'],
+      ], [
+        ['main', 'call'], ['call', 'end'], ['factorial', 'input'], ['input', 'condition'],
+        ['condition', 'recurse', 'true'], ['condition', 'base', 'false'],
+        ['helper', 'helper-input'], ['helper-input', 'helper-end'],
+      ])
+      let state = createExecution(source, [])
+      const argumentsSeen: unknown[] = []
+      for (let i = 0; i < 40 && state.currentNodeId !== 'end'; i++) {
+        state = finishStep(state)
+        expect(state.functionName).not.toBe('helper')
+        expect(state.stepOverCall).toBeUndefined()
+        if (state.currentNodeId === 'condition') argumentsSeen.push(state.environment.n)
+      }
+      expect(argumentsSeen).toEqual([4, 3, 2, 1])
+      expect(state.currentNodeId).toBe('end')
+      expect(state.environment.result).toBe(24)
+    },
+  )
 
   it('keeps errors inside local calls at the caller', () => {
     const local = program([['helper', 'function', 'helper'], ['input', 'input', 'n'], ['end', 'return', '1 / 0']],
