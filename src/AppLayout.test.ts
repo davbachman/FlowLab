@@ -90,8 +90,9 @@ describe('app layout scrolling', () => {
       overflow: 'auto',
     })
     expect(declarationsFor('.palette')).toMatchObject({
-      'overflow-x': 'hidden',
+      overflow: 'hidden',
     })
+    expect(declarationsFor('.build-tab-panel')).toMatchObject({ overflow: 'auto' })
     expect(declarationsFor('.sidebar-resize-handle-left')).toMatchObject({
       right: '0',
     })

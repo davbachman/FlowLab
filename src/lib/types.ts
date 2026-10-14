@@ -71,6 +71,7 @@ export interface Program {
   edges: ProgramEdge[]
   imports?: string
   inputQueue?: string
+  notes?: string
 }
 
 export interface ValidationResult {

@@ -159,6 +159,7 @@ describe('saved-file fingerprint', () => {
       [incompleteProgram, 'Renamed'],
       [{ ...incompleteProgram, imports: '' }, 'Working draft'],
       [{ ...incompleteProgram, inputQueue: '6' }, 'Working draft'],
+      [{ ...incompleteProgram, notes: 'Try a recursive solution.' }, 'Working draft'],
       [{ ...incompleteProgram, nodes: [{ ...incompleteProgram.nodes[0], text: 'n > 0' }] }, 'Working draft'],
       [{ ...incompleteProgram, nodes: [{ ...incompleteProgram.nodes[0], position: { x: 81, y: 30 } }] }, 'Working draft'],
     ]

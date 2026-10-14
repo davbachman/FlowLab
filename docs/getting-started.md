@@ -25,6 +25,8 @@
 
 The Examples menu contains eight complete programs that can be edited and run as tutorials or starting points.
 
+The left sidebar has two tabs: **Build** contains the block palette, validation, and imports; **Notes** provides a freeform space for explanations, ideas, and TODOs. Notes are saved with the document and included in browser recovery. Switching tabs or writing notes preserves the current execution.
+
 Choosing an example replaces the current canvas with a separate draft, supplies the example's input queue, and adds any required libraries to your existing imports. Use Undo to return to the previous canvas, or File > Recover draft to reopen its recovery copy.
 
 ## Work with the canvas
@@ -86,6 +88,7 @@ The library list shows all four native libraries and marks which are imported, a
 - The input queue remains editable immediately after Restart. If execution is waiting at an Input block, add one or more values to the queue and choose Step, Auto Step, or Run to resume from that block.
 - Step executes one visible block at a time and continues the current execution. Calls made by `main` to Functions and Methods defined on the current canvas enter their flowcharts. When a visible Function or Method calls itself, Step enters each recursive invocation and shows its blocks, variables, and call stack. Calls to other Functions or Methods from outside `main` run within the calling step without showing their internal blocks, variables, branches, or call stack. Imported library calls always run within the calling step, including calls from `main`. The caller stays highlighted until the call returns or needs input. Long calls remain stoppable.
 - Auto Step repeatedly steps at the speed selected beneath the controls, from 1 to 10 steps per second. You can change the speed while it runs. Use Pause to preserve the current position.
+- The Status, Steps, and Flow cards sit at the bottom of the right sidebar. The input queue starts at one line and grows or shrinks to fit its contents, including wrapped lines.
 - Run executes from the current position until completion, a breakpoint, or an input wait. For speed, it hides variables, step counts, call stacks, branch feedback, and block/wire execution highlighting, and skips computing debugger feedback. These details stay hidden when Run finishes or pauses; Step, Auto Step, or Restart restores them. Output, graphics, input prompts, and errors remain available. The button stays labeled Run after stepping or pausing. Use Restart to reset execution to the beginning. Stop pauses a longer run while preserving its position, variables, and output. A successful return from `main` shows Completed.
 - Select or hover over a block and use its breakpoint button to pause before that block executes. Run and Auto Step honor breakpoints in visible flows; breakpoints inside calls being stepped over do not interrupt those calls. A breakpoint at `main` pauses before the first step. Pressing Run from a breakpoint executes that block once; loops can hit the breakpoint again on a later visit.
 - Use Shift+Cmd/Ctrl+R to Restart, Shift+Space to Step, and Shift+Enter to Run. The same commands are available from the Run menu.

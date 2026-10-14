@@ -454,7 +454,7 @@ button:disabled {
   grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
+  overflow: hidden;
   border-right: 1px solid #d8dde6;
 }
 
@@ -463,7 +463,52 @@ button:disabled {
   grid-column: 3;
   grid-row: 1 / span 2;
   border-left: 1px solid #d8dde6;
+  display: flex;
+  flex-direction: column;
 }
+
+.console-panel > * { flex-shrink: 0; }
+
+.sidebar-tabs {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e4e7ec;
+  margin-bottom: 12px;
+}
+
+.sidebar-tabs button {
+  flex: 1;
+  margin-bottom: -1px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #667085;
+  font-weight: 600;
+}
+.sidebar-tabs button:hover {
+  color: #205cac;
+  border-bottom-color: #b7c9e4;
+}
+.sidebar-tabs button[aria-selected='true'] {
+  border-bottom-color: #2f6fd6;
+  color: #205cac;
+}
+
+.build-tab-panel { min-height: 0; overflow: auto; }
+.notes-tab-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.notes-tab-panel[hidden], .build-tab-panel[hidden] { display: none; }
+.notes-tab-panel textarea {
+  flex: 1;
+  min-height: 100px;
+  resize: none;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.notes-tab-panel p { color: #667085; font-size: 12px; margin: 8px 0 0; }
+.input-queue-editor { resize: none; overflow: hidden; min-height: 36px; }
 
 .palette[hidden],
 .console-panel[hidden] {
@@ -1354,7 +1399,8 @@ textarea {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.7fr) minmax(0, 1fr);
   gap: 8px;
-  margin: 14px 0;
+  margin: auto 0 0;
+  padding-top: 14px;
 }
 
 .status-grid div {

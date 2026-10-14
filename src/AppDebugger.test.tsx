@@ -83,6 +83,24 @@ describe('debugger controls and feedback', () => {
     vi.unstubAllGlobals()
   })
 
+  it('preserves execution while switching sidebar tabs and writing notes', async () => {
+    render(<App />)
+    await loadProgram({ ...sampleProgram, inputQueue: '3' })
+    fireEvent.click(executionButton('Step'))
+    fireEvent.click(executionButton('Step'))
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Build' }), { key: 'ArrowRight' })
+    expect(screen.getByRole('tab', { name: 'Notes' })).toHaveFocus()
+    fireEvent.change(screen.getByLabelText('Document notes'), { target: { value: 'Inspect the loop.' } })
+    expect(steps()).toBe(2)
+    expect(screen.getByTestId('flow-node-init-total')).toHaveAttribute('aria-current', 'step')
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Notes' }), { key: 'Home' })
+    expect(screen.getByRole('tabpanel', { name: 'Build' })).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }))
+    expect(screen.getByLabelText('Document notes')).toHaveValue('Inspect the loop.')
+    fireEvent.click(executionButton('Step'))
+    expect(steps()).toBe(3)
+  })
+
   it('continues the current execution and restarts at main with cleared output', async () => {
     render(<App />)
     await loadProgram(makeProgram([

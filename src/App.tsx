@@ -168,6 +168,7 @@ interface CanvasSnapshot {
   edges: EditorEdge[]
   imports?: string
   inputQueue?: string
+  notes?: string
   documentName?: string
   draftId?: string
   savedFingerprint?: string | null
@@ -443,6 +444,8 @@ function App() {
   const [importsExpanded, setImportsExpanded] = useState(!!recoveryStart.draft?.program.imports?.trim())
   const [nodes, setNodes] = useState<EditorNode[]>(() => recoveryStart.draft ? programToNodes(recoveryStart.draft.program) : [])
   const [edges, setEdges] = useState<EditorEdge[]>(() => recoveryStart.draft ? programToEdges(recoveryStart.draft.program) : [])
+  const [leftSidebarTab, setLeftSidebarTab] = useState<'build' | 'notes'>('build')
+  const [notes, setNotes] = useState(recoveryStart.draft?.program.notes ?? '')
   const [inputQueueText, setInputQueueText] = useState(recoveryStart.draft?.program.inputQueue ?? '')
   const [waitingInputQueueDraft, setWaitingInputQueueDraft] =
     useState<WaitingInputQueueDraft | null>(null)
@@ -528,10 +531,10 @@ function App() {
   const historyRef = useRef<CanvasSnapshot[]>([])
   const redoHistoryRef = useRef<CanvasSnapshot[]>([])
   const fitViewAfterLoadRef = useRef(!!recoveryStart.draft)
-  const documentStateRef = useRef({ imports: importNamesText, inputQueue: inputQueueText, documentName, draftId, savedFingerprint })
+  const documentStateRef = useRef({ imports: importNamesText, inputQueue: inputQueueText, notes, documentName, draftId, savedFingerprint })
   useEffect(() => {
-    documentStateRef.current = { imports: importNamesText, inputQueue: inputQueueText, documentName, draftId, savedFingerprint }
-  }, [importNamesText, inputQueueText, documentName, draftId, savedFingerprint])
+    documentStateRef.current = { imports: importNamesText, inputQueue: inputQueueText, notes, documentName, draftId, savedFingerprint }
+  }, [importNamesText, inputQueueText, notes, documentName, draftId, savedFingerprint])
   const currentDraftRef = useRef<RecoveryDraft | null>(null)
   const retainedDraftsRef = useRef(new Map<string, RecoveryDraft>())
   const documentLoadRequestRef = useRef(0)
@@ -1081,6 +1084,7 @@ function App() {
         setImportResolution(EMPTY_IMPORT_RESOLUTION)
       }
     }
+    if (nextSnapshot.notes !== undefined) setNotes(nextSnapshot.notes)
     if (nextSnapshot.inputQueue !== undefined) setInputQueueText(nextSnapshot.inputQueue)
     setExecution(null)
     setPendingNodeType(null)
@@ -1187,6 +1191,7 @@ function App() {
     if (issue.field === 'imports') {
       setCompactView('blocks')
       setLeftSidebarVisible(true)
+      setLeftSidebarTab('build')
       setImportsExpanded(true)
       window.requestAnimationFrame(() => document.getElementById('imports-list')?.focus())
       return
@@ -1255,8 +1260,8 @@ function App() {
         )
       : inputQueueText
   const savedProgram = useMemo(
-    () => programWithSavedRuntimeState(program, importNamesText, effectiveInputQueueText),
-    [program, importNamesText, effectiveInputQueueText],
+    () => programWithSavedRuntimeState(program, importNamesText, effectiveInputQueueText, notes),
+    [program, importNamesText, effectiveInputQueueText, notes],
   )
   const fingerprint = useMemo(() => documentFingerprint(savedProgram, documentName), [savedProgram, documentName])
   const isDirty = fingerprint !== (savedFingerprint ?? documentFingerprint(
@@ -1887,6 +1892,7 @@ function App() {
     fitViewAfterLoadRef.current = true
     setNodes(programToNodes(example.program))
     setEdges(programToEdges(example.program))
+    setNotes(example.program.notes ?? '')
     setInputQueueText(example.inputQueue)
     const currentImports = parseImportNames(importNamesText)
     setImportsLoading(!!currentImports.length || !!example.requiredImports.length)
@@ -2710,7 +2716,7 @@ function App() {
     const result = listRecoveryDrafts(recoveryStorage())
     const drafts = new Map((result.ok ? result.value : []).map((draft) => [draft.id, draft]))
     for (const [id, draft] of retainedDraftsRef.current) drafts.set(id, draft)
-    setRecoverableDrafts([...drafts.values()].filter((draft) => draft.id !== draftId && (draft.program.nodes.length > 0 || draft.program.imports || draft.program.inputQueue)).sort((a, b) => b.updatedAt - a.updatedAt))
+    setRecoverableDrafts([...drafts.values()].filter((draft) => draft.id !== draftId && (draft.program.nodes.length > 0 || draft.program.imports || draft.program.inputQueue || draft.program.notes)).sort((a, b) => b.updatedAt - a.updatedAt))
     if (!result.ok) setRecoveryError(result.error)
     setRecoveryDialogOpen(true)
   }
@@ -2722,6 +2728,7 @@ function App() {
     setDraftId(draft.id)
     setNodes(programToNodes(draft.program))
     setEdges(programToEdges(draft.program))
+    setNotes(draft.program.notes ?? '')
     setInputQueueText(draft.program.inputQueue ?? '')
     setImportNamesText(draft.program.imports ?? '')
     setImportsExpanded(!!draft.program.imports?.trim())
@@ -2745,6 +2752,7 @@ function App() {
       program,
       importNamesText,
       effectiveInputQueueText,
+      notes,
     )
     const blob = programJsonBlob(exportedProgram)
     const saveFilePicker = (window as WindowWithFilePickers).showSaveFilePicker
@@ -2942,10 +2950,11 @@ function App() {
       setImportsExpanded(!!savedImportsText.trim())
       setImportResolution(EMPTY_IMPORT_RESOLUTION)
       setImportsLoading(!!savedImportsText.trim())
+      setNotes(parsed.notes ?? '')
       setInputQueueText(savedInputQueueText)
       const loadedName = documentNameFromFileName(file.name)
       setDocumentName(loadedName)
-      setSavedFingerprint(documentFingerprint(programWithSavedRuntimeState(parsed, savedImportsText, savedInputQueueText), loadedName))
+      setSavedFingerprint(documentFingerprint(programWithSavedRuntimeState(parsed, savedImportsText, savedInputQueueText, parsed.notes ?? ''), loadedName))
       setBreakpoints(new Set())
       setExecution(null)
       setPendingNodeType(null)
@@ -3387,6 +3396,28 @@ function App() {
             onKeyDown={(event) => resizeSidebarFromKeyboard('left', event)}
             onPointerDown={(event) => startSidebarResize('left', event)}
           />
+          <div className="sidebar-tabs" role="tablist" aria-label="Left sidebar">
+            {(['build', 'notes'] as const).map((tab) => (
+              <button
+                key={tab}
+                id={`sidebar-${tab}-tab`}
+                type="button"
+                role="tab"
+                aria-selected={leftSidebarTab === tab}
+                aria-controls={`sidebar-${tab}-panel`}
+                tabIndex={leftSidebarTab === tab ? 0 : -1}
+                onClick={() => setLeftSidebarTab(tab)}
+                onKeyDown={(event) => {
+                  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+                  event.preventDefault()
+                  const next = event.key === 'Home' ? 'build' : event.key === 'End' ? 'notes' : tab === 'build' ? 'notes' : 'build'
+                  setLeftSidebarTab(next)
+                  document.getElementById(`sidebar-${next}-tab`)?.focus()
+                }}
+              >{tab === 'build' ? 'Build' : 'Notes'}</button>
+            ))}
+          </div>
+          <div id="sidebar-build-panel" className="build-tab-panel" role="tabpanel" aria-labelledby="sidebar-build-tab" hidden={leftSidebarTab !== 'build'}>
           <h2>Nodes</h2>
           <section className="palette-group" aria-labelledby="definitions-heading">
             <h3 id="definitions-heading">Definitions</h3>
@@ -3584,6 +3615,20 @@ function App() {
             ) : null}
             </div>
           </section>
+          </div>
+          <div id="sidebar-notes-panel" className="notes-tab-panel" role="tabpanel" aria-labelledby="sidebar-notes-tab" hidden={leftSidebarTab !== 'notes'}>
+            <label className="sr-only" htmlFor="document-notes">Document notes</label>
+            <textarea
+              id="document-notes"
+              value={notes}
+              placeholder="Ideas, explanations, and things to try…"
+              onChange={(event) => {
+                pushHistorySnapshot()
+                setNotes(event.target.value)
+              }}
+            />
+            <p>Saved with this document.</p>
+          </div>
         </aside>
 
         <section
@@ -3749,33 +3794,14 @@ function App() {
           <label className="input-label" htmlFor="input-queue">
             Input queue
           </label>
-          <textarea
+          <InputQueueEditor
             id="input-queue"
             value={visibleInputQueueText}
-            onChange={(event) => updateInputQueue(event.target.value)}
+            onChange={updateInputQueue}
             readOnly={!inputQueueIsEditable}
-            rows={5}
-            spellCheck={false}
           />
 
-          <dl className="status-grid">
-            <div>
-              <dt>Status</dt>
-              <dd>{executionStatusLabel}</dd>
-            </div>
-            {!debugInformationHidden ? (
-              <>
-                <div>
-                  <dt>Steps</dt>
-                  <dd>{displayedExecution?.steps ?? 0}</dd>
-                </div>
-                <div>
-                  <dt>Flow</dt>
-                  <dd>{displayedExecution?.functionName ?? '—'}</dd>
-                </div>
-              </>
-            ) : null}
-          </dl>
+
 
           {displayedExecution ? (
             <nav className="call-stack" aria-label="Call stack">
@@ -3864,6 +3890,24 @@ function App() {
               )
             })}
           </div>
+          <dl className="status-grid">
+            <div>
+              <dt>Status</dt>
+              <dd>{executionStatusLabel}</dd>
+            </div>
+            {!debugInformationHidden ? (
+              <>
+                <div>
+                  <dt>Steps</dt>
+                  <dd>{displayedExecution?.steps ?? 0}</dd>
+                </div>
+                <div>
+                  <dt>Flow</dt>
+                  <dd>{displayedExecution?.functionName ?? '—'}</dd>
+                </div>
+              </>
+            ) : null}
+          </dl>
         </aside>
         <OutputDrawer
           runId={execution ? outputRunId : null}
@@ -4455,6 +4499,35 @@ function trapDialogFocus(event: ReactKeyboardEvent<HTMLDivElement>): void {
     event.preventDefault()
     first.focus()
   }
+}
+
+function InputQueueEditor({ id, value, onChange, readOnly }: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  readOnly: boolean
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const resize = useCallback(() => {
+    const field = ref.current
+    if (!field || !field.clientWidth) return
+    field.style.height = '0px'
+    field.style.height = `${field.scrollHeight + 2}px`
+  }, [])
+  useLayoutEffect(resize, [resize, value])
+  useLayoutEffect(() => {
+    const field = ref.current
+    if (!field) return
+    let width = field.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (field.clientWidth === width) return
+      width = field.clientWidth
+      resize()
+    })
+    observer.observe(field)
+    return () => observer.disconnect()
+  }, [resize])
+  return <textarea ref={ref} id={id} className="input-queue-editor" value={value} onChange={(event) => onChange(event.target.value)} readOnly={readOnly} rows={1} spellCheck={false} />
 }
 
 function BlockTextEditor({ id, value, multiline, onChange, ...attributes }: {
@@ -5406,6 +5479,7 @@ function cloneCanvasSnapshot(snapshot: CanvasSnapshot): CanvasSnapshot {
   return {
     imports: snapshot.imports,
     inputQueue: snapshot.inputQueue,
+    notes: snapshot.notes,
     documentName: snapshot.documentName,
     draftId: snapshot.draftId,
     savedFingerprint: snapshot.savedFingerprint,
@@ -5754,11 +5828,13 @@ function programWithSavedRuntimeState(
   program: Program,
   imports: string,
   inputQueue: string,
+  notes: string,
 ): Program {
   return {
     ...program,
     imports,
     inputQueue,
+    ...(notes ? { notes } : {}),
   }
 }
 

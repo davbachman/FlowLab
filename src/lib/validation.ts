@@ -43,6 +43,7 @@ export function normalizeImportedProgram(value: unknown): Program {
     edges?: unknown
     imports?: unknown
     inputQueue?: unknown
+    notes?: unknown
   }
 
   if (!Array.isArray(candidate.nodes)) {
@@ -57,6 +58,7 @@ export function normalizeImportedProgram(value: unknown): Program {
     ...(typeof candidate.inputQueue === 'string'
       ? { inputQueue: candidate.inputQueue }
       : {}),
+    ...(typeof candidate.notes === 'string' ? { notes: candidate.notes } : {}),
     nodes: candidate.nodes.map((node) => {
       if (!node || typeof node !== 'object') {
         return node

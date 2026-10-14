@@ -66,6 +66,7 @@ export function documentFingerprint(program: Program, documentName: string): str
       })),
       imports: program.imports ?? '',
       inputQueue: program.inputQueue ?? '',
+      ...(program.notes ? { notes: program.notes } : {}),
     },
   })
 }
@@ -86,9 +87,10 @@ export function parseProgramDraft(value: unknown): Program {
 
   if (
     (value.imports !== undefined && typeof value.imports !== 'string') ||
-    (value.inputQueue !== undefined && typeof value.inputQueue !== 'string')
+    (value.inputQueue !== undefined && typeof value.inputQueue !== 'string') ||
+    (value.notes !== undefined && typeof value.notes !== 'string')
   ) {
-    throw new Error('Program imports and input queue must be text.')
+    throw new Error('Program imports, input queue, and notes must be text.')
   }
 
   const normalized = normalizeImportedProgram(value)
@@ -158,6 +160,7 @@ export function parseProgramDraft(value: unknown): Program {
     edges,
     ...(normalized.imports === undefined ? {} : { imports: normalized.imports }),
     ...(normalized.inputQueue === undefined ? {} : { inputQueue: normalized.inputQueue }),
+    ...(normalized.notes === undefined ? {} : { notes: normalized.notes }),
   }
 }
 

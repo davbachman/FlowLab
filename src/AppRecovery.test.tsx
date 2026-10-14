@@ -60,6 +60,38 @@ describe('document recovery and editable drafts', () => {
     vi.restoreAllMocks()
   })
 
+  it('saves notes with the document, recovers them, and clears them when loading a file without notes', async () => {
+    const write = vi.fn<(blob: Blob) => Promise<void>>().mockResolvedValue(undefined)
+    const close = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    ;(window as TestSaveWindow).showSaveFilePicker = async () => ({
+      name: 'notes.json', createWritable: async () => ({ write, close }),
+    })
+    render(<App />)
+    const buildPanel = screen.getByRole('tabpanel', { name: 'Build' })
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }))
+    expect(screen.getByRole('tabpanel', { name: 'Notes' })).toBeVisible()
+    expect(buildPanel).not.toBeVisible()
+    fireEvent.change(screen.getByLabelText('Document notes'), { target: { value: 'Try recursion.\nCheck the base case.' } })
+    expect(screen.getByLabelText('Save status')).toHaveTextContent('Unsaved changes')
+    await screen.findByText('Recovery saved')
+    cleanup()
+    render(<App />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Notes' }))
+    expect(screen.getByLabelText('Document notes')).toHaveValue('Try recursion.\nCheck the base case.')
+    fileAction('Save')
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
+    const saved = JSON.parse(await write.mock.calls[0][0].text()) as Program
+    expect(saved.notes).toBe('Try recursion.\nCheck the base case.')
+    loadFile(JSON.stringify(unfinishedProgram))
+    await screen.findByDisplayValue('n >')
+    expect(screen.getByLabelText('Document notes')).toHaveValue('')
+    toolbarAction('Edit', 'Undo')
+    expect(screen.getByLabelText('Document notes')).toHaveValue(saved.notes)
+    loadFile(JSON.stringify(saved), 'notes.json')
+    await waitFor(() => expect(screen.getByLabelText('Current document')).toHaveTextContent('notes'))
+    expect(screen.getByLabelText('Document notes')).toHaveValue(saved.notes)
+  })
+
   it('loads a file with invalid expressions and lets its error select and focus the block', async () => {
     render(<App />)
     loadFile(JSON.stringify(unfinishedProgram))
