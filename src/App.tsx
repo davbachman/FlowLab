@@ -3008,6 +3008,7 @@ function App() {
         } as CSSProperties
       }
     >
+      <div className="sr-only" role="status">{message}</div>
       <header className="topbar">
         <h1 className="sr-only">FlowLab</h1>
         <nav
@@ -3801,15 +3802,12 @@ function App() {
             readOnly={!inputQueueIsEditable}
           />
 
-
-
           {displayedExecution ? (
             <nav className="call-stack" aria-label="Call stack">
               {[...displayedExecution.callStack.map((frame) => frame.functionName), displayedExecution.functionName].map((name, index) => <Fragment key={`${name}-${index}`}>{index ? <span aria-hidden="true"> › </span> : null}<span>{name}</span></Fragment>)}
             </nav>
           ) : null}
           {displayedExecution?.lastStep?.branch ? <p className="branch-feedback" aria-label="Last branch">{displayedExecution.lastStep.branch.expression} → {displayedExecution.lastStep.branch.label === 'true' ? 'True' : 'False'}</p> : null}
-          {message ? <p className="notice">{message}</p> : null}
 
           <div className="runtime-panel-list">
             {runtimePanelOrder.map((panelId) => {

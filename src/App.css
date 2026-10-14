@@ -1420,19 +1420,10 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.notice,
 .runtime-error {
   border-radius: 6px;
   padding: 8px;
   font-size: 13px;
-}
-
-.notice {
-  background: #edf3ff;
-  color: #1849a9;
-}
-
-.runtime-error {
   background: #fff1f0;
   color: #b42318;
 }
