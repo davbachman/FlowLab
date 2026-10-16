@@ -32,6 +32,7 @@ See [Getting started](docs/getting-started.md) for the complete editor and execu
 - Drag an executable output wire onto empty canvas to choose a new block that is placed and connected immediately. Double-click an existing wire to insert a Process, Call, Input, or Output block; the same command is available under **Edit > Insert block on selected wire**.
 - Double-click a block outside its text field, buttons, or connection handles to edit its comment. Enter saves the comment and closes the dialog; Shift+Enter adds a line. Clear the comment and save to remove it.
 - Use the Collapse/Expand button on a Function, Method, or Class to hide or restore its contents. A Class hides its init Inputs, attached Methods, and their flows. Expanding the Class restores each Method's previous collapsed or expanded state. Moving a collapsed block moves its hidden contents with it, and these settings are saved with the document.
+- Deleting a collapsed Function, Method, or Class also deletes everything hidden beneath it and the connected wires. Undo restores the entire group with its previous collapse settings.
 - Use the left sidebar's Build tab for blocks, validation, and imports, and its Notes tab for document notes. Notes are saved with the program and included in draft recovery.
 
 ## Classes and attributes

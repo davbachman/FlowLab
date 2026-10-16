@@ -2344,11 +2344,23 @@ function App() {
 
   const onBeforeDelete = useCallback(
     async ({ nodes: deletedNodes, edges: deletedEdges }: CanvasSnapshot) => {
-      if (deletedNodes.length || deletedEdges.length) {
-        pushHistorySnapshot()
-      }
+      if (!deletedNodes.length && !deletedEdges.length) return true
 
-      return true
+      pushHistorySnapshot()
+      const currentNodes = nodesRef.current
+      const currentEdges = edgesRef.current
+      const bodies = collapsedBlockBodies(toProgram(currentNodes, currentEdges))
+      const deletedNodeIds = new Set(deletedNodes.map((node) => node.id))
+      for (const node of deletedNodes) {
+        for (const id of bodies.get(node.id) ?? []) deletedNodeIds.add(id)
+      }
+      const deletedEdgeIds = new Set(deletedEdges.map((edge) => edge.id))
+
+      return {
+        nodes: currentNodes.filter((node) => deletedNodeIds.has(node.id)),
+        edges: currentEdges.filter((edge) => deletedEdgeIds.has(edge.id)
+          || deletedNodeIds.has(edge.source) || deletedNodeIds.has(edge.target)),
+      }
     },
     [pushHistorySnapshot],
   )
