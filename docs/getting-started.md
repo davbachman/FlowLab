@@ -33,7 +33,7 @@ Choosing an example replaces the current canvas with a separate draft, supplies 
 
 - FlowLab starts with a blank canvas unless you reopen a saved browser draft. The palette groups blocks into **Definitions** (Function, Class, Method), **Steps** (Return, Process, Input, Output), and **Control Flow** (If, While, For). Select a block, move its preview into position, then click the canvas to place it. New blocks have empty text fields; enter your code directly inside the block.
 - Double-click an empty part of the canvas to open quick add. Type a block name, use ↑/↓ to choose a suggestion, Tab to complete its name, and Enter to start placement; then click the canvas to place it. Matching is case-insensitive. Call is available here as well as Process. Escape cancels the chooser or placement.
-- Double-click a Function block (outside its text field) to collapse its connected flow. The Function block, its comment/docstring, and a **Collapsed** indicator remain visible. Double-click again to restore the flow, or use the block’s Collapse/Expand button. Moving a collapsed Function moves its hidden blocks with it, preserving their positions relative to the Function. The full function still runs and saves normally. Each function’s collapsed state is saved in the document and browser recovery, and restored when you reopen it. Older files without a saved collapsed state open with their functions expanded.
+- Use a Function block’s Collapse/Expand button to hide or restore its connected flow. The Function block, its comment/docstring, and a **Collapsed** indicator remain visible. Moving a collapsed Function moves its hidden blocks with it, preserving their positions relative to the Function. The full function still runs and saves normally. Each function’s collapsed state is saved in the document and browser recovery, and restored when you reopen it. Older files without a saved collapsed state open with their functions expanded.
 - Drag between block handles to make wires. Function and Method roots begin executable flows. A Class's **init** handle connects to optional Input blocks for constructor attributes; its **+ method** handle attaches Methods. Dropping an init wire onto empty canvas creates an Input block, and dropping a + method wire creates a Method block. Init Inputs can be multiline or chained and need no Return. Drag an executable output into empty canvas to choose a new block that is placed and connected automatically. This chooser also offers Return, If, While, and For; complete any additional branches yourself.
 - Double-click a wire to insert a Process, Call, Input, or Output block. You can also select a wire and choose **Edit → Insert block on selected wire**. The existing continuation and branch direction are preserved. Insertion avoids overlapping other blocks and can be undone in one action. Press Escape to cancel without changing the wire.
 - Multiple wires may enter an executable block. Starting a new wire from an occupied output replaces that output's old wire; `true` and `false` branch outputs are replaced independently, while Class Method attachments accumulate.
@@ -41,12 +41,12 @@ Choosing an example replaces the current canvas with a separate draft, supplies 
 - Left-click selects one block. Shift-, Ctrl-, or Cmd-click extends the selection, and left-drag on empty canvas makes a selection window. Drag any selected block to move the selection.
 - Blocks widen automatically as you type longer text, up to a maximum width. Process blocks use their longest line and allow horizontal scrolling for text beyond the limit. Deleting text keeps the current width, and any extra width you set manually is preserved. For more room, select the block and drag either blue grip at its left or right edge. Width changes can be undone and are preserved when the program is saved.
 - Use Ctrl/Cmd+C to copy selected blocks and their internal wires, Ctrl/Cmd+V to paste, Ctrl/Cmd+Z to undo, and Shift+Ctrl/Cmd+Z to redo. Pasted blocks retain their text, comments, and widths and appear offset from the originals. Backspace or Delete removes selected blocks or wires; deleting a block also removes its connected wires.
-- Right-click a block to add, edit, or remove a comment. Comments appear inside the block and are preserved when the program is saved.
+- Double-click a block outside its text field, buttons, or connection handles to add, edit, or remove a comment. Comments appear inside the block and are preserved when the program is saved.
 - Right-drag to pan the main canvas. Use the mouse wheel, pinch gestures, or the canvas controls to zoom, and use Fit View to frame the whole program.
 
 ## Use Process blocks
 
-A Process block holds one or more assignments and standalone function or method calls. Put one statement on each nonblank line:
+A Process block starts with one line and expands as you type. It holds one or more assignments and standalone function or method calls. Use Shift+Enter to add a line and Enter to finish editing. Put one statement on each nonblank line:
 
 ```text
 width <- 8
@@ -105,7 +105,7 @@ The library list shows all four native libraries and marks which are imported, a
 
 - The input queue contains one value per nonblank line.
 - FlowLab parses numbers, `True`/`False`, quoted strings, lists, and dictionaries. Other text becomes an unquoted String.
-- Input blocks accept one variable name per nonblank line and expand vertically as you type. Use Shift+Enter to add a line; Enter finishes editing. Each name consumes the next value from the active flow's queue, from top to bottom.
+- Input and Output blocks start with one line and expand vertically as you type. Use Shift+Enter to add a line; Enter finishes editing. Each nonblank Input line names a variable that consumes the next value from the active flow's queue, from top to bottom. Each nonblank Output line contains an expression whose value is printed in order.
 - Execution shows `Waiting` when the queue runs out, even partway through a multiline Input block. Supply more values and resume to continue with the next name; values already assigned stay intact.
 - Function and Method arguments form a local input queue for that call. Place Input blocks at the start of the called flow to bind those arguments in order.
 - The sidebar switches to the active queue while stepping inside a call on the current canvas. A stepped-over call's internal queue stays hidden unless the call is waiting for additional input; supply the missing values there and resume execution.

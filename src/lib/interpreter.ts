@@ -15,8 +15,10 @@ import {
   parseForLoop,
   parseInputVariables,
   splitProcessStatements,
+  splitOutputExpressions,
   type AssignmentTarget,
   type ProcessStatementSource,
+  type OutputExpressionSource,
 } from './statements'
 import {
   attachedMethodDefinition,
@@ -255,6 +257,7 @@ type PendingNode =
       node: ProgramNode
       expression: ExpressionProgress
       representation?: RepresentationProgress
+      outputProgress: { expressions: OutputExpressionSource[]; expressionIndex: number }
     }
   | {
       kind: 'branch'
@@ -790,10 +793,13 @@ function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
   }
 
   if (node.type === 'output') {
+    const expressions = splitOutputExpressions(node.text)
+    if (!expressions.length) return fail(state, `Output node "${node.id}" has no expressions.`)
     return executeOutputNode(state, {
       kind: 'output',
       node,
-      expression: createExpressionProgress(node.text),
+      expression: createExpressionProgress(expressions[0].text),
+      outputProgress: { expressions, expressionIndex: 0 },
     })
   }
 
@@ -944,6 +950,7 @@ function executeProcessStatement(
 }
 
 function pendingNodeError(pendingNode: PendingNode, error: unknown): string {
+  if (pendingNode.kind === 'output') return outputExpressionError(pendingNode, error)
   if (
     (pendingNode.kind === 'assignment' || pendingNode.kind === 'call') &&
     pendingNode.process
@@ -954,6 +961,13 @@ function pendingNodeError(pendingNode: PendingNode, error: unknown): string {
   }
 
   return error instanceof Error ? error.message : String(error)
+}
+
+function outputExpressionError(pendingNode: Extract<PendingNode, { kind: 'output' }>, error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error)
+  if (!pendingNode.node.text.includes('\n')) return detail
+  const line = pendingNode.outputProgress.expressions[pendingNode.outputProgress.expressionIndex].lineNumber
+  return `Output node "${pendingNode.node.id}", line ${line}: ${detail}`
 }
 
 function processStatementError(
@@ -1178,75 +1192,53 @@ function executeOutputNode(
   let nextState = state
   let pending = pendingNode
 
-  if (!pending.representation) {
-    const result = evaluateProgramExpression(nextState, pending.expression)
+  while (true) {
+    try {
+      if (!pending.representation) {
+        const result = evaluateProgramExpression(nextState, pending.expression)
 
-    if (result.status === 'suspended') {
-      return startFunctionCall(
-        withExpressionRuntime(nextState, result),
-        pending,
-        'expression',
-        result.call,
-      )
+        if (result.status === 'suspended') {
+          return startFunctionCall(
+            withExpressionRuntime(nextState, result), pending, 'expression', result.call,
+          )
+        }
+        if (result.status === 'asking') {
+          return startAsk(
+            withExpressionRuntime(nextState, result), pending, 'expression', result.ask,
+          )
+        }
+        if (result.status === 'loading') {
+          return startNativeLoad(
+            withExpressionRuntime(nextState, result), pending, 'expression', result,
+          )
+        }
+
+        nextState = { ...withExpressionRuntime(nextState, result), output: result.output }
+        pending = {
+          ...pending,
+          representation: { value: result.value, completedReprs: {} },
+        }
+      }
+
+      const representation = pending.representation!
+      const line = stringifyHeapValue(representation.value, nextState, representation)
+      nextState = { ...nextState, output: [...nextState.output, line] }
+      const { expressions, expressionIndex } = pending.outputProgress
+      const nextIndex = expressionIndex + 1
+      if (nextIndex === expressions.length) return advance(nextState, pending.node)
+
+      pending = {
+        ...pending,
+        expression: createExpressionProgress(expressions[nextIndex].text),
+        representation: undefined,
+        outputProgress: { expressions, expressionIndex: nextIndex },
+      }
+    } catch (error) {
+      if (error instanceof FunctionCallSuspension) {
+        return startFunctionCall(nextState, pending, 'representation', error.call)
+      }
+      return fail(nextState, outputExpressionError(pending, error))
     }
-
-    if (result.status === 'asking') {
-      return startAsk(
-        withExpressionRuntime(nextState, result),
-        pending,
-        'expression',
-        result.ask,
-      )
-    }
-
-    if (result.status === 'loading') {
-      return startNativeLoad(
-        withExpressionRuntime(nextState, result),
-        pending,
-        'expression',
-        result,
-      )
-    }
-
-    nextState = {
-      ...withExpressionRuntime(nextState, result),
-      output: result.output,
-    }
-    pending = {
-      ...pending,
-      representation: {
-        value: result.value,
-        completedReprs: {},
-      },
-    }
-  }
-
-  const representation = pending.representation
-  if (!representation) {
-    throw new Error('Output representation progress is missing.')
-  }
-
-  try {
-    const line = stringifyHeapValue(
-      representation.value,
-      nextState,
-      representation,
-    )
-    return advance(
-      { ...nextState, output: [...nextState.output, line] },
-      pending.node,
-    )
-  } catch (error) {
-    if (error instanceof FunctionCallSuspension) {
-      return startFunctionCall(
-        nextState,
-        pending,
-        'representation',
-        error.call,
-      )
-    }
-
-    throw error
   }
 }
 
@@ -1779,6 +1771,7 @@ function startImageLoad(
           ? pendingNode.node.text
           : expressionProgressForKey(pendingNode, pendingExpressionKey).source,
         'process' in pendingNode ? pendingNode.process?.statementIndex : null,
+        pendingNode.kind === 'output' ? pendingNode.outputProgress.expressionIndex : null,
         pendingExpressionKey,
         imageLoad.callIndex,
       ]),

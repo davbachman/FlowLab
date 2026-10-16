@@ -1431,7 +1431,7 @@ function estimatedNodeHeight(node: ProgramNode, width: number): number {
   const inputWidth = node.type === 'function' || node.type === 'return'
     ? contentWidth * 0.75
     : node.type === 'input' || node.type === 'output' ? contentWidth - 24 : contentWidth
-  const textLines = Math.max(node.type === 'process' || node.type === 'input' ? 2 : 1, estimatedWrappedLineCount(
+  const textLines = Math.max(1, estimatedWrappedLineCount(
     node.text, Math.max(1, Math.floor((inputWidth - 18) / MONOSPACE_CHARACTER_WIDTH)),
   ))
   const wrappedHeight = (textLines - 1) * 17

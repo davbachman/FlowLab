@@ -17,6 +17,7 @@ import {
   parseInputVariables,
   parseMethodDeclaration,
   splitProcessStatements,
+  splitOutputExpressions,
 } from './statements'
 import {
   isBranchLabel,
@@ -474,8 +475,18 @@ function validateNodeText(node: ProgramNode, errors: string[]): void {
       return
     }
 
+    if (node.type === 'output') {
+      const expressions = splitOutputExpressions(node.text)
+      if (!expressions.length) throw new Error('Output text cannot be empty.')
+      for (const expression of expressions) {
+        try { parseExpression(expression.text) } catch (error) {
+          throw new Error(`Line ${expression.lineNumber}: ${message(error)}`, { cause: error })
+        }
+      }
+      return
+    }
+
     if (
-      node.type === 'output' ||
       node.type === 'if' ||
       node.type === 'while' ||
       node.type === 'return'
@@ -672,8 +683,11 @@ function expressionSourcesForNode(node: ProgramNode): NodeExpressionSource[] {
       return [{ source: parseForLoop(node.text).iterableExpression }]
     }
 
+    if (node.type === 'output') {
+      return splitOutputExpressions(node.text).map((expression) => ({ source: expression.text, lineNumber: expression.lineNumber }))
+    }
+
     if (
-      node.type === 'output' ||
       node.type === 'if' ||
       node.type === 'while' ||
       node.type === 'return'

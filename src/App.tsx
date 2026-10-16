@@ -3743,11 +3743,10 @@ function App() {
             onNodeClick={selectClickedNode}
             onNodeDoubleClick={(event, node) => {
               event.stopPropagation()
-              if (node.data.nodeType === 'function' && !(event.target as HTMLElement).closest('input, textarea, button, .react-flow__handle')) {
-                toggleFunctionCollapse(node.id)
+              if (!(event.target as Element).closest('input, textarea, button, .react-flow__handle')) {
+                openNodeCommentDialog(event, node)
               }
             }}
-            onNodeContextMenu={openNodeCommentDialog}
             onNodeDragStart={recordCanvasChangeStart}
             onSelectionDragStart={recordCanvasChangeStart}
             onBeforeDelete={onBeforeDelete}
@@ -4640,7 +4639,7 @@ function BlockTextEditor({ id, value, multiline, onChange, onFinishEditing, ...a
       ref={ref}
       className={`node-input node-textarea nodrag${multiline ? ' node-textarea-multiline' : ''}`}
       value={value}
-      rows={multiline ? Math.max(2, value.split(/\r?\n/).length) : 1}
+      rows={multiline ? value.split(/\r?\n/).length : 1}
       wrap="soft"
       onChange={(event) => onChange(multiline ? event.target.value : event.target.value.replace(/[\r\n]/g, ''))}
       onKeyDown={(event) => {
@@ -4834,7 +4833,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
             className="node-collapse-toggle nodrag nopan"
             aria-label={`${data.isCollapsed ? 'Expand' : 'Collapse'} function ${data.text.trim() || 'unnamed'}`}
             aria-expanded={!data.isCollapsed}
-            title={data.isCollapsed ? 'Double-click the block to expand its flow' : 'Double-click the block to collapse its flow'}
+            title={data.isCollapsed ? 'Expand this function’s flow' : 'Collapse this function’s flow'}
             onClick={(event) => { event.stopPropagation(); if (event.detail < 2) data.onToggleCollapse?.(id) }}
           >
             {data.isCollapsed ? '▸ Collapsed' : '▾ Collapse'}
@@ -4851,7 +4850,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
                 aria-invalid={!!data.textValidationMessage}
                 title={data.textValidationMessage}
                 value={text}
-                multiline={isProcess || data.nodeType === 'input'}
+                multiline={isProcess || isInputOutput}
                 onChange={changeText}
                 onFinishEditing={() => data.onFinishEditing?.(id)}
               />
@@ -6084,10 +6083,8 @@ function centerNodePosition(
     : nodeType === 'class'
       ? 114
       : nodeType === 'process'
-        ? 112
-        : nodeType === 'input'
-          ? 99
-          : 82
+        ? 96
+        : 82
 
   return {
     x: position.x - width / 2,

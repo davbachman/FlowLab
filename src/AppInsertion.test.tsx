@@ -185,7 +185,7 @@ describe('connected block insertion', () => {
 
     dragOutputIntoBlankCanvas(source.id, CLASS_INIT_HANDLE, { x: 800, y: 500 })
     const input = currentNodes().at(-1)!
-    expect(input).toMatchObject({ position: { x: 703, y: 450.5 }, selected: true, data: { nodeType: 'input', text: '' } })
+    expect(input).toMatchObject({ position: { x: 703, y: 459 }, selected: true, data: { nodeType: 'input', text: '' } })
     expect(currentEdges().filter((edge) => edge.source === source.id && edge.sourceHandle === CLASS_INIT_HANDLE)).toEqual([
       expect.objectContaining({ target: input.id }),
     ])
@@ -227,7 +227,7 @@ describe('connected block insertion', () => {
     const place = flowProps.at(-1)?.onPaneClick as (event: globalThis.MouseEvent) => void
     act(() => place(new window.MouseEvent('click', { clientX: 2000, clientY: 1000 })))
     const source = currentNodes().at(-1)!
-    dragOutputIntoBlankCanvas(source.id, null, { x: hiddenBlock.position.x + 142, y: hiddenBlock.position.y + 56 })
+    dragOutputIntoBlankCanvas(source.id, null, { x: hiddenBlock.position.x + 142, y: hiddenBlock.position.y + 48 })
     await user.click(screen.getByRole('option', { name: 'Process' }))
     expect(currentNodes().at(-1)?.position).toEqual(hiddenBlock.position)
     expect(currentNodes().find((node) => node.id === hiddenBlock.id)).toMatchObject({
@@ -237,7 +237,7 @@ describe('connected block insertion', () => {
 
   it.each([
     { name: 'Return', width: 194, height: 82 },
-    { name: 'Process', width: 284, height: 112 },
+    { name: 'Process', width: 284, height: 96 },
     { name: 'If', width: 188, height: 142 },
   ])('centers a connected $name at the wire drop near another block after pan and zoom', async ({ name, width, height }) => {
     const user = userEvent.setup()

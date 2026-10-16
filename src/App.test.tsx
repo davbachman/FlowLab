@@ -1703,6 +1703,7 @@ describe('App', () => {
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
     const field = screen.getByLabelText('Input text')
+    expect(field).toHaveAttribute('rows', '1')
     await user.clear(field)
     await user.keyboard('n{Shift>}{Enter}{/Shift}extra{Shift>}{Enter}{/Shift}last')
     expect(field).toHaveValue('n\nextra\nlast')
@@ -3685,6 +3686,7 @@ describe('App', () => {
     const field = screen.getByLabelText(`${label} text`)
     await waitFor(() => expect(field).toHaveFocus())
     expect(field).toHaveValue('')
+    expect(field).toHaveAttribute('rows', '1')
     await user.keyboard('new_value')
     expect(field).toHaveValue('new_value')
     expect(field).toHaveFocus()
@@ -3932,7 +3934,7 @@ describe('App', () => {
     importProgramFromFileMenu(new File([JSON.stringify(program)], 'collapse.json', { type: 'application/json' }))
     const helper = await screen.findByTestId('flow-node-helper')
     const beforePosition = screen.getByTestId('flow-node-helper-end').closest('.react-flow__node')?.getAttribute('style')
-    fireEvent.doubleClick(helper)
+    fireEvent.click(within(helper).getByLabelText('Collapse function helper'))
     expect(helper).toHaveAttribute('data-collapsed', 'true')
     expect(helper).toHaveTextContent('Collapsed')
     expect(helper).toHaveTextContent('Returns seven. No inputs needed.')
@@ -3944,7 +3946,7 @@ describe('App', () => {
     await screen.findByText(/^Completed$/i)
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('7')
     expect(helper).toHaveAttribute('data-collapsed', 'true')
-    fireEvent.doubleClick(helper)
+    fireEvent.click(within(helper).getByLabelText('Expand function helper'))
     const restored = await screen.findByTestId('flow-node-helper-end')
     expect(restored).toHaveTextContent('Return')
     expect(within(restored).getByRole('textbox', { hidden: true })).toHaveValue('7')
@@ -3960,7 +3962,7 @@ describe('App', () => {
     fireEvent.keyDown(helperWrapper, { key: 'ArrowRight' })
     fireEvent.keyDown(helperWrapper, { key: 'ArrowDown' })
     expect(helperWrapper.style.transform).toBe('translate(355px,5px)')
-    fireEvent.doubleClick(screen.getByTestId('flow-node-main'))
+    fireEvent.click(screen.getByLabelText('Collapse function main'))
     expect(screen.queryByTestId('flow-node-output')).not.toBeInTheDocument()
     expect(screen.queryByTestId('flow-node-helper-end')).not.toBeInTheDocument()
     expect(helper).toBeInTheDocument()
@@ -3995,8 +3997,9 @@ describe('App', () => {
     }
     render(<App />)
     importProgramFromFileMenu(new File([JSON.stringify(program)], 'errors.json', { type: 'application/json' }))
-    fireEvent.doubleClick(await screen.findByTestId('flow-node-main'))
-    fireEvent.doubleClick(screen.getByTestId('flow-node-helper'))
+    await screen.findByTestId('flow-node-main')
+    fireEvent.click(screen.getByLabelText('Collapse function main'))
+    fireEvent.click(screen.getByLabelText('Collapse function helper'))
     expect(screen.queryByTestId('flow-node-bad-output')).not.toBeInTheDocument()
 
     // A visible target must leave every collapsed function alone.
@@ -4012,12 +4015,12 @@ describe('App', () => {
     await waitFor(() => expect(within(revealed).getByRole('textbox', { hidden: true })).toHaveFocus())
   })
 
-  it('opens a right-click comment dialog and shows comments inside blocks', async () => {
+  it('opens a double-click comment dialog and shows comments inside blocks', async () => {
     const user = userEvent.setup()
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
 
-    fireEvent.contextMenu(screen.getByTestId('flow-node-main'))
+    fireEvent.doubleClick(screen.getByTestId('flow-node-main'))
 
     const dialog = await screen.findByRole('dialog', {
       name: /Block comment/i,
@@ -4036,6 +4039,26 @@ describe('App', () => {
     expect(comment.compareDocumentPosition(screen.getByDisplayValue('main'))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     )
+    expect(mainNode).toHaveAttribute('data-collapsed', 'false')
+    fireEvent.doubleClick(comment)
+    const reopened = await screen.findByRole('dialog', { name: /Block comment/i })
+    expect(within(reopened).getByRole('textbox', { name: /^Comment$/i })).toHaveValue('Count input values')
+  })
+
+  it('opens comments on executable blocks while preserving text editing and right-click behavior', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    const block = screen.getByTestId('flow-node-add-n')
+    fireEvent.contextMenu(block)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.doubleClick(within(block).getByLabelText('Process text'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.doubleClick(block.querySelector('.react-flow__handle')!)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    fireEvent.doubleClick(block)
+    expect(await screen.findByRole('dialog', { name: /Block comment/i })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: /Add a block/i })).not.toBeInTheDocument()
   })
 
   it('places Return blocks with editable return text', async () => {
@@ -4093,6 +4116,30 @@ describe('App', () => {
     const editor = within(processNode).getByLabelText(/Process text/i)
     expect(editor.tagName).toBe('TEXTAREA')
     expect(editor).toHaveValue('')
+    expect(editor).toHaveAttribute('rows', '1')
+    await waitFor(() => expect(editor).toHaveFocus())
+    await user.keyboard('x <- 1{Shift>}{Enter}{/Shift}y <- 2')
+    expect(editor).toHaveAttribute('rows', '2')
+    expect(editor).toHaveValue('x <- 1\ny <- 2')
     expect(editor).not.toHaveClass('nowheel')
+  })
+
+  it('expands Output with Shift+Enter and prints each expression in order', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    const editor = screen.getByLabelText('Output text')
+    expect(editor).toHaveAttribute('rows', '1')
+    await user.click(editor)
+    await user.keyboard('{End}{Shift>}{Enter}{/Shift}"Done"')
+    expect(editor).toHaveValue('total\n"Done"')
+    expect(editor).toHaveAttribute('rows', '2')
+    expect(editor).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(editor).not.toHaveFocus()
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
+    const lines = screen.getByRole('region', { name: /Output/i }).querySelectorAll('.console-line')
+    expect([...lines].map((line) => line.textContent)).toEqual(['6', 'Done'])
   })
 })

@@ -50,6 +50,18 @@ export interface ProcessStatementSource {
   lineNumber: number
 }
 
+export interface OutputExpressionSource {
+  text: string
+  lineNumber: number
+}
+
+export function splitOutputExpressions(text: string): OutputExpressionSource[] {
+  return text.split(/\r?\n/).flatMap((line, index) => {
+    const expression = line.trim()
+    return expression ? [{ text: expression, lineNumber: index + 1 }] : []
+  })
+}
+
 export function isVariableName(value: string): boolean {
   const name = value.trim()
   return VARIABLE_NAME_PATTERN.test(name) && !RESERVED_LANGUAGE_NAMES.has(name)

@@ -1178,10 +1178,6 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.node-textarea-multiline {
-  min-height: 48px;
-}
-
 .flow-node-call {
   border-color: #7c3aed;
   background: #fbf8ff;

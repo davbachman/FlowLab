@@ -67,7 +67,7 @@ Step normally executes all the lines in a Process block together. A Function or 
 
 - Input blocks contain one variable name per nonblank line, such as `answer`. Each name receives the next value from the active input queue, from top to bottom. A single Step binds all available inputs in that block. If the queue runs out partway through, execution pauses at that Input block; add values and use Step, Auto Step, or Run to resume with the next unassigned name. Earlier assignments are preserved.
 - The queue contains one value per nonblank line. Numbers, `True`/`False`, quoted Strings, Lists, and Dictionaries are parsed as values. Other text stays a String: `2 + 3` is text, while `[2 + 3]` is a List containing `5`. Use `""` to queue an empty String.
-- Output blocks contain an expression, such as `"Total: " + total`, and append its value to the Output drawer below the canvas. Strings display without surrounding quotes; Strings nested in Lists or Dictionaries retain quotes. Object formatting is described in [Classes and objects](classes-and-objects.md).
+- Output blocks contain one expression per nonblank line, such as `"Total: " + total`, and append each value to the Output drawer below the canvas in order. Use Shift+Enter to add a line. A Step executes all lines unless a call pauses execution; resuming continues from that line without repeating previous output. Use `""` to print an intentional empty line. Strings display without surrounding quotes; Strings nested in Lists or Dictionaries retain quotes. Object formatting is described in [Classes and objects](classes-and-objects.md).
 - Return evaluates an expression, ends the current Function or Method, and sends the value back to its caller.
 - Return from `main` halts the program.
 
