@@ -1665,6 +1665,7 @@ function App() {
 
     setNodes((currentNodes) => [...currentNodes, newNode])
     setExecution(null)
+    window.requestAnimationFrame(() => document.getElementById(`${newNode.id}-text`)?.focus({ preventScroll: true }))
   }
 
   function placePendingNode(event: MouseEvent): void {

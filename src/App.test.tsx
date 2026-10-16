@@ -3609,6 +3609,40 @@ describe('App', () => {
     expect(screen.getByLabelText(/^If text$/i)).toHaveValue('')
   })
 
+  it.each([
+    'Function', 'Class', 'Method', 'Return', 'Process',
+    'Input', 'Output', 'If', 'While', 'For',
+  ])('focuses a newly placed %s block and accepts typing without another click', async (label) => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await user.click(screen.getByRole('button', { name: label }))
+
+    placePendingNodeOnPane(container.querySelector('.react-flow__pane')!)
+
+    const field = screen.getByLabelText(`${label} text`)
+    await waitFor(() => expect(field).toHaveFocus())
+    expect(field).toHaveValue('')
+    await user.keyboard('new_value')
+    expect(field).toHaveValue('new_value')
+    expect(field).toHaveFocus()
+  })
+
+  it('focuses a Call block placed through quick add and accepts typing immediately', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    const pane = container.querySelector('.react-flow__pane')!
+    fireEvent.doubleClick(pane, { clientX: 410, clientY: 260 })
+    await user.type(screen.getByRole('combobox'), 'Call')
+    await user.keyboard('{Enter}')
+
+    placePendingNodeOnPane(pane, 410, 260)
+
+    const field = screen.getByLabelText('Call text')
+    await waitFor(() => expect(field).toHaveFocus())
+    await user.keyboard('helper()')
+    expect(field).toHaveValue('helper()')
+  })
+
   it('previews a palette block under the cursor until the canvas click places it', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
