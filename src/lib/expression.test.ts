@@ -523,9 +523,7 @@ describe('class and method declarations', () => {
     expect(() => parseClassDeclaration('Point(x, x)')).toThrow(
       /duplicate field "x"/,
     )
-    expect(() => parseClassDeclaration('Point')).toThrow(
-      /Class must use the form/,
-    )
+    expect(parseClassDeclaration('Point')).toEqual({ name: 'Point', fields: [] })
   })
 
   it('parses bare method declarations and rejects qualified names', () => {

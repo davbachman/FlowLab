@@ -13,6 +13,7 @@ import {
   parseAssignment,
   parseClassDeclaration,
   parseForLoop,
+  parseInputVariables,
   splitProcessStatements,
   type AssignmentTarget,
   type ProcessStatementSource,
@@ -68,6 +69,7 @@ import {
   type TurtleState,
 } from './turtle'
 import { validateProgram } from './validation'
+import { classAttributeNames } from './classInitialization'
 
 export type ExecutionStatus =
   | 'running'
@@ -348,6 +350,8 @@ export interface ExecutionState {
   forLoops: Record<string, ForLoopFrame>
   callStack: SuspendedFrame[]
   inputQueue: RuntimeValue[]
+  /** Resume a partially bound Input block after its queue is replenished. */
+  inputProgress?: { nodeId: string; variableIndex: number }
   output: string[]
   status: ExecutionStatus
   steps: number
@@ -760,22 +764,29 @@ function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
   }
 
   if (node.type === 'input') {
-    if (state.inputQueue.length === 0) {
-      return { ...state, currentNodeId: node.id, status: 'waiting' }
+    const variables = parseInputVariables(node.text)
+    const startIndex = state.inputProgress?.nodeId === node.id
+      ? state.inputProgress.variableIndex
+      : 0
+    const count = Math.min(variables.length - startIndex, state.inputQueue.length)
+    const environment = { ...state.environment }
+    for (let index = 0; index < count; index += 1) {
+      environment[variables[startIndex + index].variable] = state.inputQueue[index]
     }
-
-    const [value, ...remainingInput] = state.inputQueue
-    return advance(
-      {
-        ...state,
-        inputQueue: remainingInput,
-        environment: {
-          ...state.environment,
-          [node.text.trim()]: value,
-        },
-      },
-      node,
-    )
+    const nextState: ExecutionState = {
+      ...state,
+      environment,
+      inputQueue: state.inputQueue.slice(count),
+      inputProgress: undefined,
+    }
+    const nextIndex = startIndex + count
+    return nextIndex < variables.length
+      ? {
+          ...nextState,
+          status: 'waiting',
+          inputProgress: { nodeId: node.id, variableIndex: nextIndex },
+        }
+      : advance(nextState, node)
   }
 
   if (node.type === 'output') {
@@ -2237,7 +2248,6 @@ function assignObjectMember(
   const implicitField = hasLocal
     ? undefined
     : implicitReceiverField(state, variable)
-
   if (!hasLocal && !implicitField) {
     throw new Error(`Undefined variable "${variable}"`)
   }
@@ -2247,11 +2257,6 @@ function assignObjectMember(
     : implicitField!.value
   if (!isRuntimeObject(object)) {
     throw new Error(`Member assignment target "${variable}" must be an object.`)
-  }
-
-  const instance = requireObjectInstance(state.objectHeap, object)
-  if (!Object.prototype.hasOwnProperty.call(instance.fields, member)) {
-    throw new Error(`Class "${instance.className}" has no field "${member}".`)
   }
 
   return {
@@ -2284,9 +2289,6 @@ function setObjectField(
   value: RuntimeValue,
 ): ObjectHeap {
   const instance = requireObjectInstance(objectHeap, object)
-  if (!Object.prototype.hasOwnProperty.call(instance.fields, field)) {
-    throw new Error(`Class "${instance.className}" has no field "${field}".`)
-  }
 
   return {
     ...objectHeap,
@@ -2503,7 +2505,7 @@ function buildImportedDefinitions(
           classOwnerIndexes.set(declaration.name, programIndex)
           classes.push({
             name: declaration.name,
-            fields: declaration.fields,
+            fields: classAttributeNames(importedProgram, node),
             program: importedProgram,
             node,
           })
@@ -2687,7 +2689,7 @@ function findClassDefinitionInProgram(
       if (declaration.name === name) {
         return {
           name,
-          fields: declaration.fields,
+          fields: classAttributeNames(program, node),
           program,
           node,
         }

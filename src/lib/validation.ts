@@ -8,11 +8,13 @@ import {
   attachedMethodDefinition,
   objectDunderInputCount,
 } from './classMethods'
+import { classAttributeNames, classInitializationInputs } from './classInitialization'
 import {
   isVariableName,
   parseAssignment,
   parseClassDeclaration,
   parseForLoop,
+  parseInputVariables,
   parseMethodDeclaration,
   splitProcessStatements,
 } from './statements'
@@ -196,18 +198,19 @@ export function validateProgram(
         classesByName.set(declaration.name, node)
       }
 
-      const duplicateFields = duplicateNames(declaration.fields)
+      const fields = classAttributeNames(program, node)
+      const duplicateFields = duplicateNames(fields)
       for (const field of duplicateFields) {
         errors.push(`Class "${declaration.name}" has duplicate field "${field}".`)
       }
 
-      if (declaration.fields.includes('self')) {
+      if (fields.includes('self')) {
         errors.push(
           `Class "${declaration.name}" cannot declare field "self" because "self" is reserved for the Method receiver.`,
         )
       }
-    } catch {
-      // Invalid Class text is reported by validateNodeText.
+    } catch (error) {
+      errors.push(`Class node "${node.id}" has invalid init: ${message(error)}`)
     }
   }
 
@@ -246,6 +249,15 @@ export function validateProgram(
     errors.push('Program must have at least one Return node.')
   }
 
+  const initInputIds = new Set<string>()
+  for (const classNode of classes) {
+    try {
+      for (const input of classInitializationInputs(program, classNode)) initInputIds.add(input.id)
+    } catch {
+      // Invalid initializers are reported with their owning Class above.
+    }
+  }
+
   for (const node of program.nodes) {
     const outgoing = outgoingByNode.get(node.id) ?? []
     const incoming = incomingByNode.get(node.id) ?? []
@@ -257,12 +269,17 @@ export function validateProgram(
       rejectBranchLabelsFrom(outgoing, errors)
       for (const edge of outgoing) {
         const target = nodesById.get(edge.target)
-        if (target && target.type !== 'method') {
+        if (target && target.type !== 'method' && target.type !== 'input') {
           errors.push(
-            `Class node "${node.id}" may connect only to Method nodes.`,
+            `Class node "${node.id}" may connect only to Method nodes or an init Input block.`,
           )
         }
       }
+      continue
+    }
+
+    if (initInputIds.has(node.id)) {
+      rejectBranchLabelsFrom(outgoing, errors)
       continue
     }
 
@@ -323,7 +340,7 @@ export function validateProgram(
   )
 
   const ownersByNodeId = findFunctionOwners(program, [...functions, ...methods])
-  validateFunctionOwnership(program, ownersByNodeId, errors)
+  validateFunctionOwnership(program, ownersByNodeId, errors, initInputIds)
   validateMethodSelfBindings(program, methods, ownersByNodeId, errors)
   validateDunderInputs(program, methods, ownersByNodeId, errors)
 
@@ -447,9 +464,7 @@ function validateNodeText(node: ProgramNode, errors: string[]): void {
     }
 
     if (node.type === 'input') {
-      if (!isVariableName(node.text)) {
-        throw new Error('Input must be a variable name.')
-      }
+      parseInputVariables(node.text)
       return
     }
 
@@ -676,6 +691,7 @@ function validateFunctionOwnership(
   program: Program,
   ownersByNodeId: Map<string, Set<string>>,
   errors: string[],
+  initInputIds: ReadonlySet<string> = new Set(),
 ): void {
   for (const node of program.nodes) {
     if (node.type === 'function' || node.type === 'method' || node.type === 'class') {
@@ -684,6 +700,10 @@ function validateFunctionOwnership(
 
     const owners = ownersByNodeId.get(node.id) ?? new Set<string>()
 
+    if (initInputIds.has(node.id)) {
+      if (owners.size > 0) errors.push(`Init Input "${node.id}" cannot also belong to a Function or Method.`)
+      continue
+    }
     if (owners.size === 0) {
       errors.push(`Node "${node.id}" is not reachable from any Function or Method.`)
       continue
@@ -746,9 +766,16 @@ function validateDunderInputs(
     const ownedInputs = inputNodes.filter((node) =>
       ownersByNodeId.get(node.id)?.has(method.id),
     )
-    if (ownedInputs.length !== expectedCount) {
+    let inputCount: number
+    try {
+      inputCount = ownedInputs.flatMap((node) => parseInputVariables(node.text)).length
+    } catch {
+      // Invalid Input text is already reported by validateNodeText.
+      continue
+    }
+    if (inputCount !== expectedCount) {
       errors.push(
-        `Method "${definition.qualifiedName}" must have exactly ${expectedCount} Input block${expectedCount === 1 ? '' : 's'}, but has ${ownedInputs.length}.`,
+        `Method "${definition.qualifiedName}" must have exactly ${expectedCount} Input variable${expectedCount === 1 ? '' : 's'}, but has ${inputCount}.`,
       )
       continue
     }
@@ -776,7 +803,9 @@ function variableBindingLines(
 ): Array<number | undefined> {
   try {
     if (node.type === 'input') {
-      return node.text.trim() === variable ? [undefined] : []
+      return parseInputVariables(node.text)
+        .filter((input) => input.variable === variable)
+        .map((input) => node.text.includes('\n') ? input.lineNumber : undefined)
     }
 
     if (node.type === 'assignment') {

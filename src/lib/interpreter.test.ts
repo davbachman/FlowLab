@@ -552,6 +552,115 @@ describe('interpreter', () => {
     expect(state.output).toEqual([])
   })
 
+  it('assigns all nonblank Input lines in one step, preserving order and remaining queue values', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'input', type: 'input', text: ' first \r\n\nsecond\nthird ', position: { x: 0, y: 100 } },
+        { id: 'end', type: 'return', text: '[first, second, third]', position: { x: 0, y: 200 } },
+      ],
+      edges: [{ id: 'start', source: 'main', target: 'input' }, { id: 'finish', source: 'input', target: 'end' }],
+    }
+    const before = stepExecution(createExecution(program, ['7', '"hello"', '[1, 2]', '99']))
+    const after = stepExecution(before)
+    expect(after.status).toBe('running')
+    expect(after.currentNodeId).toBe('end')
+    expect(after.steps).toBe(before.steps + 1)
+    expect(after.environment).toEqual({ first: 7, second: 'hello', third: [1, 2] })
+    expect(after.inputQueue).toEqual([99])
+    expect(before.environment).toEqual({})
+    expect(before.inputQueue).toEqual([7, 'hello', [1, 2], 99])
+    expect(after.lastStep?.changedVariables.map(({ name }) => name)).toEqual(['first', 'second', 'third'])
+    expect(runExecution(after).returnValue).toEqual([7, 'hello', [1, 2]])
+  })
+
+  it('resumes an Input block at the next variable across multiple waits without rebinding earlier inputs', () => {
+    const program: Program = {
+      ...sumProgram,
+      nodes: sumProgram.nodes.map((node) => node.id === 'input' ? { ...node, text: 'n\nfirst\nsecond' } : node),
+    }
+    let state = runExecution(createExecution(program, ['3']))
+    expect(state.status).toBe('waiting')
+    expect(state.environment).toEqual({ n: 3 })
+    expect(stepExecution(state)).toBe(state)
+
+    state = stepExecution(replaceExecutionInputQueue(state, ['4']))
+    expect(state.status).toBe('waiting')
+    expect(state.environment).toEqual({ n: 3, first: 4 })
+    state = stepExecution(replaceExecutionInputQueue(state, ['5']))
+    expect(state.currentNodeId).toBe('init')
+    expect(state.environment).toEqual({ n: 3, first: 4, second: 5 })
+    expect(state.inputProgress).toBeUndefined()
+    expect(runExecution(state).environment.total).toBe(6)
+    expect(runExecution(createExecution(program, ['2', '8', '9'])).environment).toMatchObject({ first: 8, second: 9 })
+  })
+
+  it('reads every Input line again on each loop iteration', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'loop', type: 'for', text: 'i in [1, 2]', position: { x: 0, y: 100 } },
+        { id: 'input', type: 'input', text: 'a\nb', position: { x: 0, y: 200 } },
+        { id: 'show', type: 'output', text: '[a, b]', position: { x: 0, y: 300 } },
+        { id: 'end', type: 'return', text: '0', position: { x: 0, y: 400 } },
+      ],
+      edges: [
+        { id: 'start', source: 'main', target: 'loop' },
+        { id: 'body', source: 'loop', target: 'input', label: 'true' },
+        { id: 'show', source: 'input', target: 'show' },
+        { id: 'back', source: 'show', target: 'loop' },
+        { id: 'end', source: 'loop', target: 'end', label: 'false' },
+      ],
+    }
+    const result = runExecution(createExecution(program, ['1', '2', '3', '4']))
+    expect(result.status).toBe('halted')
+    expect(result.output).toEqual(['[1, 2]', '[3, 4]'])
+  })
+
+  it('resumes multiline inputs inside a called function and restores its caller queue', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [
+        { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
+        { id: 'call', type: 'process', text: 'result <- helper(2)', position: { x: 0, y: 100 } },
+        { id: 'end', type: 'return', text: 'result', position: { x: 0, y: 200 } },
+        { id: 'helper', type: 'function', text: 'helper', position: { x: 400, y: 0 } },
+        { id: 'args', type: 'input', text: 'a\nb', position: { x: 400, y: 100 } },
+        { id: 'result', type: 'return', text: 'a + b', position: { x: 400, y: 200 } },
+      ],
+      edges: [
+        { id: 'call', source: 'main', target: 'call' }, { id: 'end', source: 'call', target: 'end' },
+        { id: 'args', source: 'helper', target: 'args' }, { id: 'result', source: 'args', target: 'result' },
+      ],
+    }
+    let state = runExecution(createExecution(program, ['99']))
+    expect(state.status).toBe('waiting')
+    expect(state.functionName).toBe('helper')
+    expect(state.environment).toEqual({ a: 2 })
+    state = runExecution(stepExecution(replaceExecutionInputQueue(state, ['3'])))
+    expect(state.status).toBe('halted')
+    expect(state.returnValue).toBe(5)
+    expect(state.inputQueue).toEqual([99])
+    expect(state.environment).toEqual({ result: 5 })
+  })
+
+  it('receives multiple method arguments in one Input block', () => {
+    const program: Program = {
+      ...pointProgram,
+      nodes: pointProgram.nodes.filter((node) => node.id !== 'dy').map((node) =>
+        node.id === 'dx' ? { ...node, text: 'dx\ndy' } : node,
+      ),
+      edges: pointProgram.edges.filter((edge) => edge.id !== 'm2').map((edge) =>
+        edge.id === 'm3' ? { ...edge, source: 'dx' } : edge,
+      ),
+    }
+    const state = runExecution(createExecution(program, []))
+    expect(state.status).toBe('halted')
+    expect(state.objectHeap[1].fields).toEqual({ x: 7, y: 2 })
+  })
+
   it('replaces a waiting scope input queue without restarting execution', () => {
     let state = runExecution(createExecution(sumProgram, []))
 

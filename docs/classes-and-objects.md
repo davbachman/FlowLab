@@ -13,11 +13,13 @@
 
 ## Declare a class
 
-- A Class block declares a class name and its ordered fields with `ClassName(field1, field2)`, for example `Point(x, y)`.
-- Zero-field declarations such as `Marker()` are valid.
-- Class names and field names follow the [language's naming rules](language-reference.md#names-and-dictionary-keys). Field names must be unique, and `self` cannot be a field name. Function and Class names share one callable namespace.
-- A Class is a declaration outside the executable flow: it has no incoming wire and connects only to its Methods. Construct objects from an expression in `main` or another Function or Method.
-- Calling the class name constructs a new object and initializes the fields positionally. Supply exactly one argument per declared field. For example, `p <- Point(2, 3)` creates a `Point` whose `x` is `2` and `y` is `3`; `Marker()` takes no arguments.
+- A Class block contains only a name, for example `Point`.
+- To initialize attributes from constructor arguments, connect its **init** handle to an Input block with one attribute name per line, such as `x` and `y`. You can also chain two single-line Input blocks. The init chain ends at the last Input; it needs no Return.
+- Calling `p <- Point(2, 3)` creates a new instance and assigns the arguments to `x` and `y` in init wire order. Supply exactly one argument per init name.
+- Init is optional. A Class named `Point` with an unconnected init handle can be instantiated as `Point()`, and its methods can create attributes later with assignments such as `self.x <- 2`.
+- Class names and attribute names follow the [language's naming rules](language-reference.md#names-and-dictionary-keys). Init names must be unique, and `self` cannot be an init name. Function and Class names share one callable namespace.
+- A Class is a declaration outside the executable flow: it has no incoming wire and connects to its init Inputs and optional Methods. Construct objects from an expression in `main` or another Function or Method.
+- Attribute names appear in the init Inputs; attribute chips are no longer displayed in the Class block.
 - Fields may contain any FlowLab value, including Lists, Dictionaries, Images, or other objects.
 
 ## Attach and run methods
@@ -27,7 +29,7 @@
 - A Method block contains only the method name, for example `move`, because its incoming Class connection determines which class it belongs to.
 - Each Method belongs to exactly one Class. Method names must be unique within that Class; different Classes may both have a Method named `move`.
 - Connect the Method block's outgoing handle to the first executable step just as you would for a Function.
-- Put Input blocks at the start of the method's flow to receive call arguments in order. For `p.move(5, -1)`, connect Method `move` to Input `dx`, then Input `dy`; these receive `5` and `-1`. The receiver `self` is supplied automatically and needs no Input block.
+- Put Input blocks at the start of the method's flow to receive call arguments in order. For `p.move(5, -1)`, connect Method `move` to one Input block containing `dx` and `dy` on separate lines; these receive `5` and `-1`. Separate Input blocks also work. The receiver `self` is supplied automatically and needs no Input block.
 - End the method with a Return block containing a value expression. Return `self` to return the updated receiver, an expression such as `Point(x + dx, y + dy)` to return a new object, or `0` when there is no useful result.
 - Call methods with dot notation in expressions, Call blocks, or Process lines, such as `moved <- p.move(5, -1)` or `p.move(5, -1)`.
 - An assignment keeps the returned value; a standalone call in a Call or Process block discards it. Changes to the object's fields remain in either case.
@@ -36,8 +38,8 @@
 
 ## Work with fields and self
 
-- Inside a method, declared fields can be read and written by bare name.
-- From any flow, read a declared field with `p.x` and write it with `p.x <- 10`. Reading or assigning an undeclared field is an error.
+- Inside a method, use `self.x <- value` to create or update an attribute on the current instance. Existing attributes can also be read and written by bare name. The class name itself is not an alias for `self`.
+- From any flow, read an attribute with `p.x` and write it with `p.x <- 10`. Member assignment creates a missing attribute; reading a missing attribute is an error. Each instance has its own attributes.
 - For example, a `Point.move` flow can read `dx` and `dy` with Input blocks, then execute `x <- x + dx` and `y <- y + dy` in Process blocks.
 - Bare List and Dictionary fields support indexed assignment inside a Method, such as `items[i] <- value`.
 - A bare field that contains an object can also be the target of a member assignment.
@@ -75,7 +77,7 @@ Inside the owning Method, `items[0] <- 10` updates an unshadowed field directly.
 
 Special methods are ordinary Method blocks attached to a Class, but FlowLab also calls them for the corresponding operation. Their names are exact and case-sensitive. The left palette includes a collapsed Special methods quick reference.
 
-| Attached Method | Input blocks | Required return | Automatic use |
+| Attached Method | Input variables | Required return | Automatic use |
 | --- | --- | --- | --- |
 | `__repr__` | None | String | Formatting objects in Output, recursively through lists, dictionaries, and structural object fields |
 | `__eq__` | Exactly one, connected directly after the Method | Boolean | `=` and `==` |
@@ -92,7 +94,7 @@ Special methods are ordinary Method blocks attached to a Class, but FlowLab also
 | `__mod__` | Exactly one, connected directly after the Method | Any FlowLab value | `%` |
 | `__neg__` | None | Any FlowLab value | Unary `-`, as in `-p` |
 
-- Binary operators use only the left object's special method and pass the right value through the Method's single Input block. Reflected right-side methods are not supported.
+- Binary operators use only the left object's special method and pass the right value through the Method's single Input variable, in an Input block connected directly after the Method. Additional Input lines are not allowed for these special methods. Reflected right-side methods are not supported.
 - Missing equality methods fall back to identity. Missing ordered-comparison or arithmetic methods produce an error.
 - Special comparison dispatch applies only when an object is a direct operand. Lists and dictionaries retain deep container equality, with nested objects compared by identity rather than by calling their comparison methods.
 - Special methods can be called explicitly, such as `p.__repr__()` or `p.__add__(q)`, with the same Input and return contracts.
@@ -105,7 +107,7 @@ Use the Flow status while stepping to see whether execution is in `main`, a func
 
 ## Current limitations
 
-Classes do not support inheritance, access modifiers and private members, static members, same-name method overloads, reflected and in-place operators, custom constructors, or fields that were not declared in the Class block.
+Classes do not support inheritance, access modifiers and private members, static members, same-name method overloads, or reflected and in-place operators. Init connections currently contain only Input blocks; other initialization work can be performed by a Method.
 
 ---
 

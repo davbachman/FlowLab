@@ -1,4 +1,3 @@
-import { parseClassDeclaration } from './statements'
 import {
   isBranchNodeType,
   type FlowNodeType,
@@ -226,7 +225,7 @@ export function minimumFlowNodeWidth(
   attachedMethodCount = 0,
 ): number {
   if (nodeType === 'class') {
-    const methodSlotCount = attachedMethodCount + 1
+    const methodSlotCount = attachedMethodCount + 2
     const contentWidth = Math.max(200, methodSlotCount * 70 + 20)
     return contentWidth + 24
   }
@@ -376,11 +375,11 @@ function buildProgramGraph(program: Program): ProgramGraph {
   const classAttachments = edges
     .filter(
       ({ source, target }) =>
-        source.node.type === 'class' && target.node.type === 'method',
+        source.node.type === 'class' && (target.node.type === 'method' || target.node.type === 'input'),
     )
     .sort(
       (left, right) =>
-        left.index - right.index || left.edge.id.localeCompare(right.edge.id),
+        Number(right.target.node.type === 'input') - Number(left.target.node.type === 'input') || left.index - right.index || left.edge.id.localeCompare(right.edge.id),
     )
   const executableEdges = edges
     .filter(isExecutableEdge)
@@ -414,9 +413,10 @@ function createComponentBlocks(
   dimensions: ReadonlyMap<string, FlowNodeDimensions>,
   backEdgeIds: ReadonlySet<string>,
 ): { primaryBlocks: PositionedBlock[]; invalidBlocks: PositionedBlock[] } {
+  const initRoots = new Set(graph.classAttachments.filter((edge) => edge.target.node.type === 'input').map((edge) => edge.target.node.id))
   const scopeRoots = graph.nodes
     .filter(
-      ({ node }) => node.type === 'function' || node.type === 'method',
+      ({ node }) => node.type === 'function' || node.type === 'method' || initRoots.has(node.id),
     )
     .sort(compareIndexedNodes)
   const ownersByNodeId = executableOwners(graph, scopeRoots)
@@ -1431,7 +1431,7 @@ function estimatedNodeHeight(node: ProgramNode, width: number): number {
   const inputWidth = node.type === 'function' || node.type === 'return'
     ? contentWidth * 0.75
     : node.type === 'input' || node.type === 'output' ? contentWidth - 24 : contentWidth
-  const textLines = Math.max(node.type === 'process' ? 2 : 1, estimatedWrappedLineCount(
+  const textLines = Math.max(node.type === 'process' || node.type === 'input' ? 2 : 1, estimatedWrappedLineCount(
     node.text, Math.max(1, Math.floor((inputWidth - 18) / MONOSPACE_CHARACTER_WIDTH)),
   ))
   const wrappedHeight = (textLines - 1) * 17
@@ -1448,14 +1448,7 @@ function estimatedNodeHeight(node: ProgramNode, width: number): number {
     return 80 + textLines * 16 + commentHeight
   }
   if (node.type === 'class') {
-    const fieldsHeight = (() => {
-      try {
-        return parseClassDeclaration(node.text).fields.length ? 24 : 0
-      } catch {
-        return 0
-      }
-    })()
-    return 114 + fieldsHeight + commentHeight + wrappedHeight
+    return 114 + commentHeight + wrappedHeight
   }
   return 82 + commentHeight + wrappedHeight
 }

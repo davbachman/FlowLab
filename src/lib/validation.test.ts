@@ -157,6 +157,22 @@ describe('validateProgram', () => {
     expect(validateProgram(program).errors).toEqual([])
   })
 
+  it.each([
+    { text: ' first \r\n\nsecond\n', error: null },
+    { text: ' \n\t', error: /at least one variable name/i },
+    { text: 'first\n\nsecond <- 2', error: /line 3.*variable name/i },
+    { text: 'first\nTrue', error: /line 2.*variable name/i },
+    { text: 'first, second', error: /line 1.*variable name/i },
+  ])('validates Input names on individual lines: $text', ({ text, error }) => {
+    const program: Program = {
+      ...validLinearProgram,
+      nodes: validLinearProgram.nodes.map((node) => node.id === 'set-total' ? { ...node, type: 'input', text } : node),
+    }
+    const validation = validateProgram(program)
+    if (error) expect(validation.errors.join('\n')).toMatch(error)
+    else expect(validation.errors).toEqual([])
+  })
+
   it('reports Process syntax and missing calls with source line numbers', () => {
     const malformed: Program = {
       ...validLinearProgram,
@@ -804,7 +820,7 @@ describe('validateProgram', () => {
       expect(validateProgram(withoutInput).errors).toEqual([])
       expect(validateProgram(withInput(methodName)).errors.join('\n')).toMatch(
         new RegExp(
-          `Method "Point\\.${methodName}".*exactly 0 Input blocks?.*has 1`,
+          `Method "Point\\.${methodName}".*exactly 0 Input variables?.*has 1`,
           'i',
         ),
       )
@@ -885,13 +901,13 @@ describe('validateProgram', () => {
       expect(validateProgram(withInputs(methodName, 1)).errors).toEqual([])
       expect(validateProgram(withInputs(methodName, 0)).errors.join('\n')).toMatch(
         new RegExp(
-          `Method "Point\\.${methodName}".*exactly 1 Input block.*has 0`,
+          `Method "Point\\.${methodName}".*exactly 1 Input variable.*has 0`,
           'i',
         ),
       )
       expect(validateProgram(withInputs(methodName, 2)).errors.join('\n')).toMatch(
         new RegExp(
-          `Method "Point\\.${methodName}".*exactly 1 Input block.*has 2`,
+          `Method "Point\\.${methodName}".*exactly 1 Input variable.*has 2`,
           'i',
         ),
       )
@@ -900,6 +916,9 @@ describe('validateProgram', () => {
     expect(
       validateProgram(withInputs('__add__', 1, false)).errors.join('\n'),
     ).toMatch(/Point\.__add__.*connect directly.*single Input/i)
+    const multiline = withInputs('__add__', 1)
+    multiline.nodes = multiline.nodes.map((node) => node.id === 'dunder-input-0' ? { ...node, text: 'a\nb' } : node)
+    expect(validateProgram(multiline).errors.join('\n')).toMatch(/exactly 1 Input variable.*has 2/i)
   })
 
   it('allows different Classes to use the same bare Method name', () => {
@@ -968,6 +987,7 @@ describe('validateProgram', () => {
   it('does not let Method flows replace their implicit self receiver', () => {
     const binders = [
       { id: 'bind-input', type: 'input', text: 'self' },
+      { id: 'bind-multiline-input', type: 'input', text: 'argument\nself' },
       { id: 'bind-assignment', type: 'assignment', text: 'self <- 0' },
       { id: 'bind-for', type: 'for', text: 'self in []' },
     ] as const

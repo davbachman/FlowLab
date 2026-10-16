@@ -19,6 +19,7 @@ export const FOR_TRUE_RIGHT_HANDLE = 'for-true-right'
 export const FOR_FALSE_HANDLE = 'for-false'
 export const DECISION_LOOPBACK_TARGET_HANDLE = 'decision-loopback-target'
 export const CLASS_METHOD_NEW_HANDLE = 'class-method-new'
+export const CLASS_INIT_HANDLE = 'class-init'
 export const METHOD_OWNER_HANDLE = 'method-owner'
 
 export function classMethodHandleId(methodNodeId: string): string {
@@ -112,6 +113,8 @@ export function sourceHandleForProgramEdge(
 ): string | undefined {
   const sourceNode = program.nodes.find((node) => node.id === edge.source)
   const targetNode = program.nodes.find((node) => node.id === edge.target)
+
+  if (sourceNode?.type === 'class' && targetNode?.type === 'input') return CLASS_INIT_HANDLE
 
   if (sourceNode?.type === 'class' && targetNode?.type === 'method') {
     if (currentSourceHandle === CLASS_METHOD_NEW_HANDLE) {

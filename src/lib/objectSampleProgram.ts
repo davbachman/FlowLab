@@ -6,9 +6,10 @@ export const objectSampleProgram: Program = {
     {
       id: 'point-class',
       type: 'class',
-      text: 'Point(x, y)',
+      text: 'Point',
       position: { x: 20, y: 20 },
     },
+    { id: 'point-init', type: 'input', text: 'x\ny', position: { x: -240, y: 220 } },
     {
       id: 'point-move',
       type: 'method',
@@ -95,6 +96,7 @@ export const objectSampleProgram: Program = {
     },
   ],
   edges: [
+    { id: 'edge-point-init', source: 'point-class', target: 'point-init' },
     { id: 'edge-point-move', source: 'point-class', target: 'point-move' },
     { id: 'edge-point-repr', source: 'point-class', target: 'point-repr' },
     { id: 'edge-repr-return', source: 'point-repr', target: 'repr-return' },

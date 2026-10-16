@@ -901,23 +901,6 @@ button:disabled {
   background: #ffffff;
 }
 
-.class-fields {
-  display: flex;
-  justify-content: center;
-  gap: 5px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.class-field {
-  border: 1px solid #c3b5fd;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #5925dc;
-  font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  padding: 3px 7px;
-}
-
 .class-method-handles {
   display: grid;
   grid-template-columns: repeat(var(--class-method-slot-count, 1), minmax(54px, 1fr));
@@ -1195,7 +1178,7 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.node-textarea-process {
+.node-textarea-multiline {
   min-height: 48px;
 }
 

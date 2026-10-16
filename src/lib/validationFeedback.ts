@@ -120,8 +120,8 @@ function friendlyTextError(node: ProgramNode, detail: string, lineNumber?: numbe
   if (detail.includes('text cannot be empty')) {
     return `Enter ${node.type === 'if' || node.type === 'while' ? 'a condition' : 'an expression'} in this block.`
   }
-  if (detail.includes('Input must be a variable name')) {
-    return 'Enter a variable name, such as answer, to receive the input.'
+  if (detail.includes('Input must be a variable name') || detail.includes('Input must contain at least one variable name')) {
+    return `${linePrefix}Enter one variable name per line, such as answer, to receive each input.`
   }
   if (detail.includes('Function name must be a valid name')) {
     return 'Enter a function name using letters, digits, and underscores, starting with a letter or underscore.'

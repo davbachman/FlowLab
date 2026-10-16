@@ -10,6 +10,7 @@ import { registerFlowLabProgram } from './lib/imports'
 import { objectSampleProgram } from './lib/objectSampleProgram'
 import {
   CLASS_METHOD_NEW_HANDLE,
+  CLASS_INIT_HANDLE,
   DECISION_LOOPBACK_TARGET_HANDLE,
   METHOD_OWNER_HANDLE,
   classMethodHandleId,
@@ -1513,9 +1514,9 @@ describe('App', () => {
     expect(
       within(classNode).getByLabelText(/Method connections/i),
     ).toHaveTextContent('move__repr__+ method')
-    expect(within(classNode).getByLabelText(/Declared fields/i)).toHaveTextContent(
-      'xy',
-    )
+    expect(within(classNode).queryByLabelText(/Declared fields/i)).not.toBeInTheDocument()
+    expect(within(classNode).getByLabelText('Class text')).toHaveValue('Point')
+    expect(within(screen.getByTestId('flow-node-point-init')).getByLabelText('Input text')).toHaveValue('x\ny')
 
     for (let i = 0; i < 100 && !screen.queryByText(/^Completed$/i); i++) {
       await user.click(executionButton(/^Step$/i))
@@ -1565,8 +1566,8 @@ describe('App', () => {
     const connectorRow = within(classNode).getByLabelText(/Method connections/i)
 
     expect(classNode).toHaveStyle({
-      '--class-method-slot-count': '4',
-      '--class-node-width': '300px',
+      '--class-method-slot-count': '5',
+      '--class-node-width': '370px',
     })
     expect(connectorRow).toHaveTextContent('move__repr__reset+ method')
     expect(
@@ -1695,6 +1696,35 @@ describe('App', () => {
     expect(field).not.toHaveFocus()
     expect(block).not.toHaveClass('selected')
     expect(field).toHaveValue('total <- 2\nn <- 1')
+  })
+
+  it('expands Input text across lines, consumes multiple values, and finishes editing on Enter', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    const field = screen.getByLabelText('Input text')
+    await user.clear(field)
+    await user.keyboard('n{Shift>}{Enter}{/Shift}extra{Shift>}{Enter}{/Shift}last')
+    expect(field).toHaveValue('n\nextra\nlast')
+    expect(field).toHaveAttribute('rows', '3')
+    expect(field).toHaveClass('node-textarea-multiline')
+    expect(field).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(field).not.toHaveFocus()
+    expect(field).toHaveValue('n\nextra\nlast')
+
+    const queue = screen.getByLabelText(/Input queue/i)
+    await user.clear(queue)
+    await user.type(queue, '3\n4\n5')
+    await user.click(executionButton(/^Step$/i))
+    await user.click(executionButton(/^Step$/i))
+    expect(screen.getByTestId('flow-node-init-total')).toHaveAttribute('aria-current', 'step')
+    const variables = screen.getByRole('region', { name: /Variables/i })
+    expect(within(variables).getByText('extra').closest('.variable-row')).toHaveTextContent('4')
+    expect(within(variables).getByText('last').closest('.variable-row')).toHaveTextContent('5')
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('6')
   })
 
   it('keeps wrapped expressions as one statement and preserves Process line breaks', async () => {
@@ -2269,6 +2299,39 @@ describe('App', () => {
       '45',
     )
     expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
+  })
+
+  it('resumes a multiline Input block across waits and replays all values after Restart', async () => {
+    const user = userEvent.setup()
+    const program: Program = {
+      ...sequentialInputProgram,
+      nodes: sequentialInputProgram.nodes.filter((node) => node.id !== 'input-b').map((node) =>
+        node.id === 'input-a' ? { ...node, text: 'a\nb' } : node,
+      ),
+      edges: sequentialInputProgram.edges.filter((edge) => edge.target !== 'input-b').map((edge) =>
+        edge.source === 'input-b' ? { ...edge, source: 'input-a' } : edge,
+      ),
+    }
+    render(<App />)
+    importProgramFromFileMenu(new File([JSON.stringify(program)], 'multi-input.json', { type: 'application/json' }))
+    const inputBlock = await screen.findByTestId('flow-node-input-a')
+    expect(within(inputBlock).getByLabelText('Input text')).toHaveValue('a\nb')
+    const queue = screen.getByLabelText(/Input queue/i)
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
+    await user.type(queue, '4')
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByText(/^Waiting$/i)).toBeInTheDocument()
+    await user.type(queue, '5')
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('45')
+
+    await user.click(executionButton(/^Restart$/i))
+    expect(queue).toHaveValue('4\n5')
+    await user.click(executionButton(/^Run$/i))
+    expect(screen.getByText(/^Completed$/i)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('45')
   })
 
   it('resumes Auto Step in place after input is supplied while waiting', async () => {
@@ -3827,12 +3890,12 @@ describe('App', () => {
     expect(
       classNode.querySelector(`[data-handleid="${CLASS_METHOD_NEW_HANDLE}"]`),
     ).toHaveAttribute('data-handlepos', 'bottom')
-    await user.type(classInput, 'Point(x, y)')
-    expect(within(classNode).getByText('x')).toHaveClass('class-field')
-    expect(within(classNode).getByText('y')).toHaveClass('class-field')
+    await user.type(classInput, 'Point')
+    expect(classNode.querySelector('.class-field')).not.toBeInTheDocument()
+    expect(classNode.querySelector(`[data-handleid="${CLASS_INIT_HANDLE}"]`)).toHaveAttribute('data-handlepos', 'bottom')
 
     await user.clear(classInput)
-    await user.type(classInput, 'Vector(dx, dy)')
+    await user.type(classInput, 'Vector')
     await user.click(screen.getByRole('button', { name: /^Method$/i }))
     placePendingNodeOnPane(pane as Element, 640, 220)
 

@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { EditorEdge } from './lib/editorEdges'
-import { CLASS_METHOD_NEW_HANDLE, classMethodHandleId, METHOD_OWNER_HANDLE, WHILE_TRUE_RIGHT_HANDLE } from './lib/flowRouting'
+import { CLASS_INIT_HANDLE, CLASS_METHOD_NEW_HANDLE, classMethodHandleId, METHOD_OWNER_HANDLE, WHILE_TRUE_RIGHT_HANDLE } from './lib/flowRouting'
 
 interface TestNode {
   id: string
@@ -132,7 +132,7 @@ describe('connected block insertion', () => {
       data: { nodeType: 'method', text: '' },
     })
     expect(screen.queryByRole('dialog', { name: /block/i })).not.toBeInTheDocument()
-    expect(currentNodes().find((node) => node.id === source.id)?.width).toBe(324)
+    expect(currentNodes().find((node) => node.id === source.id)?.width).toBe(394)
     await waitFor(() => expect(currentEdges()).toContainEqual(expect.objectContaining({
       source: source.id,
       sourceHandle: classMethodHandleId(method.id),
@@ -151,7 +151,7 @@ describe('connected block insertion', () => {
     await user.click(screen.getByRole('button', { name: 'Edit' }))
     await user.click(screen.getByRole('menuitem', { name: 'Redo' }))
     expect(graphSnapshot()).toEqual(connected)
-    expect(currentNodes().find((node) => node.id === source.id)?.width).toBe(324)
+    expect(currentNodes().find((node) => node.id === source.id)?.width).toBe(394)
 
     dragOutputIntoBlankCanvas(source.id, CLASS_METHOD_NEW_HANDLE, { x: 750, y: 450 })
     expect(currentNodes()).toHaveLength(before.nodes.length + 2)
@@ -166,12 +166,52 @@ describe('connected block insertion', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Object' }))
     const source = currentNodes().find((node) => node.data.nodeType === 'class')!
     const before = graphSnapshot()
-    const attachment = currentEdges().find((edge) => edge.source === source.id)!
+    const attachment = currentEdges().find((edge) => edge.source === source.id && edge.sourceHandle !== CLASS_INIT_HANDLE)!
 
     dragOutputIntoBlankCanvas(source.id, attachment.sourceHandle)
 
     expect(graphSnapshot()).toEqual(before)
     expect(screen.queryByRole('dialog', { name: /block/i })).not.toBeInTheDocument()
+  })
+
+  it('creates init Inputs from Class drops, preserves Methods, and extends the init with another Input', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Examples' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Object' }))
+    const source = currentNodes().find((node) => node.data.nodeType === 'class')!
+    const before = graphSnapshot()
+    const methods = currentEdges().filter((edge) => edge.source === source.id && edge.sourceHandle !== CLASS_INIT_HANDLE)
+
+    dragOutputIntoBlankCanvas(source.id, CLASS_INIT_HANDLE, { x: 800, y: 500 })
+    const input = currentNodes().at(-1)!
+    expect(input).toMatchObject({ position: { x: 703, y: 450.5 }, selected: true, data: { nodeType: 'input', text: '' } })
+    expect(currentEdges().filter((edge) => edge.source === source.id && edge.sourceHandle === CLASS_INIT_HANDLE)).toEqual([
+      expect.objectContaining({ target: input.id }),
+    ])
+    expect(currentEdges()).toEqual(expect.arrayContaining(methods))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const connected = graphSnapshot()
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Undo' }))
+    expect(graphSnapshot()).toEqual(before)
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Redo' }))
+    expect(graphSnapshot()).toEqual(connected)
+
+    dragOutputIntoBlankCanvas(input.id, null, { x: 800, y: 700 })
+    expect(screen.getAllByRole('option')).toHaveLength(1)
+    await user.click(screen.getByRole('option', { name: 'Input' }))
+    expect(currentNodes().at(-1)?.data.nodeType).toBe('input')
+    expect(currentEdges()).toContainEqual(expect.objectContaining({ source: input.id, target: currentNodes().at(-1)!.id }))
+
+    const valid = flowProps.at(-1)?.isValidConnection as (connection: Record<string, string | null>) => boolean
+    expect(valid({ source: source.id, sourceHandle: CLASS_INIT_HANDLE, target: 'point-move', targetHandle: METHOD_OWNER_HANDLE })).toBe(false)
+    expect(valid({ source: source.id, sourceHandle: CLASS_METHOD_NEW_HANDLE, target: input.id, targetHandle: null })).toBe(false)
+    expect(valid({ source: source.id, sourceHandle: CLASS_INIT_HANDLE, target: 'move-dx', targetHandle: null })).toBe(false)
+    expect(valid({ source: input.id, sourceHandle: null, target: 'move-x', targetHandle: null })).toBe(false)
+    expect(valid({ source: currentNodes().at(-1)!.id, sourceHandle: null, target: input.id, targetHandle: null })).toBe(false)
   })
 
   it('places connected blocks over hidden function bodies without moving or removing those bodies', async () => {

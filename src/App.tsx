@@ -100,6 +100,7 @@ import {
 import {
   branchLabelFromHandle,
   CLASS_METHOD_NEW_HANDLE,
+  CLASS_INIT_HANDLE,
   classMethodHandleId,
   METHOD_OWNER_HANDLE,
   sourceHandleForBranch,
@@ -107,11 +108,8 @@ import {
 } from './lib/flowRouting'
 import { FLOWLAB_EXAMPLES, type FlowLabExample } from './lib/examples'
 import { isRuntimeObject } from './lib/runtimeValues'
-import {
-  parseClassDeclaration,
-  splitProcessStatements,
-  type ClassDeclaration,
-} from './lib/statements'
+import { splitProcessStatements } from './lib/statements'
+import { classInitializationInputs } from './lib/classInitialization'
 import {
   FLOW_NODE_TYPES,
   isBranchLabel,
@@ -1094,6 +1092,15 @@ function App() {
   }, [])
 
   const program = useMemo(() => toProgram(nodes, edges), [nodes, edges])
+  const initInputIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const node of program.nodes.filter((node) => node.type === 'class')) {
+      try {
+        for (const input of classInitializationInputs(program, node)) ids.add(input.id)
+      } catch { /* Validation reports unfinished initializer connections. */ }
+    }
+    return ids
+  }, [program])
   const collapsedBodies = useMemo(
     () => collapsedFunctionBodies(program),
     [program],
@@ -1344,7 +1351,7 @@ function App() {
     ? selectedEdges[0]
     : null
   const quickAddSuggestions = matchingQuickAddNodeTypes(quickAddText,
-    quickAddRequest?.edgeId ? WIRE_INSERT_NODE_TYPES : quickAddRequest?.sourceId ? CONNECTED_NODE_TYPES : FLOW_NODE_TYPES,
+    quickAddRequest?.sourceId && initInputIds.has(quickAddRequest.sourceId) ? ['input'] : quickAddRequest?.edgeId ? WIRE_INSERT_NODE_TYPES : quickAddRequest?.sourceId ? CONNECTED_NODE_TYPES : FLOW_NODE_TYPES,
   )
   const exportFileName = useMemo(
     () => fileNameForDocument(documentName),
@@ -1510,7 +1517,7 @@ function App() {
         const branchLabel =
           branchLabelFromHandle(connection.sourceHandle) ??
           (sourceNode ? nextBranchLabel(sourceNode, currentEdges) : undefined)
-        const retainedEdges = sourceNode
+        let retainedEdges = sourceNode
           ? withoutReplacedOutgoingEdges(
               currentEdges,
               sourceNode.id,
@@ -1518,6 +1525,9 @@ function App() {
               branchLabel,
             )
           : currentEdges
+        if (sourceNode?.data.nodeType === 'class' && connection.sourceHandle === CLASS_INIT_HANDLE) {
+          retainedEdges = retainedEdges.filter((edge) => edge.source !== sourceNode.id || edge.sourceHandle !== CLASS_INIT_HANDLE)
+        }
 
         const edge: EditorEdge = {
           ...connection,
@@ -1594,6 +1604,9 @@ function App() {
       const endsAtMethod = targetNode.data.nodeType === 'method'
 
       if (startsAtClass || endsAtMethod) {
+        if (startsAtClass && targetNode.data.nodeType === 'input' && connection.sourceHandle === CLASS_INIT_HANDLE) {
+          return !edges.some((edge) => edge.target === targetNode.id && edge.source !== sourceNode.id)
+        }
         if (
           !startsAtClass ||
           !endsAtMethod ||
@@ -1615,9 +1628,20 @@ function App() {
         })
       }
 
+      if (initInputIds.has(sourceNode.id)) {
+        if (targetNode.data.nodeType !== 'input') return false
+        const nextProgram = toProgram(nodes, edges.filter((edge) => edge.source !== sourceNode.id))
+        nextProgram.edges.push({ id: 'pending-init', source: sourceNode.id, target: targetNode.id })
+        try {
+          for (const classNode of nextProgram.nodes.filter((node) => node.type === 'class')) classInitializationInputs(nextProgram, classNode)
+          return true
+        } catch { return false }
+      }
+      if (initInputIds.has(targetNode.id)) return false
+
       return true
     },
-    [edges, nodes],
+    [edges, nodes, initInputIds],
   )
 
   function beginNodePlacement(
@@ -1765,6 +1789,19 @@ function App() {
       return
     }
 
+    if (quickAddRequest.sourceId && initInputIds.has(quickAddRequest.sourceId)) {
+      const newInput: EditorNode = {
+        id: nextNodeId('input', nodes), type: 'flowNode',
+        position: centerNodePosition('input', quickAddRequest.flowPosition),
+        data: { nodeType: 'input', text: '' },
+      }
+      onConnect({ source: quickAddRequest.sourceId, sourceHandle: null, target: newInput.id, targetHandle: null }, newInput)
+      setQuickAddRequest(null)
+      setMessage('Init Input block connected.')
+      window.requestAnimationFrame(() => document.getElementById(`${newInput.id}-text`)?.focus())
+      return
+    }
+
     if (quickAddRequest.edgeId || quickAddRequest.sourceId) {
       const newNode = {
         id: nextNodeId(nodeType, nodes),
@@ -1809,23 +1846,24 @@ function App() {
     const target = document.elementFromPoint?.(pointer.clientX, pointer.clientY) ?? event.target
     if (!(target instanceof Element) || !target.closest('.react-flow__pane')) return
     if (source.data.nodeType === 'class') {
-      if (connection.fromHandle.id !== CLASS_METHOD_NEW_HANDLE) return
+      const isInit = connection.fromHandle.id === CLASS_INIT_HANDLE
+      if (!isInit && connection.fromHandle.id !== CLASS_METHOD_NEW_HANDLE) return
       const newMethod: EditorNode = {
-        id: nextNodeId('method', nodes),
+        id: nextNodeId(isInit ? 'input' : 'method', nodes),
         type: 'flowNode',
-        position: centerNodePosition('method', screenToFlowPoint(pointer.clientX, pointer.clientY)),
-        data: { nodeType: 'method', text: '' },
+        position: centerNodePosition(isInit ? 'input' : 'method', screenToFlowPoint(pointer.clientX, pointer.clientY)),
+        data: { nodeType: isInit ? 'input' : 'method', text: '' },
       }
       onConnect({
         source: source.id,
-        sourceHandle: CLASS_METHOD_NEW_HANDLE,
+        sourceHandle: isInit ? CLASS_INIT_HANDLE : CLASS_METHOD_NEW_HANDLE,
         target: newMethod.id,
-        targetHandle: METHOD_OWNER_HANDLE,
+        targetHandle: isInit ? null : METHOD_OWNER_HANDLE,
       }, newMethod)
       setQuickAddRequest(null)
       setPendingNodeType(null)
       setPendingNodePosition(null)
-      setMessage('Method block connected.')
+      setMessage(isInit ? 'Init Input block connected.' : 'Method block connected.')
       window.requestAnimationFrame(() => document.getElementById(`${newMethod.id}-text`)?.focus())
       return
     }
@@ -4600,7 +4638,7 @@ function BlockTextEditor({ id, value, multiline, onChange, onFinishEditing, ...a
       {...attributes}
       id={id}
       ref={ref}
-      className={`node-input node-textarea nodrag${multiline ? ' node-textarea-process' : ''}`}
+      className={`node-input node-textarea nodrag${multiline ? ' node-textarea-multiline' : ''}`}
       value={value}
       rows={multiline ? Math.max(2, value.split(/\r?\n/).length) : 1}
       wrap="soft"
@@ -4662,11 +4700,8 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
     data.nodeType === 'input' || data.nodeType === 'output'
   const isProcess = data.nodeType === 'process'
   const isBranch = isBranchNodeType(data.nodeType)
-  const classSignature = isDeclaration
-    ? tryParseClassDeclaration(data.text)
-    : null
   const attachedMethods = data.attachedMethods ?? []
-  const classMethodSlotCount = attachedMethods.length + 1
+  const classMethodSlotCount = attachedMethods.length + 2
   const minimumWidth = minimumNodeWidth(
     data.nodeType,
     attachedMethods.length,
@@ -4816,19 +4851,10 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
                 aria-invalid={!!data.textValidationMessage}
                 title={data.textValidationMessage}
                 value={text}
-                multiline={isProcess}
+                multiline={isProcess || data.nodeType === 'input'}
                 onChange={changeText}
                 onFinishEditing={() => data.onFinishEditing?.(id)}
               />
-            {classSignature?.fields.length ? (
-              <div className="class-fields" aria-label="Declared fields">
-                {classSignature.fields.map((field) => (
-                  <span className="class-field" key={field}>
-                    {field}
-                  </span>
-                ))}
-              </div>
-            ) : null}
           </>
         ) : (
           <div className="fixed-node-text">{label}</div>
@@ -4836,6 +4862,10 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
       </div>
       {isDeclaration ? (
         <div className="class-method-handles" aria-label="Method connections">
+          <div className="class-method-slot" title="Connect Input blocks to initialize attributes">
+            <span className="class-method-name">init</span>
+            <Handle id={CLASS_INIT_HANDLE} className="node-handle class-method-handle" type="source" position={Position.Bottom} aria-label="Initialize attributes" />
+          </div>
           {attachedMethods.map((method) => (
             <div
               className="class-method-slot class-method-slot-attached"
@@ -5857,7 +5887,7 @@ function attachedProgramMethodCount(
 }
 
 function classNodeContentWidth(attachedMethodCount: number): number {
-  const methodSlotCount = attachedMethodCount + 1
+  const methodSlotCount = attachedMethodCount + 2
   return Math.max(200, methodSlotCount * 70 + 20)
 }
 
@@ -5992,14 +6022,6 @@ function nextNodeId(nodeType: FlowNodeType, nodes: EditorNode[]): string {
   return id
 }
 
-function tryParseClassDeclaration(text: string): ClassDeclaration | null {
-  try {
-    return parseClassDeclaration(text)
-  } catch {
-    return null
-  }
-}
-
 function attachedMethodsForClass(
   classNodeId: string,
   nodes: EditorNode[],
@@ -6060,10 +6082,12 @@ function centerNodePosition(
   const height = isBranchNodeType(nodeType)
     ? 142
     : nodeType === 'class'
-      ? 138
+      ? 114
       : nodeType === 'process'
         ? 112
-        : 82
+        : nodeType === 'input'
+          ? 99
+          : 82
 
   return {
     x: position.x - width / 2,

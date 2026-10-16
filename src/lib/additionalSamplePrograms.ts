@@ -282,10 +282,11 @@ export const dictionaryInventoryProgram: Program = {
 export const bankAccountProgram: Program = {
   version: 1,
   nodes: [
+    { id: 'account-init', type: 'input', text: 'owner\nbalance', position: { x: -240, y: 220 } },
     {
       id: 'account-class',
       type: 'class',
-      text: 'Account(owner, balance)',
+      text: 'Account',
       position: { x: 310, y: 20 },
     },
     {
@@ -393,6 +394,7 @@ export const bankAccountProgram: Program = {
     },
   ],
   edges: [
+    { id: 'account-init-input', source: 'account-class', target: 'account-init' },
     { id: 'account-deposit-method', source: 'account-class', target: 'account-deposit' },
     { id: 'account-withdraw-method', source: 'account-class', target: 'account-withdraw' },
     { id: 'account-repr-method', source: 'account-class', target: 'account-repr' },

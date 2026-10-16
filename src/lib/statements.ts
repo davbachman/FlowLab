@@ -55,11 +55,28 @@ export function isVariableName(value: string): boolean {
   return VARIABLE_NAME_PATTERN.test(name) && !RESERVED_LANGUAGE_NAMES.has(name)
 }
 
+/** Input blocks bind one queued value to each nonblank line. */
+export function parseInputVariables(text: string): Array<{ variable: string; lineNumber: number }> {
+  const variables = text.split(/\r?\n/).flatMap((line, index) => {
+    const variable = line.trim()
+    if (!variable) return []
+    if (!isVariableName(variable)) {
+      throw new Error(`Line ${index + 1}: Input must be a variable name.`)
+    }
+    return [{ variable, lineNumber: index + 1 }]
+  })
+  if (!variables.length) {
+    throw new Error('Input must contain at least one variable name.')
+  }
+  return variables
+}
+
 export function parseClassDeclaration(text: string): ClassDeclaration {
+  if (isVariableName(text)) return { name: text.trim(), fields: [] }
   const match = text.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*$/)
 
   if (!match) {
-    throw new Error('Class must use the form: ClassName(field, ...)')
+    throw new Error('Class name must be a valid name. Connect init to Input blocks to declare attributes.')
   }
 
   if (!isVariableName(match[1])) {

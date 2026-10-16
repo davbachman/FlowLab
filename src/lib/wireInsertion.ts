@@ -1,4 +1,5 @@
 import { estimateProgramNodeDimensions, type FlowNodeDimensions } from './flowLayout'
+import { classInitializationInputs } from './classInitialization'
 import {
   isBranchNodeType,
   type BranchLabel,
@@ -74,6 +75,11 @@ export function findFreeNodePosition(
 export function canInsertOnEdge(program: Program, edgeId: string): boolean {
   const edge = program.edges.find((candidate) => candidate.id === edgeId)
   if (!edge) return false
+  for (const classNode of program.nodes.filter((node) => node.type === 'class')) {
+    try {
+      if (classInitializationInputs(program, classNode).some((node) => node.id === edge.source || node.id === edge.target)) return false
+    } catch { /* Invalid init wiring is reported by validation. */ }
+  }
 
   const source = program.nodes.find((node) => node.id === edge.source)
   const target = program.nodes.find((node) => node.id === edge.target)
