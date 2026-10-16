@@ -13,7 +13,6 @@ import {
 // require a different continuation, so offer them only when extending a wire.
 export const WIRE_INSERT_NODE_TYPES: readonly FlowNodeType[] = [
   'process',
-  'assignment',
   'call',
   'input',
   'output',

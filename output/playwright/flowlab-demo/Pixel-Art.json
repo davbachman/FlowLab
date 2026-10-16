@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "imports": "image",
+  "nodes": [
+    {
+      "id": "main",
+      "type": "function",
+      "text": "main",
+      "position": {
+        "x": 430,
+        "y": 20
+      }
+    },
+    {
+      "id": "setup",
+      "type": "process",
+      "text": "rows <- []\ny <- 0",
+      "position": {
+        "x": 385,
+        "y": 130
+      }
+    },
+    {
+      "id": "loop",
+      "type": "while",
+      "text": "y < 40",
+      "position": {
+        "x": 430,
+        "y": 290
+      }
+    },
+    {
+      "id": "row",
+      "type": "process",
+      "text": "row <- []\nx <- 0",
+      "position": {
+        "x": 65,
+        "y": 425
+      }
+    },
+    {
+      "id": "inner",
+      "type": "while",
+      "text": "x < 40",
+      "position": {
+        "x": 65,
+        "y": 570
+      }
+    },
+    {
+      "id": "pixel",
+      "type": "process",
+      "text": "r <- x * 6\ng <- y * 6\nb <- 180\nrow <- row + [[r, g, b]]\nx <- x + 1",
+      "position": {
+        "x": -300,
+        "y": 700
+      },
+      "width": 300
+    },
+    {
+      "id": "next",
+      "type": "process",
+      "text": "rows <- rows + [row]\ny <- y + 1",
+      "position": {
+        "x": 65,
+        "y": 850
+      }
+    },
+    {
+      "id": "show",
+      "type": "process",
+      "text": "art <- image_from_pixels(rows)\nimshow(art)",
+      "position": {
+        "x": 610,
+        "y": 445
+      },
+      "width": 350
+    },
+    {
+      "id": "done",
+      "type": "return",
+      "text": "0",
+      "position": {
+        "x": 650,
+        "y": 660
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "source": "main",
+      "target": "setup"
+    },
+    {
+      "id": "e1",
+      "source": "setup",
+      "target": "loop"
+    },
+    {
+      "id": "e2",
+      "source": "loop",
+      "target": "row",
+      "label": "true"
+    },
+    {
+      "id": "e3",
+      "source": "row",
+      "target": "inner"
+    },
+    {
+      "id": "e4",
+      "source": "inner",
+      "target": "pixel",
+      "label": "true"
+    },
+    {
+      "id": "e5",
+      "source": "pixel",
+      "target": "inner"
+    },
+    {
+      "id": "e6",
+      "source": "inner",
+      "target": "next",
+      "label": "false"
+    },
+    {
+      "id": "e7",
+      "source": "next",
+      "target": "loop"
+    },
+    {
+      "id": "e8",
+      "source": "loop",
+      "target": "show",
+      "label": "false"
+    },
+    {
+      "id": "e9",
+      "source": "show",
+      "target": "done"
+    }
+  ]
+}

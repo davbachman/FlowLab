@@ -40,7 +40,7 @@
 
 ## Assignment and Process syntax
 
-Assignment blocks contain one of these forms:
+Assignments in Process blocks use one of these forms:
 
 - `name <- expression`
 - `name[indexOrKey] <- expression`
@@ -59,7 +59,7 @@ account.balance <- total
 helper(total)
 ```
 
-Each Process line follows the same grammar as an Assignment or Call block. Lines execute in order, and errors include the source line number. Process blocks cannot contain Input, Output, Return, If, While, or For statements; those remain separate visual blocks.
+Each Process line contains an assignment or a standalone call. Lines execute in order, and errors include the source line number. Process blocks cannot contain Input, Output, Return, If, While, or For statements; those remain separate visual blocks.
 
 Step normally executes all the lines in a Process block together. A Function or Method call enters the called flowchart, and execution resumes with the remaining Process lines after the call returns. Interactive calls such as `ask()` can also pause a Process partway through. Completed lines stay completed if a later line fails. See [Use Process blocks](getting-started.md#use-process-blocks) to combine, split, or clean up blocks in the editor.
 
@@ -85,7 +85,7 @@ Step normally executes all the lines in a Process block together. A Function or 
 
 A Function block contains its name only, such as `double`, and its outgoing wire begins that Function's body. Exactly one Function named `main` is the program's entry point. Define additional Functions as separate flows on the same canvas, or [import them from another program](imports-and-libraries.md).
 
-Arguments become the called Function's input queue, in order. For example, build `Function: double → Input: number → Return: number * 2`, then use `result <- double(6)` in an Assignment or Process block to set `result` to `12`. For two arguments, put two Input blocks at the start of the called flow. A call with no arguments uses `helper()`.
+Arguments become the called Function's input queue, in order. For example, build `Function: double → Input: number → Return: number * 2`, then use `result <- double(6)` in a Process block to set `result` to `12`. For two arguments, put two Input blocks at the start of the called flow. A call with no arguments uses `helper()`.
 
 Each call has its own variables and queue, including recursive calls. It cannot read the caller's local variables directly; pass the values it needs as arguments. Return restores the caller's variables and queue and resumes the expression containing the call. Output from called Functions appears in the same Output drawer. Functions can return any supported value, including a List, Dictionary, or Object.
 

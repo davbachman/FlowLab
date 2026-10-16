@@ -17,7 +17,7 @@
 ## Build your first program
 
 1. Select a Function block in the left palette, click the canvas to place it, and edit its text to `main`.
-2. Add executable blocks for the work the program should perform. FlowLab provides Return, Process, Assignment, Call, Input, Output, If, While, and For blocks.
+2. Add executable blocks for the work the program should perform. FlowLab provides Return, Process, Call, Input, Output, If, While, and For blocks. Use Process for assignments.
 3. Connect the Function block to the first executable block, wire each path through the program, and finish with at least one Return.
 4. Resolve every item in the Validation panel.
 5. Enter any imports or queued input values the program needs.
@@ -32,10 +32,10 @@ Choosing an example replaces the current canvas with a separate draft, supplies 
 ## Work with the canvas
 
 - FlowLab starts with a blank canvas unless you reopen a saved browser draft. The palette groups blocks into **Definitions** (Function, Class, Method), **Steps** (Return, Process, Input, Output), and **Control Flow** (If, While, For). Select a block, move its preview into position, then click the canvas to place it. New blocks have empty text fields; enter your code directly inside the block.
-- Double-click an empty part of the canvas to open quick add. Type a block name, use ↑/↓ to choose a suggestion, Tab to complete its name, and Enter to start placement; then click the canvas to place it. Matching is case-insensitive. Assignment and Call are available here even though the palette uses Process for both. Escape cancels the chooser or placement.
+- Double-click an empty part of the canvas to open quick add. Type a block name, use ↑/↓ to choose a suggestion, Tab to complete its name, and Enter to start placement; then click the canvas to place it. Matching is case-insensitive. Call is available here as well as Process. Escape cancels the chooser or placement.
 - Double-click a Function block (outside its text field) to collapse its connected flow. The Function block, its comment/docstring, and a **Collapsed** indicator remain visible. Double-click again to restore the flow, or use the block’s Collapse/Expand button. Moving a collapsed Function moves its hidden blocks with it, preserving their positions relative to the Function. The full function still runs and saves normally. Each function’s collapsed state is saved in the document and browser recovery, and restored when you reopen it. Older files without a saved collapsed state open with their functions expanded.
 - Drag between block handles to make wires. Function and Method roots begin executable flows. Class handles attach Methods. Drag an executable output into empty canvas to choose a new block that is placed and connected automatically. This chooser also offers Return, If, While, and For; complete any additional branches yourself.
-- Double-click a wire to insert a Process, Assignment, Call, Input, or Output block. You can also select a wire and choose **Edit → Insert block on selected wire**. The existing continuation and branch direction are preserved. Insertion avoids overlapping other blocks and can be undone in one action. Press Escape to cancel without changing the wire.
+- Double-click a wire to insert a Process, Call, Input, or Output block. You can also select a wire and choose **Edit → Insert block on selected wire**. The existing continuation and branch direction are preserved. Insertion avoids overlapping other blocks and can be undone in one action. Press Escape to cancel without changing the wire.
 - Multiple wires may enter an executable block. Starting a new wire from an occupied output replaces that output's old wire; `true` and `false` branch outputs are replaced independently, while Class Method attachments accumulate.
 - If, While, and For diamonds use either side for the `true` or loop-body branch and the bottom for the `false` or exit branch. FlowLab labels those wires and routes loop-back wires automatically.
 - Left-click selects one block. Shift-, Ctrl-, or Cmd-click extends the selection, and left-drag on empty canvas makes a selection window. Drag any selected block to move the selection.
@@ -59,11 +59,11 @@ Statements run from top to bottom before execution follows the Process block's o
 
 To condense an existing flow:
 
-1. Select one straight-line chain containing Assignment, Call, or Process blocks.
+1. Select one straight-line chain containing Call or Process blocks.
 2. Choose Edit > Combine into Process.
 3. Edit the resulting multiline block if needed.
 
-Choose Edit > Split Process while exactly one Process block is selected to turn its lines back into individual Assignment and Call blocks. Existing Assignment and Call blocks remain supported for programs where separate visual steps are clearer.
+Choose Edit > Split Process while exactly one Process block is selected to turn its lines into individual Process and Call blocks. Assignment blocks in older saved files automatically become Process blocks when opened, preserving their code and connections.
 
 Choose Edit > Clean up code to safely merge short, adjacent Process blocks and arrange the complete flowchart. Cleanup keeps branches, loop backs, Functions, Classes, and Methods in distinct visual lanes; it is applied as one undoable change and leaves unsafe or malformed Process pairs separate. Use this command before pressing Restart or running the program, or after execution completes or encounters an error.
 

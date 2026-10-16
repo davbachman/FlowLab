@@ -4,6 +4,7 @@ export type FlowNodeType =
   | 'method'
   | 'return'
   | 'process'
+  // Legacy programs may still use this type; the editor loads it as Process.
   | 'assignment'
   | 'call'
   | 'input'
@@ -85,7 +86,6 @@ export const FLOW_NODE_TYPES: readonly FlowNodeType[] = [
   'method',
   'return',
   'process',
-  'assignment',
   'call',
   'input',
   'output',
@@ -112,7 +112,7 @@ export const NODE_TYPE_LABELS: Record<FlowNodeType, string> = {
 export function isFlowNodeType(value: unknown): value is FlowNodeType {
   return (
     typeof value === 'string' &&
-    FLOW_NODE_TYPES.includes(value as FlowNodeType)
+    (value === 'assignment' || FLOW_NODE_TYPES.includes(value as FlowNodeType))
   )
 }
 

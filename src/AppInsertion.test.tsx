@@ -1,15 +1,17 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import type { EditorEdge } from './lib/editorEdges'
-import { WHILE_TRUE_RIGHT_HANDLE } from './lib/flowRouting'
+import { CLASS_METHOD_NEW_HANDLE, classMethodHandleId, METHOD_OWNER_HANDLE, WHILE_TRUE_RIGHT_HANDLE } from './lib/flowRouting'
 
 interface TestNode {
   id: string
   position: { x: number; y: number }
   hidden?: boolean
+  selected?: boolean
+  width?: number
   data: { nodeType: string; text: string; onToggleCollapse?: (id: string) => void }
 }
 
@@ -104,6 +106,72 @@ describe('connected block insertion', () => {
     flowProps.length = 0
     window.localStorage.clear()
     flowInstance.screenToFlowPosition.mockImplementation((point) => point)
+  })
+
+  it('creates and attaches a Method at a Class wire drop after pan and zoom, with one Undo and Redo', async () => {
+    const user = userEvent.setup()
+    flowInstance.screenToFlowPosition.mockImplementation(({ x, y }) => ({
+      x: (x - 300) / 0.5,
+      y: (y - 80) / 0.5,
+    }))
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Examples' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Object' }))
+    const source = currentNodes().find((node) => node.data.nodeType === 'class')!
+    // A customized Class must still grow to fit its extra Method connector.
+    const changeNodes = flowProps.at(-1)?.onNodesChange as (changes: unknown[]) => void
+    act(() => changeNodes([{ id: source.id, type: 'dimensions', dimensions: { width: 224, height: 138 }, setAttributes: true }]))
+    const before = graphSnapshot()
+
+    dragOutputIntoBlankCanvas(source.id, CLASS_METHOD_NEW_HANDLE, { x: 600, y: 400 })
+
+    const method = currentNodes().find((node) => !before.nodes.some((original) => original.id === node.id))!
+    expect(method).toMatchObject({
+      position: { x: 503, y: 599 },
+      selected: true,
+      data: { nodeType: 'method', text: '' },
+    })
+    expect(screen.queryByRole('dialog', { name: /block/i })).not.toBeInTheDocument()
+    expect(currentNodes().find((node) => node.id === source.id)?.width).toBe(324)
+    await waitFor(() => expect(currentEdges()).toContainEqual(expect.objectContaining({
+      source: source.id,
+      sourceHandle: classMethodHandleId(method.id),
+      target: method.id,
+      targetHandle: METHOD_OWNER_HANDLE,
+    })))
+    expect(currentEdges()).toHaveLength(before.edges.length + 1)
+    expect(graphSnapshot().edges).toEqual(expect.arrayContaining(before.edges))
+    expect(graphSnapshot().nodes.slice(0, -1)).toEqual(before.nodes)
+    const connected = graphSnapshot()
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Undo' }))
+    expect(graphSnapshot()).toEqual(before)
+    expect(currentNodes().find((node) => node.id === source.id)?.width).toBe(224)
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Redo' }))
+    expect(graphSnapshot()).toEqual(connected)
+    expect(currentNodes().find((node) => node.id === source.id)?.width).toBe(324)
+
+    dragOutputIntoBlankCanvas(source.id, CLASS_METHOD_NEW_HANDLE, { x: 750, y: 450 })
+    expect(currentNodes()).toHaveLength(before.nodes.length + 2)
+    expect(new Set(currentNodes().map((node) => node.id)).size).toBe(currentNodes().length)
+    expect(currentEdges()).toHaveLength(before.edges.length + 2)
+  })
+
+  it('ignores drops from an existing Class Method connector', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Examples' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Object' }))
+    const source = currentNodes().find((node) => node.data.nodeType === 'class')!
+    const before = graphSnapshot()
+    const attachment = currentEdges().find((edge) => edge.source === source.id)!
+
+    dragOutputIntoBlankCanvas(source.id, attachment.sourceHandle)
+
+    expect(graphSnapshot()).toEqual(before)
+    expect(screen.queryByRole('dialog', { name: /block/i })).not.toBeInTheDocument()
   })
 
   it('places connected blocks over hidden function bodies without moving or removing those bodies', async () => {
@@ -219,6 +287,23 @@ describe('connected block insertion', () => {
     fireEvent.doubleClick(screen.getByTestId('flow-canvas'), { clientX: 500, clientY: 300 })
     expect(screen.getByRole('option', { name: 'Function' })).toBeInTheDocument()
     expect(currentNodes()).toHaveLength(0)
+  })
+
+  it('offers Process and excludes Assignment in quick add and wire insertion', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    fireEvent.doubleClick(screen.getByTestId('flow-canvas'), { clientX: 500, clientY: 300 })
+    await user.type(screen.getByRole('combobox'), 'Assignment')
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await openBasicExample(user)
+    dragOutputIntoBlankCanvas('input-n')
+    expect(screen.getByRole('option', { name: 'Process' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Assignment' })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    doubleClickWire(currentEdges().find((edge) => edge.source === 'input-n')!)
+    expect(screen.getByRole('option', { name: 'Process' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Assignment' })).not.toBeInTheDocument()
   })
 
   it('ignores double click on class-to-method attachments', async () => {

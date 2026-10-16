@@ -7,7 +7,7 @@ export const sampleProgram: Program = {
     { id: 'input-n', type: 'input', text: 'n', position: { x: 240, y: 130 } },
     {
       id: 'init-total',
-      type: 'assignment',
+      type: 'process',
       text: 'total <- 0',
       position: { x: 240, y: 240 },
     },

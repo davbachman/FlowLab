@@ -1058,11 +1058,6 @@ button:disabled {
   width: 106px;
 }
 
-.flow-node-assignment {
-  width: 190px;
-  border-color: #667085;
-}
-
 .flow-node-process {
   width: 260px;
   border-color: #667085;

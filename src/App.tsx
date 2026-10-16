@@ -148,6 +148,7 @@ interface FlowNodeData extends Record<string, unknown> {
   trueBranchHandle?: string
   attachedMethods?: AttachedMethodHandle[]
   onTextChange?: (nodeId: string, text: string) => void
+  onFinishEditing?: (nodeId: string) => void
   onResizeStart?: () => void
   textValidationMessage?: string
   hasBreakpoint?: boolean
@@ -1389,6 +1390,12 @@ function App() {
     [pushHistorySnapshot, setNodes],
   )
 
+  const finishEditingNode = useCallback((nodeId: string) => {
+    setNodes((currentNodes) => currentNodes.map((node) =>
+      node.id === nodeId ? { ...node, selected: false } : node,
+    ))
+  }, [setNodes])
+
   const renderNodes = useMemo(
     () =>
       nodes.map((node) => ({
@@ -1406,6 +1413,7 @@ function App() {
               ? attachedMethodsForClass(node.id, nodes, edges)
               : undefined,
           onTextChange: updateNodeText,
+          onFinishEditing: finishEditingNode,
           onResizeStart: recordCanvasChangeStart,
           textValidationMessage: validationFeedback.find((issue) => issue.nodeId === node.id && issue.field === 'text')?.message,
           hasBreakpoint: breakpoints.has(node.id),
@@ -1419,6 +1427,7 @@ function App() {
       nodes,
       recordCanvasChangeStart,
       updateNodeText,
+      finishEditingNode,
       validationFeedback,
       breakpoints,
       toggleBreakpoint,
@@ -1474,13 +1483,13 @@ function App() {
   )
 
   const onConnect = useCallback(
-    (connection: Connection) => {
+    (connection: Connection, newNode?: EditorNode) => {
       if (!connection.source || !connection.target) {
         return
       }
 
       const sourceNode = nodes.find((node) => node.id === connection.source)
-      const targetNode = nodes.find((node) => node.id === connection.target)
+      const targetNode = newNode ?? nodes.find((node) => node.id === connection.target)
       const isClassMethodAttachment =
         sourceNode?.data.nodeType === 'class' &&
         targetNode?.data.nodeType === 'method' &&
@@ -1491,6 +1500,12 @@ function App() {
         : null
 
       pushHistorySnapshot()
+      if (newNode) {
+        setNodes((currentNodes) => [
+          ...currentNodes.map((node) => ({ ...node, selected: false })),
+          { ...newNode, selected: true },
+        ])
+      }
       setEdges((currentEdges) => {
         const branchLabel =
           branchLabelFromHandle(connection.sourceHandle) ??
@@ -1563,7 +1578,7 @@ function App() {
 
       setExecution(null)
     },
-    [edges, nodes, pushHistorySnapshot, setEdges],
+    [edges, nodes, pushHistorySnapshot, setEdges, setNodes],
   )
 
   const isValidConnection = useCallback(
@@ -1787,11 +1802,32 @@ function App() {
   const onConnectEnd: OnConnectEnd = (event, connection) => {
     if (connection.isValid || connection.toNode || !connection.fromNode || connection.fromHandle?.type !== 'source') return
     const source = nodes.find((node) => node.id === connection.fromNode?.id)
-    if (!source || source.data.nodeType === 'class' || source.data.nodeType === 'return') return
+    if (!source || source.data.nodeType === 'return') return
     const pointer = 'changedTouches' in event ? event.changedTouches[0] : event
     if (!pointer) return
     const target = document.elementFromPoint?.(pointer.clientX, pointer.clientY) ?? event.target
     if (!(target instanceof Element) || !target.closest('.react-flow__pane')) return
+    if (source.data.nodeType === 'class') {
+      if (connection.fromHandle.id !== CLASS_METHOD_NEW_HANDLE) return
+      const newMethod: EditorNode = {
+        id: nextNodeId('method', nodes),
+        type: 'flowNode',
+        position: centerNodePosition('method', screenToFlowPoint(pointer.clientX, pointer.clientY)),
+        data: { nodeType: 'method', text: '' },
+      }
+      onConnect({
+        source: source.id,
+        sourceHandle: CLASS_METHOD_NEW_HANDLE,
+        target: newMethod.id,
+        targetHandle: METHOD_OWNER_HANDLE,
+      }, newMethod)
+      setQuickAddRequest(null)
+      setPendingNodeType(null)
+      setPendingNodePosition(null)
+      setMessage('Method block connected.')
+      window.requestAnimationFrame(() => document.getElementById(`${newMethod.id}-text`)?.focus())
+      return
+    }
     setQuickAddText('')
     setQuickAddIndex(0)
     setPendingNodeType(null)
@@ -2491,7 +2527,7 @@ function App() {
 
     if (!chain) {
       setMessage(
-        'Select one straight-line chain of Assignment, Call, or Process blocks.',
+        'Select one straight-line chain of Call or Process blocks.',
       )
       return
     }
@@ -2545,10 +2581,11 @@ function App() {
     pushHistorySnapshot()
     const createdNodes: EditorNode[] = []
     for (const [index, statement] of statements.entries()) {
+      const nodeType = statement.kind === 'assignment' ? 'process' : statement.kind
       const id =
         index === 0
           ? processNode.id
-          : nextNodeId(statement.kind, [
+          : nextNodeId(nodeType, [
               ...nodesRef.current,
               ...createdNodes,
             ])
@@ -2560,7 +2597,7 @@ function App() {
             ? undefined
             : Math.max(
                 processNode.width,
-                minimumNodeWidth(statement.kind),
+                minimumNodeWidth(nodeType),
               ),
         position: {
           x: processNode.position.x,
@@ -2568,7 +2605,7 @@ function App() {
         },
         selected: true,
         data: {
-          nodeType: statement.kind,
+          nodeType,
           text: statement.text,
           comment: index === 0 ? processNode.data.comment : undefined,
         },
@@ -4528,11 +4565,12 @@ function InputQueueEditor({ id, value, onChange, readOnly }: {
   return <textarea ref={ref} id={id} className="input-queue-editor" value={value} onChange={(event) => onChange(event.target.value)} readOnly={readOnly} rows={1} spellCheck={false} />
 }
 
-function BlockTextEditor({ id, value, multiline, onChange, ...attributes }: {
+function BlockTextEditor({ id, value, multiline, onChange, onFinishEditing, ...attributes }: {
   id: string
   value: string
   multiline: boolean
   onChange: (value: string) => void
+  onFinishEditing: () => void
   'aria-invalid': boolean
   title?: string
 }) {
@@ -4566,7 +4604,14 @@ function BlockTextEditor({ id, value, multiline, onChange, ...attributes }: {
       rows={multiline ? Math.max(2, value.split(/\r?\n/).length) : 1}
       wrap="soft"
       onChange={(event) => onChange(multiline ? event.target.value : event.target.value.replace(/[\r\n]/g, ''))}
-      onKeyDown={(event) => { if (!multiline && event.key === 'Enter') event.preventDefault() }}
+      onKeyDown={(event) => {
+        if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+        event.stopPropagation()
+        if (multiline && event.shiftKey) return
+        event.preventDefault()
+        event.currentTarget.blur()
+        onFinishEditing()
+      }}
       spellCheck={false}
     />
   )
@@ -4598,7 +4643,6 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
     data.nodeType === 'method' ||
     data.nodeType === 'return' ||
     data.nodeType === 'process' ||
-    data.nodeType === 'assignment' ||
     data.nodeType === 'call' ||
     data.nodeType === 'input' ||
     data.nodeType === 'output' ||
@@ -4773,6 +4817,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
                 value={text}
                 multiline={isProcess}
                 onChange={changeText}
+                onFinishEditing={() => data.onFinishEditing?.(id)}
               />
             {classSignature?.fields.length ? (
               <div className="class-fields" aria-label="Declared fields">
@@ -5534,7 +5579,6 @@ function selectedLinearNodeChain(
     selectedNodes.length < 2 ||
     selectedNodes.some(
       (node) =>
-        node.data.nodeType !== 'assignment' &&
         node.data.nodeType !== 'call' &&
         node.data.nodeType !== 'process',
     )
@@ -5680,6 +5724,7 @@ function isEditableShortcutTarget(target: EventTarget | null): boolean {
 
 function programToNodes(program: Program): EditorNode[] {
   return program.nodes.map((node) => {
+    const nodeType = node.type === 'assignment' ? 'process' : node.type
     const attachedMethodCount =
       node.type === 'class'
         ? attachedProgramMethodCount(node.id, program)
@@ -5689,7 +5734,7 @@ function programToNodes(program: Program): EditorNode[] {
         ? undefined
         : Math.max(
             node.width,
-            minimumNodeWidth(node.type, attachedMethodCount),
+            minimumNodeWidth(nodeType, attachedMethodCount),
           )
 
     return {
@@ -5698,7 +5743,7 @@ function programToNodes(program: Program): EditorNode[] {
       width,
       position: node.position,
       data: {
-        nodeType: node.type,
+        nodeType,
         text: node.text,
         comment: node.comment,
         isCollapsed: node.type === 'function' ? node.collapsed : undefined,
@@ -6010,8 +6055,6 @@ function centerNodePosition(
       ? 224
       : nodeType === 'process'
         ? 284
-        : nodeType === 'assignment'
-        ? 214
         : 194
   const height = isBranchNodeType(nodeType)
     ? 142

@@ -1649,6 +1649,54 @@ describe('App', () => {
     expect(screen.getByDisplayValue('total <- 1')).toBeInTheDocument()
   })
 
+  it.each([
+    { id: 'main', label: 'Function text', text: 'main' },
+    { id: 'init-total', label: 'Process text', text: 'total <- 1' },
+    { id: 'add-n', label: 'Process text', text: 'total <- 2' },
+  ])('finishes editing and deselects the block on Enter in $label ($id)', async ({ id, label, text }) => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    const field = within(screen.getByTestId(`flow-node-${id}`)).getByLabelText(label)
+    const block = field.closest('.react-flow__node')!
+    fireEvent.click(block)
+    await user.clear(field)
+    await user.type(field, text)
+    expect(block).toHaveClass('selected')
+    expect(field).toHaveFocus()
+
+    await user.keyboard('{Enter}')
+
+    expect(block).not.toHaveClass('selected')
+    expect(field).not.toHaveFocus()
+    expect(field).toHaveValue(text)
+  })
+
+  it('keeps editing Process text with Shift+Enter and waits for composition to finish', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    const field = within(screen.getByTestId('flow-node-add-n')).getByLabelText('Process text')
+    const block = field.closest('.react-flow__node')!
+    fireEvent.click(block)
+    await user.clear(field)
+    await user.type(field, 'total <- 2')
+    await user.keyboard('{Shift>}{Enter}{/Shift}n <- 1')
+
+    expect(field).toHaveValue('total <- 2\nn <- 1')
+    expect(field).toHaveFocus()
+    expect(block).toHaveClass('selected')
+    expect(screen.queryByText(/^Completed$/i)).not.toBeInTheDocument()
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true })
+    expect(field).toHaveFocus()
+    expect(block).toHaveClass('selected')
+
+    await user.keyboard('{Enter}')
+    expect(field).not.toHaveFocus()
+    expect(block).not.toHaveClass('selected')
+    expect(field).toHaveValue('total <- 2\nn <- 1')
+  })
+
   it('keeps wrapped expressions as one statement and preserves Process line breaks', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -1675,7 +1723,7 @@ describe('App', () => {
     expect(returned).toHaveValue(JSON.stringify(message))
     const process = screen.getByLabelText('Process text')
     await user.click(process)
-    await user.keyboard('{End}{Enter}count <- 2')
+    await user.keyboard('{End}{Shift>}{Enter}{/Shift}count <- 2')
     expect(process).toHaveValue(`${program.nodes[1].text}\ncount <- 2`)
     await user.click(executionButton(/^Run$/i))
     await screen.findByText(/^Completed$/i)
@@ -1683,13 +1731,13 @@ describe('App', () => {
   })
 
   it.each([
-    { label: 'Assignment text', original: 'total <- 0', minimumWidth: 214, maximumWidth: 680 },
-    { label: 'Process text', original: 'total <- total + n\nn <- n - 1', minimumWidth: 284, maximumWidth: 760 },
-  ])('preserves the cursor while editing and widening $label', async ({ label, original, minimumWidth, maximumWidth }) => {
+    { id: 'init-total', original: 'total <- 0', minimumWidth: 284, maximumWidth: 760 },
+    { id: 'add-n', original: 'total <- total + n\nn <- n - 1', minimumWidth: 284, maximumWidth: 760 },
+  ])('preserves the cursor while editing and widening Process $id', async ({ id, original, minimumWidth, maximumWidth }) => {
     const user = userEvent.setup()
     render(<App />)
     await chooseToolbarAction(user, 'Examples', 'Basic')
-    const field = screen.getByLabelText(label) as HTMLInputElement | HTMLTextAreaElement
+    const field = within(screen.getByTestId(`flow-node-${id}`)).getByLabelText('Process text') as HTMLTextAreaElement
     const block = field.closest('.react-flow__node') as HTMLElement
     const originalWidth = block.style.width
     await user.click(field)
@@ -1847,7 +1895,7 @@ describe('App', () => {
     const block = await screen.findByTestId('flow-node-init-total')
     expect(block).toHaveClass('flow-node-width-custom')
     expect(block.closest('.react-flow__node')).toHaveStyle({ width: '900px' })
-    const editor = within(block).getByLabelText(/Assignment text/i)
+    const editor = within(block).getByLabelText(/Process text/i)
     fireEvent.change(editor, { target: { value: `total <- ${'x'.repeat(200)}` } })
     expect(block.closest('.react-flow__node')).toHaveStyle({ width: '900px' })
     fireEvent.change(editor, { target: { value: 'total <- 1' } })
@@ -3352,14 +3400,15 @@ describe('App', () => {
     await chooseToolbarAction(user, 'Edit', 'Split Process')
 
     expect(screen.getByText('Process split into 2 blocks.')).toBeInTheDocument()
-    expect(screen.getByTestId('flow-node-assignment-1')).toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-process-1')).toHaveClass('flow-node-process')
+    expect(screen.queryByText(/^Assignment$/)).not.toBeInTheDocument()
     expect(screen.getByDisplayValue('total <- total + n')).toBeInTheDocument()
     expect(screen.getByDisplayValue('n <- n - 1')).toBeInTheDocument()
 
     await chooseToolbarAction(user, 'Edit', 'Combine into Process')
 
     expect(screen.getByText('2 blocks combined into one Process.')).toBeInTheDocument()
-    expect(screen.queryByTestId('flow-node-assignment-1')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-process-1')).not.toBeInTheDocument()
     expect(
       within(screen.getByTestId('flow-node-add-n')).getByLabelText(
         /Process text/i,

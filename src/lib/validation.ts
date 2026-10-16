@@ -65,6 +65,9 @@ export function normalizeImportedProgram(value: unknown): Program {
       }
 
       const candidateNode = node as { type?: unknown; text?: unknown }
+      if (candidateNode.type === 'assignment') {
+        return { ...candidateNode, type: 'process' }
+      }
       if (candidateNode.type === 'start') {
         return {
           ...candidateNode,

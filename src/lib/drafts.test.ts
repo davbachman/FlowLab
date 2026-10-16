@@ -56,6 +56,21 @@ describe('draft loading', () => {
     expect(program.nodes[0]).toMatchObject({ type: 'function', text: 'main' })
   })
 
+  it('loads legacy Assignment blocks as Process without losing text, layout, comments, or connections', () => {
+    const legacy: Program = {
+      version: 1,
+      nodes: [{
+        id: 'old-assignment', type: 'assignment', text: 'total <-',
+        position: { x: 35, y: 80 }, width: 400, comment: 'Work in progress',
+      }],
+      edges: [{ id: 'next', source: 'old-assignment', target: 'missing' }],
+    }
+    const migrated = parseProgramDraft(legacy)
+    expect(migrated).toEqual({ ...legacy, nodes: [{ ...legacy.nodes[0], type: 'process' }] })
+    expect(legacy.nodes[0].type).toBe('assignment')
+    expect(parseProgramDraft(migrated)).toEqual(migrated)
+  })
+
   it.each([
     null,
     { version: 2, nodes: [], edges: [] },

@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "function-1",
+      "type": "function",
+      "text": "main",
+      "position": {
+        "x": 186.1856974556872,
+        "y": 67.5923650738853
+      }
+    },
+    {
+      "id": "process-1",
+      "type": "process",
+      "text": "color(\"#087f8c\")\nleft(90)\nTree(200)",
+      "position": {
+        "x": 138.98739403198658,
+        "y": 185.13288960681163
+      }
+    },
+    {
+      "id": "return-1",
+      "type": "return",
+      "text": "0",
+      "position": {
+        "x": 165.3529411764706,
+        "y": 336.41176380830655
+      }
+    },
+    {
+      "id": "function-2",
+      "type": "function",
+      "text": "Tree",
+      "position": {
+        "x": 628.7683921509478,
+        "y": -14.466918020070914
+      }
+    },
+    {
+      "id": "input-1",
+      "type": "input",
+      "text": "n",
+      "position": {
+        "x": 627.7058823529412,
+        "y": 94.02940346212948
+      }
+    },
+    {
+      "id": "process-2",
+      "type": "process",
+      "text": "forward(n)\nleft(60)\nTree(2*n/3)\nright(120)\nTree(2*n/3)\nleft(60)\nbackward(n)",
+      "position": {
+        "x": 706.8823529411765,
+        "y": 399.0294034621295
+      }
+    },
+    {
+      "id": "if-1",
+      "type": "if",
+      "text": "n<5",
+      "position": {
+        "x": 634.4522192440379,
+        "y": 207.74632034861648
+      }
+    },
+    {
+      "id": "return-2",
+      "type": "return",
+      "text": "0",
+      "position": {
+        "x": 460.7647058823529,
+        "y": 395.2058740503648
+      }
+    },
+    {
+      "id": "return-3",
+      "type": "return",
+      "text": "0",
+      "position": {
+        "x": 747.7058823529412,
+        "y": 624.029260410982
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-function-1-process-1-1",
+      "source": "function-1",
+      "target": "process-1"
+    },
+    {
+      "id": "edge-process-1-return-1",
+      "source": "process-1",
+      "target": "return-1"
+    },
+    {
+      "id": "edge-function-2-input-1",
+      "source": "function-2",
+      "target": "input-1"
+    },
+    {
+      "id": "edge-input-1-if-1-1",
+      "source": "input-1",
+      "target": "if-1"
+    },
+    {
+      "id": "edge-if-1-return-2",
+      "source": "if-1",
+      "target": "return-2",
+      "label": "true"
+    },
+    {
+      "id": "edge-if-1-process-2-1",
+      "source": "if-1",
+      "target": "process-2",
+      "label": "false"
+    },
+    {
+      "id": "edge-process-2-return-3",
+      "source": "process-2",
+      "target": "return-3"
+    }
+  ],
+  "imports": "turtle",
+  "inputQueue": ""
+}

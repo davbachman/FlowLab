@@ -38,11 +38,11 @@
 
 - Inside a method, declared fields can be read and written by bare name.
 - From any flow, read a declared field with `p.x` and write it with `p.x <- 10`. Reading or assigning an undeclared field is an error.
-- For example, a `Point.move` flow can read `dx` and `dy` with Input blocks, then execute `x <- x + dx` and `y <- y + dy` in Assignment or Process blocks.
+- For example, a `Point.move` flow can read `dx` and `dy` with Input blocks, then execute `x <- x + dx` and `y <- y + dy` in Process blocks.
 - Bare List and Dictionary fields support indexed assignment inside a Method, such as `items[i] <- value`.
 - A bare field that contains an object can also be the target of a member assignment.
 - Local names take priority over field names. An Input, loop variable, or existing local with the same name shadows that field; use `self.x` to refer to the field explicitly.
-- `self` is always the object that received the call and cannot be replaced by an Input, Assignment, Process assignment, or For block.
+- `self` is always the object that received the call and cannot be replaced by an Input block, Process assignment, or For block.
 - `self` remains available when a method needs the whole receiver, such as `Return self`, or explicit field access such as `self.x`.
 - To call another method on the same object, use `self.methodName(...)`, such as `self.move(1, 0)`.
 

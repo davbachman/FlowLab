@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "imports": "turtle",
+  "nodes": [
+    {
+      "id": "main",
+      "type": "function",
+      "text": "main",
+      "position": {
+        "x": 420,
+        "y": 20
+      }
+    },
+    {
+      "id": "setup",
+      "type": "process",
+      "text": "length <- 2\ni <- 0\ncolor(\"#2563eb\")",
+      "position": {
+        "x": 375,
+        "y": 130
+      }
+    },
+    {
+      "id": "loop",
+      "type": "while",
+      "text": "i < 100",
+      "position": {
+        "x": 420,
+        "y": 310
+      }
+    },
+    {
+      "id": "draw",
+      "type": "process",
+      "text": "forward(length)\nright(89)\nlength <- length + 2\ni <- i + 1",
+      "position": {
+        "x": 80,
+        "y": 460
+      },
+      "width": 300
+    },
+    {
+      "id": "done",
+      "type": "return",
+      "text": "0",
+      "position": {
+        "x": 500,
+        "y": 520
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "source": "main",
+      "target": "setup"
+    },
+    {
+      "id": "e1",
+      "source": "setup",
+      "target": "loop"
+    },
+    {
+      "id": "e2",
+      "source": "loop",
+      "target": "draw",
+      "label": "true"
+    },
+    {
+      "id": "e3",
+      "source": "draw",
+      "target": "loop"
+    },
+    {
+      "id": "e4",
+      "source": "loop",
+      "target": "done",
+      "label": "false"
+    }
+  ]
+}
