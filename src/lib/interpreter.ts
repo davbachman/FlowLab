@@ -214,7 +214,6 @@ type AssignIndexedElementResult =
 interface ExpressionProgress {
   source: string
   completedCalls: Record<number, RuntimeValue>
-  completedVariableReads: Record<number, RuntimeValue>
   completedMemberReads: Record<number, RuntimeValue>
   completedRandomValues: Record<number, number>
 }
@@ -243,7 +242,7 @@ type PendingNode =
       valueExpression: ExpressionProgress
       value?: RuntimeValue
       indexExpression?: ExpressionProgress
-      indexTarget?: { value: RuntimeValue; receiver?: RuntimeObject }
+      indexTarget?: { value: RuntimeValue }
       process?: ProcessProgress
     }
   | {
@@ -872,7 +871,6 @@ function createExpressionProgress(source: string): ExpressionProgress {
   return {
     source,
     completedCalls: {},
-    completedVariableReads: {},
     completedMemberReads: {},
     completedRandomValues: {},
   }
@@ -1116,24 +1114,6 @@ function executeAssignmentNode(
   }
 
   const variable = pending.assignment.target.variable
-  if (!Object.prototype.hasOwnProperty.call(nextState.environment, variable)) {
-    const field = implicitReceiverField(nextState, variable)
-    if (field) {
-      return finishLinearNode(
-        {
-          ...nextState,
-          objectHeap: setObjectField(
-            nextState.objectHeap,
-            field.receiver,
-            variable,
-            value,
-          ),
-        },
-        pending,
-      )
-    }
-  }
-
   return finishLinearNode(
     {
       ...nextState,
@@ -1400,23 +1380,8 @@ function evaluateProgramExpression(
 
   try {
     const value = evaluateExpression(progress.source, environment, {
-      getVariable: (name, siteId) => {
-        if (
-          Object.prototype.hasOwnProperty.call(
-            progress.completedVariableReads,
-            siteId,
-          )
-        ) {
-          return progress.completedVariableReads[siteId]
-        }
-
-        const field = implicitReceiverField(state, name, objectHeap)
-        if (!field) {
-          return undefined
-        }
-
-        progress.completedVariableReads[siteId] = field.value
-        return field.value
+      getVariable: (name) => {
+        throw undefinedLocalVariable(state, name, objectHeap)
       },
       callFunction: (name, args, siteId) => {
         const currentCallIndex = siteId
@@ -2101,18 +2066,12 @@ function assignIndexedElement(
   const { variable } = target
   let indexTarget = pendingNode.indexTarget
   if (!indexTarget) {
-    const hasLocal = Object.prototype.hasOwnProperty.call(environment, variable)
-    const implicitField = hasLocal
-      ? undefined
-      : implicitReceiverField(state, variable)
-
-    if (!hasLocal && !implicitField) {
-      throw new Error(`Undefined variable "${variable}"`)
+    if (!Object.prototype.hasOwnProperty.call(environment, variable)) {
+      throw undefinedLocalVariable(state, variable)
     }
 
     indexTarget = {
-      value: hasLocal ? environment[variable] : implicitField!.value,
-      ...(implicitField ? { receiver: implicitField.receiver } : {}),
+      value: environment[variable],
     }
   }
 
@@ -2179,24 +2138,13 @@ function assignIndexedElement(
 
     const nextValue = [...currentValue]
     nextValue[index] = value
-    const nextObjectHeap = indexTarget.receiver
-      ? setObjectField(
-          indexResult.objectHeap,
-          indexTarget.receiver,
-          variable,
-          nextValue,
-        )
-      : indexResult.objectHeap
-
     return {
       status: 'complete',
-      environment: indexTarget.receiver
-        ? environment
-        : { ...environment, [variable]: nextValue },
+      environment: { ...environment, [variable]: nextValue },
       output,
       turtle: indexResult.turtle,
       image: indexResult.image,
-      objectHeap: nextObjectHeap,
+      objectHeap: indexResult.objectHeap,
       nextObjectId: indexResult.nextObjectId,
     }
   }
@@ -2206,24 +2154,13 @@ function assignIndexedElement(
   }
 
   const nextValue = setDictionaryValue(currentValue, indexValue, value)
-  const nextObjectHeap = indexTarget.receiver
-    ? setObjectField(
-        indexResult.objectHeap,
-        indexTarget.receiver,
-        variable,
-        nextValue,
-      )
-    : indexResult.objectHeap
-
   return {
     status: 'complete',
-    environment: indexTarget.receiver
-      ? environment
-      : { ...environment, [variable]: nextValue },
+    environment: { ...environment, [variable]: nextValue },
     output,
     turtle: indexResult.turtle,
     image: indexResult.image,
-    objectHeap: nextObjectHeap,
+    objectHeap: indexResult.objectHeap,
     nextObjectId: indexResult.nextObjectId,
   }
 }
@@ -2234,20 +2171,11 @@ function assignObjectMember(
   member: string,
   value: RuntimeValue,
 ): ExecutionState {
-  const hasLocal = Object.prototype.hasOwnProperty.call(
-    state.environment,
-    variable,
-  )
-  const implicitField = hasLocal
-    ? undefined
-    : implicitReceiverField(state, variable)
-  if (!hasLocal && !implicitField) {
-    throw new Error(`Undefined variable "${variable}"`)
+  if (!Object.prototype.hasOwnProperty.call(state.environment, variable)) {
+    throw undefinedLocalVariable(state, variable)
   }
 
-  const object = hasLocal
-    ? state.environment[variable]
-    : implicitField!.value
+  const object = state.environment[variable]
   if (!isRuntimeObject(object)) {
     throw new Error(`Member assignment target "${variable}" must be an object.`)
   }
@@ -2258,21 +2186,16 @@ function assignObjectMember(
   }
 }
 
-function implicitReceiverField(
+function undefinedLocalVariable(
   state: ExecutionState,
   name: string,
   objectHeap: ObjectHeap = state.objectHeap,
-): { receiver: RuntimeObject; value: RuntimeValue } | undefined {
-  if (!state.receiver) {
-    return undefined
-  }
-
-  const instance = requireObjectInstance(objectHeap, state.receiver)
-  if (!Object.prototype.hasOwnProperty.call(instance.fields, name)) {
-    return undefined
-  }
-
-  return { receiver: state.receiver, value: instance.fields[name] }
+): Error {
+  const fields = state.receiver ? requireObjectInstance(objectHeap, state.receiver).fields : undefined
+  const hint = fields && Object.prototype.hasOwnProperty.call(fields, name)
+    ? `. Use "self.${name}" to access an instance attribute.`
+    : ''
+  return new Error(`Undefined variable "${name}"${hint}`)
 }
 
 function setObjectField(

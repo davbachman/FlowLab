@@ -31,7 +31,7 @@ export const objectSampleProgram: Program = {
     {
       id: 'move-x',
       type: 'process',
-      text: 'x <- x + dx\ny <- y + dy',
+      text: 'self.x <- self.x + dx\nself.y <- self.y + dy',
       position: { x: 20, y: 550 },
     },
     {
@@ -49,7 +49,7 @@ export const objectSampleProgram: Program = {
     {
       id: 'repr-return',
       type: 'return',
-      text: '"Point(" + x + ", " + y + ")"',
+      text: '"Point(" + self.x + ", " + self.y + ")"',
       position: { x: 300, y: 330 },
     },
     {

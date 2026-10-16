@@ -50,6 +50,8 @@ Assignments in Process blocks use one of these forms:
 
 Assignment creates a variable or replaces its current value; no separate declaration or type annotation is needed. Indexed assignment replaces an existing List item or creates or replaces a Dictionary entry. It cannot change String characters or extend a List beyond its current length; append with `items <- items + [newItem]` instead. Assignment targets support one index or one field, so update a nested collection through a temporary variable and assign it back to its parent.
 
+Inside a Method, bare names are arguments or local variables. Use `self.x` to read an instance attribute and `self.x <- expression` to assign one. A bare assignment such as `x <- 5` always changes a local variable, even when the instance has an attribute named `x`.
+
 Assigning a List or Dictionary to another variable does not make subsequent indexed changes affect both variables. Object references retain their shared identity; see [Classes and objects](classes-and-objects.md).
 
 A Process block accepts multiple assignments and standalone calls, one per nonblank line. For example:

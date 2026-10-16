@@ -165,7 +165,7 @@ describe('execution wire tracing', () => {
       ['main', 'function', 'main'], ['make', 'assignment', 'counter <- Counter(1)'],
       ['call', 'call', 'counter.increment()'], ['end', 'return', 'counter.value'],
       ['class', 'class', 'Counter(value)'], ['method', 'method', 'increment'],
-      ['increment', 'assignment', 'value <- value + 1'], ['method-return', 'return', '0'],
+      ['increment', 'assignment', 'self.value <- self.value + 1'], ['method-return', 'return', '0'],
     ], [
       ['main', 'make'], ['make', 'call'], ['call', 'end'], ['class', 'method'],
       ['method', 'increment'], ['increment', 'method-return'],

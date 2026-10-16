@@ -42,7 +42,7 @@ See [Getting started](docs/getting-started.md) for the complete editor and execu
 
 With init inputs `x` and `y`, a Process statement such as `p <- Point(2, 3)` creates an instance with attributes `p.x` and `p.y`. The init connection can also remain unconnected; construct that class with `Point()`.
 
-Inside a Method, use `self.x <- value` to create or update an attribute on the current instance, even if it was not declared through init. Read it with `self.x`. See [Classes and objects](docs/classes-and-objects.md) for methods, object identity, and special methods.
+Inside a Method, use `self.x <- value` to create or update an attribute on the current instance, even if it was not declared through init. Read it with `self.x`. Bare names such as `x` refer only to method arguments or local variables; `x <- value` always assigns a local variable. See [Classes and objects](docs/classes-and-objects.md) for methods, object identity, and special methods.
 
 ## Included examples
 

@@ -295,7 +295,7 @@ describe('opaque imported library execution', () => {
     ], [['main', 'make'], ['make', 'call'], ['call', 'end']])
     const library = program([
       ['class', 'class', 'Counter(value)'], ['method', 'method', 'increment'],
-      ['increment', 'assignment', 'value <- value + 1'], ['return', 'return', '0'],
+      ['increment', 'assignment', 'self.value <- self.value + 1'], ['return', 'return', '0'],
     ], [['class', 'method'], ['method', 'increment'], ['increment', 'return']])
     const state = finishStep(finishStep(atCall(library, source)))
     expect(state.currentNodeId).toBe('end')

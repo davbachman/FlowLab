@@ -1505,7 +1505,7 @@ describe('App', () => {
       within(screen.getByTestId('flow-node-move-x')).getByLabelText(
         /Process text/i,
       ),
-    ).toHaveValue('x <- x + dx\ny <- y + dy')
+    ).toHaveValue('self.x <- self.x + dx\nself.y <- self.y + dy')
     expect(
       within(screen.getByTestId('flow-node-make-point')).getByLabelText(
         /Process text/i,

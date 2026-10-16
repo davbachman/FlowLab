@@ -31,7 +31,7 @@
 - Each Method belongs to exactly one Class. Method names must be unique within that Class; different Classes may both have a Method named `move`.
 - Connect the Method block's outgoing handle to the first executable step just as you would for a Function.
 - Put Input blocks at the start of the method's flow to receive call arguments in order. For `p.move(5, -1)`, connect Method `move` to one Input block containing `dx` and `dy` on separate lines; these receive `5` and `-1`. Separate Input blocks also work. The receiver `self` is supplied automatically and needs no Input block.
-- End the method with a Return block containing a value expression. Return `self` to return the updated receiver, an expression such as `Point(x + dx, y + dy)` to return a new object, or `0` when there is no useful result.
+- End the method with a Return block containing a value expression. Return `self` to return the updated receiver, an expression such as `Point(self.x + dx, self.y + dy)` to return a new object, or `0` when there is no useful result.
 - Call methods with dot notation in expressions, Call blocks, or Process lines, such as `moved <- p.move(5, -1)` or `p.move(5, -1)`.
 - An assignment keeps the returned value; a standalone call in a Call or Process block discards it. Changes to the object's fields remain in either case.
 - Member access can chain through objects and method results, such as `wrapper.point.x` or `wrapper.get_point().x`.
@@ -39,12 +39,10 @@
 
 ## Work with fields and self
 
-- Inside a method, use `self.x <- value` to create or update an attribute on the current instance. Existing attributes can also be read and written by bare name. The class name itself is not an alias for `self`.
+- Inside a method, read instance attributes with `self.x` and create or update them with `self.x <- value`. The class name itself is not an alias for `self`.
 - From any flow, read an attribute with `p.x` and write it with `p.x <- 10`. Member assignment creates a missing attribute; reading a missing attribute is an error. Each instance has its own attributes.
-- For example, a `Point.move` flow can read `dx` and `dy` with Input blocks, then execute `x <- x + dx` and `y <- y + dy` in Process blocks.
-- Bare List and Dictionary fields support indexed assignment inside a Method, such as `items[i] <- value`.
-- A bare field that contains an object can also be the target of a member assignment.
-- Local names take priority over field names. An Input, loop variable, or existing local with the same name shadows that field; use `self.x` to refer to the field explicitly.
+- For example, a `Point.move` flow can read `dx` and `dy` with Input blocks, then execute `self.x <- self.x + dx` and `self.y <- self.y + dy` in Process blocks.
+- Bare names refer only to arguments and local variables. `x <- value` always assigns a local variable, even if the instance has an attribute named `x`. Reading `x` before a local value is assigned is an error; attributes are never looked up implicitly.
 - `self` is always the object that received the call and cannot be replaced by an Input block, Process assignment, or For block.
 - `self` remains available when a method needs the whole receiver, such as `Return self`, or explicit field access such as `self.x`.
 - To call another method on the same object, use `self.methodName(...)`, such as `self.move(1, 0)`.
@@ -64,7 +62,7 @@ items[0] <- 10
 p.items <- items
 ```
 
-Inside the owning Method, `items[0] <- 10` updates an unshadowed field directly.
+Inside the owning Method, use the same sequence with `self.items` in place of `p.items` to read and write the attribute explicitly. For a nested object, first read it into a local variable, such as `child <- self.child`, then use `child.x <- value`.
 
 ## Object identity and equality
 

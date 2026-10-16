@@ -304,13 +304,13 @@ export const bankAccountProgram: Program = {
     {
       id: 'deposit-update',
       type: 'process',
-      text: 'balance <- balance + amount',
+      text: 'self.balance <- self.balance + amount',
       position: { x: -25, y: 440 },
     },
     {
       id: 'deposit-return',
       type: 'return',
-      text: 'balance',
+      text: 'self.balance',
       position: { x: 20, y: 580 },
     },
     {
@@ -328,19 +328,19 @@ export const bankAccountProgram: Program = {
     {
       id: 'withdraw-check',
       type: 'if',
-      text: 'amount <= balance',
+      text: 'amount <= self.balance',
       position: { x: 341, y: 440 },
     },
     {
       id: 'withdraw-update',
       type: 'process',
-      text: 'balance <- balance - amount',
+      text: 'self.balance <- self.balance - amount',
       position: { x: 100, y: 610 },
     },
     {
       id: 'withdraw-success-return',
       type: 'return',
-      text: 'balance',
+      text: 'self.balance',
       position: { x: 145, y: 750 },
     },
     {
@@ -352,7 +352,7 @@ export const bankAccountProgram: Program = {
     {
       id: 'withdraw-rejected-return',
       type: 'return',
-      text: 'balance',
+      text: 'self.balance',
       position: { x: 570, y: 750 },
     },
     {
@@ -364,7 +364,7 @@ export const bankAccountProgram: Program = {
     {
       id: 'account-repr-return',
       type: 'return',
-      text: 'owner + ": $" + balance',
+      text: 'self.owner + ": $" + self.balance',
       position: { x: 720, y: 340 },
     },
     {

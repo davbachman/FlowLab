@@ -120,13 +120,13 @@ const pointProgram: Program = {
     {
       id: 'set-x',
       type: 'assignment',
-      text: 'x <- x + dx',
+      text: 'self.x <- self.x + dx',
       position: { x: 750, y: 300 },
     },
     {
       id: 'set-y',
       type: 'assignment',
-      text: 'y <- y + dy',
+      text: 'self.y <- self.y + dy',
       position: { x: 750, y: 400 },
     },
     { id: 'move-return', type: 'return', text: 'self', position: { x: 750, y: 500 } },
@@ -179,7 +179,7 @@ const reprProgram: Program = {
     {
       id: 'repr-end',
       type: 'return',
-      text: '"Box(" + value + ")"',
+      text: '"Box(" + self.value + ")"',
       position: { x: 400, y: 240 },
     },
     { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
@@ -1958,13 +1958,13 @@ describe('interpreter', () => {
         {
           id: 'count',
           type: 'assignment',
-          text: 'calls <- calls + 1',
+          text: 'self.calls <- self.calls + 1',
           position: { x: 500, y: 240 },
         },
         {
           id: 'repr-end',
           type: 'return',
-          text: '"Card(" + label + ", " + calls + ")"',
+          text: '"Card(" + self.label + ", " + self.calls + ")"',
           position: { x: 500, y: 360 },
         },
         {
@@ -2023,7 +2023,7 @@ describe('interpreter', () => {
   })
 
   it('requires __repr__ Methods to return strings', () => {
-    for (const expression of ['value', 'self']) {
+    for (const expression of ['self.value', 'self']) {
       const program: Program = {
         ...reprProgram,
         nodes: reprProgram.nodes.map((node) =>
@@ -2186,12 +2186,12 @@ describe('interpreter', () => {
         {
           name: '__add__',
           input: 'other',
-          returnExpression: 'value + other.value',
+          returnExpression: 'self.value + other.value',
         },
         {
           name: '__eq__',
           input: 'other',
-          returnExpression: 'value = other.value',
+          returnExpression: 'self.value = other.value',
         },
       ],
       '0',
@@ -2322,7 +2322,7 @@ describe('interpreter', () => {
         method: '__sub__',
         input: 'other',
         expression: 'left - right',
-        returnExpression: '[value, other.value]',
+        returnExpression: '[self.value, other.value]',
         expected: [8, 2],
       },
       {
@@ -2350,7 +2350,7 @@ describe('interpreter', () => {
         method: '__mod__',
         input: 'other',
         expression: 'left % right',
-        returnExpression: '[value, other.value]',
+        returnExpression: '[self.value, other.value]',
         expected: [8, 2],
       },
       {
@@ -2391,16 +2391,16 @@ describe('interpreter', () => {
             {
               name: '__add__',
               input: 'other',
-              returnExpression: 'value + other.value',
+              returnExpression: 'self.value + other.value',
             },
             {
               name: '__neg__',
-              returnExpression: '-value',
+              returnExpression: '-self.value',
             },
             {
               name: '__eq__',
               input: 'other',
-              returnExpression: 'value = other.value',
+              returnExpression: 'self.value = other.value',
             },
           ],
           '[Box(8, 0) + Box(2, 0), -Box(8, 0), Box(3, 0) == Box(3, 0)]',
@@ -2483,7 +2483,7 @@ describe('interpreter', () => {
             {
               name: '__eq__',
               input: 'other',
-              returnExpression: 'value = other.value',
+              returnExpression: 'self.value = other.value',
             },
           ],
           '[left != right, left != left]',
@@ -2541,7 +2541,7 @@ describe('interpreter', () => {
             {
               name: '__eq__',
               input: 'other',
-              statements: ['calls <- calls + 1'],
+              statements: ['self.calls <- self.calls + 1'],
               returnExpression: 'True',
             },
           ],
@@ -2795,19 +2795,19 @@ describe('interpreter', () => {
             {
               name: '__add__',
               input: 'other',
-              statements: ['calls <- calls + 1'],
-              returnExpression: 'value + other.value',
+              statements: ['self.calls <- self.calls + 1'],
+              returnExpression: 'self.value + other.value',
             },
             {
               name: '__neg__',
-              statements: ['calls <- calls + 1'],
-              returnExpression: '-value',
+              statements: ['self.calls <- self.calls + 1'],
+              returnExpression: '-self.value',
             },
             {
               name: '__lt__',
               input: 'other',
-              statements: ['calls <- calls + 1'],
-              returnExpression: 'value < other.value',
+              statements: ['self.calls <- self.calls + 1'],
+              returnExpression: 'self.value < other.value',
             },
           ],
           '[left + right, -left, left < right]',
@@ -2827,8 +2827,8 @@ describe('interpreter', () => {
         {
           name: '__add__',
           input: 'other',
-          statements: ['calls <- calls + 1'],
-          returnExpression: 'value + other.value',
+          statements: ['self.calls <- self.calls + 1'],
+          returnExpression: 'self.value + other.value',
         },
       ],
       'left + right',
@@ -2969,14 +2969,14 @@ describe('interpreter', () => {
             {
               name: '__lt__',
               input: 'other',
-              statements: ['calls <- calls + 1'],
-              returnExpression: 'value < other.value',
+              statements: ['self.calls <- self.calls + 1'],
+              returnExpression: 'self.value < other.value',
             },
             {
               name: '__eq__',
               input: 'other',
-              statements: ['calls <- calls + 1'],
-              returnExpression: 'value = other.value',
+              statements: ['self.calls <- self.calls + 1'],
+              returnExpression: 'self.value = other.value',
             },
           ],
           'left <= right',
@@ -3004,7 +3004,7 @@ describe('interpreter', () => {
         {
           id: 'next-day-end',
           type: 'return',
-          text: 'Date(day + 1, month, year)',
+          text: 'Date(self.day + 1, self.month, self.year)',
           position: { x: 400, y: 240 },
         },
         { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
@@ -3130,10 +3130,10 @@ describe('interpreter', () => {
         {
           id: 'increment',
           type: 'assignment',
-          text: 'value <- value + 1',
+          text: 'self.value <- self.value + 1',
           position: { x: 900, y: 100 },
         },
-        { id: 'bump-end', type: 'return', text: 'value', position: { x: 900, y: 200 } },
+        { id: 'bump-end', type: 'return', text: 'self.value', position: { x: 900, y: 200 } },
         { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         {
           id: 'make',
@@ -3170,18 +3170,18 @@ describe('interpreter', () => {
     expect(state.objectHeap[1]?.fields.value).toBe(2)
   })
 
-  it('preserves implicit field evaluation order around nested Method calls', () => {
+  it('preserves explicit field evaluation order around nested Method calls', () => {
     const program: Program = {
       version: 1,
       nodes: [
         { id: 'counter', type: 'class', text: 'Counter(value)', position: { x: 500, y: 0 } },
         { id: 'bump', type: 'method', text: 'bump', position: { x: 500, y: 120 } },
-        { id: 'increment', type: 'assignment', text: 'value <- value + 1', position: { x: 500, y: 240 } },
-        { id: 'bump-end', type: 'return', text: 'value', position: { x: 500, y: 360 } },
+        { id: 'increment', type: 'assignment', text: 'self.value <- self.value + 1', position: { x: 500, y: 240 } },
+        { id: 'bump-end', type: 'return', text: 'self.value', position: { x: 500, y: 360 } },
         { id: 'before', type: 'method', text: 'before', position: { x: 750, y: 120 } },
-        { id: 'before-end', type: 'return', text: 'value + self.bump()', position: { x: 750, y: 240 } },
+        { id: 'before-end', type: 'return', text: 'self.value + self.bump()', position: { x: 750, y: 240 } },
         { id: 'after', type: 'method', text: 'after', position: { x: 1000, y: 120 } },
-        { id: 'after-end', type: 'return', text: 'self.bump() + value', position: { x: 1000, y: 240 } },
+        { id: 'after-end', type: 'return', text: 'self.bump() + self.value', position: { x: 1000, y: 240 } },
         { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         { id: 'make-before', type: 'assignment', text: 'a <- Counter(1)', position: { x: 0, y: 120 } },
         { id: 'call-before', type: 'assignment', text: 'before_result <- a.before()', position: { x: 0, y: 240 } },
@@ -3218,7 +3218,7 @@ describe('interpreter', () => {
     expect(state.output).toEqual(['[3, 2, 4, 2]'])
   })
 
-  it('lets Method locals shadow fields while self disambiguates the receiver', () => {
+  it('keeps Method arguments separate from explicit instance attributes', () => {
     const program: Program = {
       version: 1,
       nodes: [
@@ -3251,17 +3251,17 @@ describe('interpreter', () => {
     expect(state.output).toEqual(['[7, 7]'])
   })
 
-  it('updates indexed collections stored in implicit receiver fields', () => {
+  it('updates collection attributes through explicit reads and writes', () => {
     const program: Program = {
       version: 1,
       nodes: [
         { id: 'bag', type: 'class', text: 'Bag(items, counts)', position: { x: 450, y: 0 } },
         { id: 'update', type: 'method', text: 'update', position: { x: 450, y: 120 } },
-        { id: 'set-item', type: 'assignment', text: 'items[0] <- 9', position: { x: 450, y: 240 } },
+        { id: 'set-item', type: 'process', text: 'items <- self.items\nitems[0] <- 9\nself.items <- items', position: { x: 450, y: 240 } },
         {
           id: 'set-count',
-          type: 'assignment',
-          text: 'counts["x"] <- counts["x"] + 1',
+          type: 'process',
+          text: 'counts <- self.counts\ncounts["x"] <- counts["x"] + 1\nself.counts <- counts',
           position: { x: 450, y: 360 },
         },
         { id: 'update-end', type: 'return', text: 'self', position: { x: 450, y: 480 } },
@@ -3299,14 +3299,14 @@ describe('interpreter', () => {
     expect(state.output).toEqual(['[9, 4]'])
   })
 
-  it('uses an implicit object field as a member-assignment target', () => {
+  it('reads a nested object attribute explicitly before assigning its member', () => {
     const program: Program = {
       version: 1,
       nodes: [
         { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
         { id: 'wrapper', type: 'class', text: 'Wrapper(child)', position: { x: 650, y: 0 } },
         { id: 'replace', type: 'method', text: 'replace', position: { x: 650, y: 120 } },
-        { id: 'set-child', type: 'assignment', text: 'child.value <- 8', position: { x: 650, y: 240 } },
+        { id: 'set-child', type: 'process', text: 'child <- self.child\nchild.value <- 8', position: { x: 650, y: 240 } },
         { id: 'replace-end', type: 'return', text: 'child', position: { x: 650, y: 360 } },
         { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         { id: 'make-box', type: 'assignment', text: 'b <- Box(1)', position: { x: 0, y: 120 } },
@@ -3342,7 +3342,7 @@ describe('interpreter', () => {
         {
           id: 'clear-flag',
           type: 'assignment',
-          text: 'flag <- False',
+          text: 'self.flag <- False',
           position: { x: 650, y: 100 },
         },
         { id: 'a-end', type: 'return', text: 'False', position: { x: 650, y: 200 } },
@@ -3350,7 +3350,7 @@ describe('interpreter', () => {
         {
           id: 'count-hit',
           type: 'assignment',
-          text: 'hits <- hits + 1',
+          text: 'self.hits <- self.hits + 1',
           position: { x: 900, y: 100 },
         },
         { id: 'b-end', type: 'return', text: 'True', position: { x: 900, y: 200 } },
@@ -3463,7 +3463,7 @@ describe('interpreter', () => {
       nodes: [
         { id: 'import-box', type: 'class', text: 'Box(value, other)', position: { x: 400, y: 0 } },
         { id: 'import-method', type: 'method', text: 'getOther', position: { x: 650, y: 0 } },
-        { id: 'import-method-end', type: 'return', text: 'other', position: { x: 650, y: 100 } },
+        { id: 'import-method-end', type: 'return', text: 'self.other', position: { x: 650, y: 100 } },
         { id: 'import-main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         { id: 'import-main-end', type: 'return', text: '0', position: { x: 0, y: 100 } },
         {
@@ -3518,7 +3518,7 @@ describe('interpreter', () => {
       nodes: [
         { id: 'box', type: 'class', text: 'Box(value)', position: { x: 400, y: 0 } },
         { id: 'get', type: 'method', text: 'get', position: { x: 650, y: 0 } },
-        { id: 'get-end', type: 'return', text: 'value', position: { x: 650, y: 100 } },
+        { id: 'get-end', type: 'return', text: 'self.value', position: { x: 650, y: 100 } },
         { id: 'main', type: 'function', text: 'main', position: { x: 0, y: 0 } },
         { id: 'main-end', type: 'return', text: '0', position: { x: 0, y: 100 } },
       ],

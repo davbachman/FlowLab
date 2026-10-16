@@ -15,7 +15,7 @@ const point: Program = {
   version: 1,
   nodes: [
     node('point', 'class', 'point'), node('init', 'input', 'x\ny'),
-    node('set', 'method', 'set'), node('set-body', 'process', 'self.total <- x + y'), node('set-end', 'return', 'self'),
+    node('set', 'method', 'set'), node('set-body', 'process', 'self.total <- self.x + self.y'), node('set-end', 'return', 'self'),
     node('main', 'function', 'main'),
     node('make', 'process', 'p <- point(2, 3)\nq <- point(4, 5)\np.set()'),
     node('end', 'return', 'p'),
