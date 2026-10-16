@@ -254,7 +254,7 @@ function tokenize(source: string): Token[] {
       continue
     }
 
-    if (['+', '-', '*', '/', '%', '<', '>', '='].includes(char)) {
+    if (['+', '-', '*', '/', '%', '^', '<', '>', '='].includes(char)) {
       tokens.push({ type: 'operator', value: char })
       index += 1
       continue
@@ -497,7 +497,24 @@ class Parser {
       }
     }
 
-    return this.postfix()
+    return this.power()
+  }
+
+  private power(): Expression {
+    const left = this.postfix()
+    if (this.peek().type === 'operator' && this.peek().value === '^') {
+      this.advance()
+      // Recurse through unary so powers group right-to-left and accept negative exponents.
+      const right = this.unary()
+      return {
+        kind: 'binary',
+        operator: '^',
+        left,
+        right,
+        siteId: this.allocateOperatorSiteId(),
+      }
+    }
+    return left
   }
 
   private postfix(): Expression {
@@ -1043,6 +1060,22 @@ function evaluateBinary(
 
   if (operator === '*') {
     return requireNumber(left, '*') * requireNumber(right, '*')
+  }
+
+  if (operator === '^') {
+    const base = requireNumber(left, '^')
+    const exponent = requireNumber(right, '^')
+    if (base === 0 && exponent < 0) {
+      throw new Error('Zero cannot be raised to a negative power')
+    }
+    const result = Math.pow(base, exponent)
+    if (Number.isNaN(result)) {
+      throw new Error('A negative base requires an integer exponent')
+    }
+    if (!Number.isFinite(result)) {
+      throw new Error('Exponentiation result is outside the supported Number range')
+    }
+    return result
   }
 
   if (operator === '/') {

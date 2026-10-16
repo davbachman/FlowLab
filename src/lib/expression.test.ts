@@ -35,6 +35,47 @@ describe('evaluateExpression', () => {
     expect(evaluateExpression('x + y - 1', { x: 14, y: 2 })).toBe(15)
   })
 
+  it.each([
+    ['2^3', 8],
+    ['2 ^ -3', 0.125],
+    ['9 ^ 0.5', 3],
+    ['2 ^ 3 ^ 2', 512],
+    ['(2 ^ 3) ^ 2', 64],
+    ['-2^2', -4],
+    ['(-2)^2', 4],
+    ['(-2)^3', -8],
+    ['(-2)^-3', -0.125],
+    ['-2^-2', -0.25],
+    ['2^-3^2', 1 / 512],
+    ['3 * 2^2 + 1', 13],
+    ['2^3 * 4', 32],
+    ['16 / 2^2', 4],
+    ['17 // 2^2', 4],
+    ['17 % 2^3', 1],
+    ['[2, 3][0] ^ [2, 3][1]', 8],
+    ['sqrt(9)^2', 9],
+    ['x^y', 81],
+    ['0^0', 1],
+  ])('evaluates powers with mathematical grouping: %s', (source, result) => {
+    expect(evaluateExpression(source, { x: 3, y: 4 })).toBe(result)
+  })
+
+  it.each(['"2" ^ 3', '2 ^ True', '[2] ^ 3', '{} ^ 2'])('requires numeric operands for %s', source => {
+    expect(() => evaluateExpression(source, {})).toThrow('Operator "^" requires numbers')
+  })
+
+  it.each([
+    ['0 ^ -1', 'Zero cannot be raised to a negative power'],
+    ['(-4) ^ 0.5', 'A negative base requires an integer exponent'],
+    ['10 ^ 1000', 'Exponentiation result is outside the supported Number range'],
+  ])('reports an invalid power clearly: %s', (source, message) => {
+    expect(() => evaluateExpression(source, {})).toThrow(message)
+  })
+
+  it.each(['2^', '^3', '2^^3'])('rejects an incomplete power: %s', source => {
+    expect(() => evaluateExpression(source, {})).toThrow()
+  })
+
   it('supports Python-style floor division and modulo', () => {
     expect(evaluateExpression('10 // 3', {})).toBe(3)
     expect(evaluateExpression('10 % 3', {})).toBe(1)
@@ -321,7 +362,7 @@ describe('evaluateExpression', () => {
     )
   })
 
-  it('rejects word-form mod and exponentiation operators', () => {
+  it('rejects word-form mod and double-asterisk syntax', () => {
     expect(() => evaluateExpression('10 mod 3', {})).toThrow(
       /Unexpected token "mod"/,
     )

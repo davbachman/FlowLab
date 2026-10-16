@@ -28,6 +28,7 @@ See [Getting started](docs/getting-started.md) for the complete editor and execu
   | Input | Assigns the next value from the active flow's input queue to the named variable. Function and Method arguments supply that call's local queue. |
   | Output | Evaluates an expression and prints its value in the Output drawer. Use `""` to print an empty line. |
 
+- Use `^` for exponents in expressions, such as `squared <- x^2` or `root <- x^0.5`, with no library import needed. Powers group right to left: `2^3^2` is `512`. See the [expression rules](docs/language-reference.md#expression-rules) for precedence and numeric limits.
 - Drag an executable output wire onto empty canvas to choose a new block that is placed and connected immediately. Double-click an existing wire to insert a Process, Call, Input, or Output block; the same command is available under **Edit > Insert block on selected wire**.
 - Double-click a block outside its text field, buttons, or connection handles to edit its comment. Enter saves the comment and closes the dialog; Shift+Enter adds a line. Clear the comment and save to remove it.
 - Use the Collapse/Expand button on a Function, Method, or Class to hide or restore its contents. A Class hides its init Inputs, attached Methods, and their flows. Expanding the Class restores each Method's previous collapsed or expanded state. Moving a collapsed block moves its hidden contents with it, and these settings are saved with the document.

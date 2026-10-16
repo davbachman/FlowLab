@@ -17,7 +17,7 @@
 
 | Data type | Literals and values | Allowed operations |
 | --- | --- | --- |
-| Number | Integers and decimals, such as `3`, `-2`, `4.5` | Arithmetic `+`, `-`, `*`, `/`, `//`, `%`; unary `-`; comparisons `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`; core numeric functions and the imported [math library](imports-and-libraries.md#math-library); truth tests where zero is false |
+| Number | Integers and decimals, such as `3`, `-2`, `4.5` | Arithmetic `+`, `-`, `*`, `/`, `//`, `%`, `^` (exponentiation); unary `-`; comparisons `<`, `<=`, `>`, `>=`, `=`, `==`, `!=`; core numeric functions and the imported [math library](imports-and-libraries.md#math-library); truth tests where zero is false |
 | String | Single- or double-quoted text, such as `"cat"` or `'hello'`; supports escapes like `\n`, `\t`, `\"`, `\'`, and `\\` | Concatenation with `+`; zero-based indexing like `S[0]`; equality and inequality with `=`, `==`, `!=`; truth tests where non-empty strings are true; For iteration over characters |
 | Boolean | `True` and `False` | Logical `and`, `or`, `not`; equality and inequality; assignment, output, Return values, If conditions, and While conditions |
 | List | Bracket literals, such as `[1, 2, 3]`, `["a", True]`, and nested lists | Concatenation with `+` when both operands are lists; zero-based indexing like `L[0]`; indexed assignment like `L[i] <- value`; deep equality and inequality; truth tests where non-empty lists are true; For iteration over elements |
@@ -29,7 +29,9 @@
 ## Expression rules
 
 - Parentheses control grouping.
-- From highest to lowest, the main operator precedence is postfix calls/indexing/member access, unary `-`, `*`, `/`, `//`, and `%`, `+` and `-`, comparisons, `not`, `and`, then `or`.
+- From highest to lowest, the main operator precedence is postfix calls/indexing/member access, exponentiation `^`, unary `-`, `*`, `/`, `//`, and `%`, `+` and `-`, comparisons, `not`, `and`, then `or`.
+- Use `^` for numeric powers without importing a library: `2^3` is `8`, `2^-3` is `0.125`, and `9^0.5` is `3`. Powers group from right to left, so `2^3^2` means `2^(3^2)` and gives `512`. A leading minus applies after exponentiation: `-2^2` is `-4`, while `(-2)^2` is `4`. Double-asterisk syntax is not supported.
+- `0^0` is `1`. Zero raised to a negative power, a negative base with a noninteger exponent, and results outside the supported finite Number range produce errors. Complex numbers are not supported.
 - Logical `and` and `or` short-circuit and return a Boolean.
 - `=` and `==` both test equality; assignment uses `<-`. Values of different primitive types are unequal, so `1 = True` and `1 = "1"` are both `False`. Ordering comparisons (`<`, `<=`, `>`, `>=`) require Numbers, unless an Object supplies a special method.
 - False values are `False`, zero, and empty Strings, Lists, and Dictionaries. Objects and Images are always true; other nonempty values are true.
