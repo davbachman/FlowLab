@@ -1645,12 +1645,9 @@ function App() {
     [edges, nodes, initInputIds],
   )
 
-  function beginNodePlacement(
-    nodeType: FlowNodeType,
-    position: { x: number; y: number } | null = null,
-  ): void {
+  function beginNodePlacement(nodeType: FlowNodeType): void {
     setPendingNodeType(nodeType)
-    setPendingNodePosition(position)
+    setPendingNodePosition(null)
     setQuickAddRequest(null)
     setQuickAddText('')
     setQuickAddIndex(0)
@@ -1785,7 +1782,7 @@ function App() {
     )
   }
 
-  function startQuickAddPlacement(nodeType: FlowNodeType): void {
+  function addQuickAddNode(nodeType: FlowNodeType): void {
     if (!quickAddRequest) {
       return
     }
@@ -1835,8 +1832,11 @@ function App() {
       setMessage(`${NODE_TYPE_LABELS[nodeType]} block connected.`)
       return
     }
-    beginNodePlacement(nodeType, quickAddRequest.flowPosition)
-    setMessage(`${NODE_TYPE_LABELS[nodeType]} ready to place.`)
+    addNodeAt(nodeType, quickAddRequest.flowPosition)
+    setQuickAddRequest(null)
+    setQuickAddText('')
+    setQuickAddIndex(0)
+    setMessage(`${NODE_TYPE_LABELS[nodeType]} block placed.`)
   }
 
   const onConnectEnd: OnConnectEnd = (event, connection) => {
@@ -1894,7 +1894,7 @@ function App() {
       return
     }
 
-    startQuickAddPlacement(nodeType)
+    addQuickAddNode(nodeType)
   }
 
   function handleQuickAddKeyDown(
@@ -4036,7 +4036,7 @@ function App() {
                     role="option"
                     aria-selected={index === quickAddIndex}
                     onMouseEnter={() => setQuickAddIndex(index)}
-                    onClick={() => startQuickAddPlacement(nodeType)}
+                    onClick={() => addQuickAddNode(nodeType)}
                   >
                     {NODE_TYPE_LABELS[nodeType]}
                   </button>

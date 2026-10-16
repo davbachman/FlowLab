@@ -329,6 +329,46 @@ describe('connected block insertion', () => {
     expect(currentNodes()).toHaveLength(0)
   })
 
+  it.each(['click', 'Enter'])('places quick add at the original double-click point after pan and zoom using %s', async (selection) => {
+    const user = userEvent.setup()
+    flowInstance.screenToFlowPosition.mockImplementation(({ x, y }) => ({
+      x: (x - 300) / 0.5,
+      y: (y - 80) / 0.5,
+    }))
+    render(<App />)
+    const before = graphSnapshot()
+    const canvas = screen.getByTestId('flow-canvas')
+    fireEvent.doubleClick(canvas, { clientX: 410, clientY: 260 })
+    fireEvent.mouseMove(canvas, { clientX: 700, clientY: 500 })
+    if (selection === 'click') {
+      await user.click(screen.getByRole('option', { name: 'Process' }))
+    } else {
+      await user.type(screen.getByRole('combobox'), 'Process')
+      await user.keyboard('{Enter}')
+    }
+
+    expect(currentNodes()).toHaveLength(1)
+    expect(currentNodes()[0]).toMatchObject({
+      position: { x: 78, y: 312 },
+      data: { nodeType: 'process', text: '', autoFocus: true },
+    })
+    expect(currentEdges()).toHaveLength(0)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('pending-node-preview')).not.toBeInTheDocument()
+    const placed = graphSnapshot()
+
+    const paneClick = flowProps.at(-1)?.onPaneClick as (event: globalThis.MouseEvent) => void
+    act(() => paneClick(new window.MouseEvent('click', { clientX: 700, clientY: 500 })))
+    expect(graphSnapshot()).toEqual(placed)
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Undo' }))
+    expect(graphSnapshot()).toEqual(before)
+    await user.click(screen.getByRole('button', { name: 'Edit' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Redo' }))
+    expect(graphSnapshot()).toEqual(placed)
+  })
+
   it('offers Process and excludes Assignment in quick add and wire insertion', async () => {
     const user = userEvent.setup()
     render(<App />)

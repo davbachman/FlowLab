@@ -3692,17 +3692,22 @@ describe('App', () => {
     expect(field).toHaveFocus()
   })
 
-  it('focuses a Call block placed through quick add and accepts typing immediately', async () => {
+  it.each([
+    'Function', 'Class', 'Method', 'Return', 'Process',
+    'Input', 'Output', 'If', 'While', 'For', 'Call',
+  ])('immediately places a %s block chosen from quick add and accepts typing', async (label) => {
     const user = userEvent.setup()
     const { container } = render(<App />)
     const pane = container.querySelector('.react-flow__pane')!
     fireEvent.doubleClick(pane, { clientX: 410, clientY: 260 })
-    await user.type(screen.getByRole('combobox'), 'Call')
-    await user.keyboard('{Enter}')
+    if (!screen.queryByRole('option', { name: label })) {
+      await user.type(screen.getByRole('combobox'), label)
+    }
+    await user.click(screen.getByRole('option', { name: label }))
 
-    placePendingNodeOnPane(pane, 410, 260)
-
-    const field = screen.getByLabelText('Call text')
+    expect(screen.queryByRole('dialog', { name: /^Add a block$/i })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('pending-node-preview')).not.toBeInTheDocument()
+    const field = screen.getByLabelText(`${label} text`)
     await waitFor(() => expect(field).toHaveFocus())
     await user.keyboard('helper()')
     expect(field).toHaveValue('helper()')
@@ -3760,7 +3765,7 @@ describe('App', () => {
     expect(screen.getByTestId('flow-node-if-1')).toBeInTheDocument()
   })
 
-  it('quick-adds a block case-insensitively and previews it before placement', async () => {
+  it('quick-adds a block case-insensitively and places it immediately with Enter', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
     const pane = container.querySelector('.react-flow__pane')
@@ -3778,14 +3783,12 @@ describe('App', () => {
     expect(
       screen.queryByRole('dialog', { name: /^Add a block$/i }),
     ).not.toBeInTheDocument()
-    expect(screen.getByTestId('pending-node-preview')).toBeInTheDocument()
-    expect(screen.queryByTestId('flow-node-return-1')).not.toBeInTheDocument()
-
-    placePendingNodeOnPane(pane as Element, 410, 260)
-
     expect(screen.queryByTestId('pending-node-preview')).not.toBeInTheDocument()
     expect(screen.getByTestId('flow-node-return-1')).toBeInTheDocument()
     expect(screen.getByLabelText(/^Return text$/i)).toHaveValue('')
+    await waitFor(() => expect(screen.getByLabelText(/^Return text$/i)).toHaveFocus())
+    await user.keyboard('42')
+    expect(screen.getByLabelText(/^Return text$/i)).toHaveValue('42')
   })
 
   it('completes a quick-add block name with Tab before placement', async () => {
@@ -3804,10 +3807,9 @@ describe('App', () => {
 
     expect(input).toHaveValue('Method')
     await user.keyboard('{Enter}')
-    expect(screen.getByTestId('pending-node-preview')).toHaveAttribute(
-      'data-node-type',
-      'method',
-    )
+    expect(screen.queryByTestId('pending-node-preview')).not.toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-method-1')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('Method text')).toHaveFocus())
   })
 
   it('does not open quick add when a node double click is retargeted to the pane', async () => {
