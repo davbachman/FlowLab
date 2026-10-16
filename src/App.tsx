@@ -140,6 +140,7 @@ import './App.css'
 interface FlowNodeData extends Record<string, unknown> {
   nodeType: FlowNodeType
   text: string
+  autoFocus?: boolean
   comment?: string
   isCurrent?: boolean
   isWidthCustomized?: boolean
@@ -1510,7 +1511,7 @@ function App() {
       if (newNode) {
         setNodes((currentNodes) => [
           ...currentNodes.map((node) => ({ ...node, selected: false })),
-          { ...newNode, selected: true },
+          { ...newNode, data: { ...newNode.data, autoFocus: true }, selected: true },
         ])
       }
       setEdges((currentEdges) => {
@@ -1684,12 +1685,12 @@ function App() {
       data: {
         nodeType,
         text: '',
+        autoFocus: true,
       },
     }
 
     setNodes((currentNodes) => [...currentNodes, newNode])
     setExecution(null)
-    window.requestAnimationFrame(() => document.getElementById(`${newNode.id}-text`)?.focus({ preventScroll: true }))
   }
 
   function placePendingNode(event: MouseEvent): void {
@@ -1798,7 +1799,6 @@ function App() {
       onConnect({ source: quickAddRequest.sourceId, sourceHandle: null, target: newInput.id, targetHandle: null }, newInput)
       setQuickAddRequest(null)
       setMessage('Init Input block connected.')
-      window.requestAnimationFrame(() => document.getElementById(`${newInput.id}-text`)?.focus())
       return
     }
 
@@ -1823,14 +1823,16 @@ function App() {
         return
       }
       pushHistorySnapshot()
-      setNodes(programToNodes(updated).map((node) => ({ ...node, selected: node.id === newNode.id })))
+      setNodes(programToNodes(updated).map((node) => ({
+        ...node, selected: node.id === newNode.id,
+        data: { ...node.data, autoFocus: node.id === newNode.id },
+      })))
       const addedEdge = updated.edges.find((edge) => edge.source === quickAddRequest.sourceId && edge.target === newNode.id)
       const edgeHints = addedEdge ? [...edges, { ...addedEdge, sourceHandle: quickAddRequest.sourceHandle }] : edges
       setEdges(programToEdges(updated, edgeHints))
       setExecution(null)
       setQuickAddRequest(null)
       setMessage(`${NODE_TYPE_LABELS[nodeType]} block connected.`)
-      window.requestAnimationFrame(() => document.getElementById(`${newNode.id}-text`)?.focus())
       return
     }
     beginNodePlacement(nodeType, quickAddRequest.flowPosition)
@@ -1848,7 +1850,7 @@ function App() {
     if (source.data.nodeType === 'class') {
       const isInit = connection.fromHandle.id === CLASS_INIT_HANDLE
       if (!isInit && connection.fromHandle.id !== CLASS_METHOD_NEW_HANDLE) return
-      const newMethod: EditorNode = {
+      const newBlock: EditorNode = {
         id: nextNodeId(isInit ? 'input' : 'method', nodes),
         type: 'flowNode',
         position: centerNodePosition(isInit ? 'input' : 'method', screenToFlowPoint(pointer.clientX, pointer.clientY)),
@@ -1857,14 +1859,13 @@ function App() {
       onConnect({
         source: source.id,
         sourceHandle: isInit ? CLASS_INIT_HANDLE : CLASS_METHOD_NEW_HANDLE,
-        target: newMethod.id,
+        target: newBlock.id,
         targetHandle: isInit ? null : METHOD_OWNER_HANDLE,
-      }, newMethod)
+      }, newBlock)
       setQuickAddRequest(null)
       setPendingNodeType(null)
       setPendingNodePosition(null)
       setMessage(isInit ? 'Init Input block connected.' : 'Method block connected.')
-      window.requestAnimationFrame(() => document.getElementById(`${newMethod.id}-text`)?.focus())
       return
     }
     setQuickAddText('')
@@ -4264,6 +4265,12 @@ function App() {
               id="block-comment"
               value={commentInputText}
               onChange={(event) => setCommentInputText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return
+                event.preventDefault()
+                event.stopPropagation()
+                event.currentTarget.form?.requestSubmit()
+              }}
               autoFocus
               rows={4}
               spellCheck={false}
@@ -4603,16 +4610,33 @@ function InputQueueEditor({ id, value, onChange, readOnly }: {
   return <textarea ref={ref} id={id} className="input-queue-editor" value={value} onChange={(event) => onChange(event.target.value)} readOnly={readOnly} rows={1} spellCheck={false} />
 }
 
-function BlockTextEditor({ id, value, multiline, onChange, onFinishEditing, ...attributes }: {
+function BlockTextEditor({ id, value, multiline, onChange, onFinishEditing, autoFocus = false, ...attributes }: {
   id: string
   value: string
   multiline: boolean
   onChange: (value: string) => void
   onFinishEditing: () => void
+  autoFocus?: boolean
   'aria-invalid': boolean
   title?: string
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
+  const focusHandledRef = useRef(false)
+  useEffect(() => {
+    if (!autoFocus || focusHandledRef.current) return
+    let frame: number
+    const focusWhenReady = () => {
+      const field = ref.current
+      if (!field) return
+      // React Flow initially hides a node while measuring it. Retry until
+      // the browser can focus its field, then leave later focus changes alone.
+      field.focus({ preventScroll: true })
+      if (document.activeElement === field) focusHandledRef.current = true
+      else frame = window.requestAnimationFrame(focusWhenReady)
+    }
+    frame = window.requestAnimationFrame(focusWhenReady)
+    return () => window.cancelAnimationFrame(frame)
+  }, [autoFocus])
   const resize = useCallback(() => {
     const field = ref.current
     if (!field) return
@@ -4850,6 +4874,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
                 aria-invalid={!!data.textValidationMessage}
                 title={data.textValidationMessage}
                 value={text}
+                autoFocus={data.autoFocus}
                 multiline={isProcess || isInputOutput}
                 onChange={changeText}
                 onFinishEditing={() => data.onFinishEditing?.(id)}

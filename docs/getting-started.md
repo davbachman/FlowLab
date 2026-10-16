@@ -41,7 +41,7 @@ Choosing an example replaces the current canvas with a separate draft, supplies 
 - Left-click selects one block. Shift-, Ctrl-, or Cmd-click extends the selection, and left-drag on empty canvas makes a selection window. Drag any selected block to move the selection.
 - Blocks widen automatically as you type longer text, up to a maximum width. Process blocks use their longest line and allow horizontal scrolling for text beyond the limit. Deleting text keeps the current width, and any extra width you set manually is preserved. For more room, select the block and drag either blue grip at its left or right edge. Width changes can be undone and are preserved when the program is saved.
 - Use Ctrl/Cmd+C to copy selected blocks and their internal wires, Ctrl/Cmd+V to paste, Ctrl/Cmd+Z to undo, and Shift+Ctrl/Cmd+Z to redo. Pasted blocks retain their text, comments, and widths and appear offset from the originals. Backspace or Delete removes selected blocks or wires; deleting a block also removes its connected wires.
-- Double-click a block outside its text field, buttons, or connection handles to add, edit, or remove a comment. Comments appear inside the block and are preserved when the program is saved.
+- Double-click a block outside its text field, buttons, or connection handles to add, edit, or remove a comment. Enter saves the comment and closes the dialog; Shift+Enter adds a line. Comments appear inside the block and are preserved when the program is saved.
 - Right-drag to pan the main canvas. Use the mouse wheel, pinch gestures, or the canvas controls to zoom, and use Fit View to frame the whole program.
 
 ## Use Process blocks

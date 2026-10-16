@@ -3708,6 +3708,31 @@ describe('App', () => {
     expect(field).toHaveValue('helper()')
   })
 
+  it('waits until a new block can accept focus and then leaves later focus changes alone', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Process' }))
+    placePendingNodeOnPane(container.querySelector('.react-flow__pane')!)
+    const field = screen.getByLabelText('Process text') as HTMLTextAreaElement
+    const nativeFocus = field.focus.bind(field)
+    let attempts = 0
+    const focus = vi.spyOn(field, 'focus').mockImplementation((options) => {
+      attempts += 1
+      // A real browser rejects focus while React Flow is measuring its hidden node.
+      if (attempts >= 3) nativeFocus(options)
+    })
+    await waitFor(() => expect(field).toHaveFocus())
+    expect(focus).toHaveBeenCalledTimes(3)
+    await user.keyboard('x <- 1')
+    expect(field).toHaveValue('x <- 1')
+    const queue = screen.getByLabelText(/Input queue/i)
+    await user.click(queue)
+    await user.keyboard('4')
+    expect(queue).toHaveFocus()
+    expect(queue).toHaveValue('4')
+    expect(focus).toHaveBeenCalledTimes(3)
+  })
+
   it('previews a palette block under the cursor until the canvas click places it', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
@@ -4059,6 +4084,34 @@ describe('App', () => {
     fireEvent.doubleClick(block)
     expect(await screen.findByRole('dialog', { name: /Block comment/i })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: /Add a block/i })).not.toBeInTheDocument()
+  })
+
+  it('saves comments with Enter, preserves Shift+Enter line breaks, and supports Undo', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    const block = screen.getByTestId('flow-node-main')
+    fireEvent.doubleClick(block)
+    const field = screen.getByRole('textbox', { name: /^Comment$/i })
+    await user.type(field, 'First line{Shift>}{Enter}{/Shift}Second line')
+    expect(field).toHaveValue('First line\nSecond line')
+    expect(screen.getByRole('dialog', { name: /Block comment/i })).toBeInTheDocument()
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true })
+    expect(screen.getByRole('dialog', { name: /Block comment/i })).toBeInTheDocument()
+
+    await user.keyboard('{Enter}')
+    expect(screen.queryByRole('dialog', { name: /Block comment/i })).not.toBeInTheDocument()
+    expect(block.querySelector('.node-comment')).toHaveTextContent('First line Second line')
+    await chooseToolbarAction(user, 'Edit', 'Undo')
+    expect(block.querySelector('.node-comment')).not.toBeInTheDocument()
+    await chooseToolbarAction(user, 'Edit', 'Redo')
+    expect(block.querySelector('.node-comment')).toHaveTextContent('First line Second line')
+
+    fireEvent.doubleClick(block)
+    await user.clear(screen.getByRole('textbox', { name: /^Comment$/i }))
+    await user.keyboard('{Enter}')
+    expect(screen.queryByRole('dialog', { name: /Block comment/i })).not.toBeInTheDocument()
+    expect(block.querySelector('.node-comment')).not.toBeInTheDocument()
   })
 
   it('places Return blocks with editable return text', async () => {

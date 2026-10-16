@@ -129,7 +129,7 @@ describe('connected block insertion', () => {
     expect(method).toMatchObject({
       position: { x: 503, y: 599 },
       selected: true,
-      data: { nodeType: 'method', text: '' },
+      data: { nodeType: 'method', text: '', autoFocus: true },
     })
     expect(screen.queryByRole('dialog', { name: /block/i })).not.toBeInTheDocument()
     expect(currentNodes().find((node) => node.id === source.id)?.width).toBe(394)
@@ -185,7 +185,7 @@ describe('connected block insertion', () => {
 
     dragOutputIntoBlankCanvas(source.id, CLASS_INIT_HANDLE, { x: 800, y: 500 })
     const input = currentNodes().at(-1)!
-    expect(input).toMatchObject({ position: { x: 703, y: 459 }, selected: true, data: { nodeType: 'input', text: '' } })
+    expect(input).toMatchObject({ position: { x: 703, y: 459 }, selected: true, data: { nodeType: 'input', text: '', autoFocus: true } })
     expect(currentEdges().filter((edge) => edge.source === source.id && edge.sourceHandle === CLASS_INIT_HANDLE)).toEqual([
       expect.objectContaining({ target: input.id }),
     ])
