@@ -912,6 +912,16 @@ button:disabled {
   padding: 7px 7px 10px;
 }
 
+/* Keep handles registered while removing the collapsed Class's connector row. */
+.class-method-handles[aria-hidden='true'] {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  right: 10px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .class-method-slot {
   position: relative;
   min-width: 0;

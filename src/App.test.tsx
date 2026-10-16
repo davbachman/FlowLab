@@ -4004,6 +4004,76 @@ describe('App', () => {
     expect(screen.getByTestId('flow-node-main')).toHaveAttribute('data-collapsed', 'false')
   })
 
+  it('restores each Method collapse state after expanding its Class and runs the hidden flows', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    importProgramFromFileMenu(new File([JSON.stringify(objectSampleProgram)], 'objects.json', { type: 'application/json' }))
+    const classBlock = await screen.findByTestId('flow-node-point-class')
+    fireEvent.click(screen.getByLabelText('Collapse method move'))
+    expect(screen.queryByTestId('flow-node-move-dx')).not.toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-point-move')).toHaveAttribute('data-collapsed', 'true')
+    expect(screen.getByTestId('flow-node-repr-return')).toBeInTheDocument()
+    expect(classBlock.querySelector(`[data-handleid="${classMethodHandleId('point-move')}"]`)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Collapse class Point'))
+    expect(classBlock).toHaveAttribute('data-collapsed', 'true')
+    for (const id of ['point-init', 'point-move', 'point-repr', 'repr-return', 'move-return']) {
+      expect(screen.queryByTestId(`flow-node-${id}`)).not.toBeInTheDocument()
+    }
+    expect(screen.getByLabelText('Initialize attributes').closest('.class-method-handles')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByLabelText('Initialize attributes')).not.toHaveClass('connectable')
+    expect(screen.getByTestId('flow-node-object-main')).toBeInTheDocument()
+
+    await user.click(executionButton(/^Run$/i))
+    await screen.findByText(/^Completed$/i)
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('Point(7, 2)')
+    expect(classBlock).toHaveAttribute('data-collapsed', 'true')
+
+    await chooseToolbarAction(user, 'Edit', 'Undo')
+    expect(classBlock).toHaveAttribute('data-collapsed', 'false')
+    expect(screen.getByTestId('flow-node-point-move')).toHaveAttribute('data-collapsed', 'true')
+    expect(screen.getByTestId('flow-node-repr-return')).toBeInTheDocument()
+    await chooseToolbarAction(user, 'Edit', 'Redo')
+    expect(screen.queryByTestId('flow-node-point-move')).not.toBeInTheDocument()
+
+    for (let cycle = 0; cycle < 2; cycle += 1) {
+      fireEvent.click(screen.getByLabelText('Expand class Point'))
+      expect(screen.getByTestId('flow-node-point-init')).toBeInTheDocument()
+      expect(screen.getByTestId('flow-node-point-move')).toHaveAttribute('data-collapsed', 'true')
+      expect(screen.queryByTestId('flow-node-move-dx')).not.toBeInTheDocument()
+      expect(screen.getByTestId('flow-node-point-repr')).toHaveAttribute('data-collapsed', 'false')
+      expect(screen.getByTestId('flow-node-repr-return')).toBeInTheDocument()
+      fireEvent.click(screen.getByLabelText('Collapse class Point'))
+    }
+    fireEvent.click(screen.getByLabelText('Expand class Point'))
+    fireEvent.click(screen.getByLabelText('Expand method move'))
+    expect(screen.getByTestId('flow-node-move-dx')).toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-move-return')).toBeInTheDocument()
+  })
+
+  it('reveals a validation target inside a collapsed Class and Method without expanding other Methods', async () => {
+    const user = userEvent.setup()
+    const program: Program = {
+      ...objectSampleProgram,
+      nodes: objectSampleProgram.nodes.map(node => node.id === 'move-x' ? { ...node, text: 'x <- (' } : node),
+    }
+    render(<App />)
+    importProgramFromFileMenu(new File([JSON.stringify(program)], 'invalid-method.json', { type: 'application/json' }))
+    await screen.findByTestId('flow-node-point-class')
+    fireEvent.click(screen.getByLabelText('Collapse method move'))
+    fireEvent.click(screen.getByLabelText('Collapse method __repr__'))
+    fireEvent.click(screen.getByLabelText('Collapse class Point'))
+
+    await user.click(screen.getByTitle(/Process node "move-x" has invalid text/))
+
+    const revealed = await screen.findByTestId('flow-node-move-x')
+    expect(screen.getByTestId('flow-node-point-class')).toHaveAttribute('data-collapsed', 'false')
+    expect(screen.getByTestId('flow-node-point-move')).toHaveAttribute('data-collapsed', 'false')
+    expect(screen.getByTestId('flow-node-point-repr')).toHaveAttribute('data-collapsed', 'true')
+    expect(screen.queryByTestId('flow-node-repr-return')).not.toBeInTheDocument()
+    await waitFor(() => expect(within(revealed).getByLabelText('Process text')).toHaveFocus())
+  })
+
   it('expands only the function containing a validation target', async () => {
     const user = userEvent.setup()
     const program: Program = {

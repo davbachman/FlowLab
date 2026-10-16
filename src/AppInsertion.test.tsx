@@ -235,6 +235,51 @@ describe('connected block insertion', () => {
     })
   })
 
+  it('moves a collapsed Class and its nested collapsed Method together, retaining hidden positions and deselecting hidden blocks', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Examples' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Object' }))
+    const before = graphSnapshot()
+    const changeNodes = flowProps.at(-1)?.onNodesChange as (changes: unknown[]) => void
+    const changeEdges = flowProps.at(-1)?.onEdgesChange as (changes: unknown[]) => void
+    act(() => {
+      changeNodes([{ id: 'move-x', type: 'select', selected: true }, { id: 'point-repr', type: 'select', selected: true }])
+      changeEdges([{ id: 'edge-point-repr', type: 'select', selected: true }])
+    })
+    act(() => currentNodes().find(node => node.id === 'point-move')!.data.onToggleCollapse!('point-move'))
+    expect(currentNodes().find(node => node.id === 'move-x')).toMatchObject({ hidden: true, selected: false })
+    act(() => currentNodes().find(node => node.id === 'point-class')!.data.onToggleCollapse!('point-class'))
+    expect(currentNodes().find(node => node.id === 'point-repr')).toMatchObject({ hidden: true, selected: false })
+    expect(currentEdges().every(edge => !edge.hidden || !edge.selected)).toBe(true)
+
+    const classBefore = currentNodes().find(node => node.id === 'point-class')!
+    act(() => changeNodes([{ id: classBefore.id, type: 'position', position: { x: classBefore.position.x + 80, y: classBefore.position.y + 40 } }]))
+    const members = new Set(['point-class', 'point-init', 'point-move', 'move-dx', 'move-dy', 'move-x', 'move-return', 'point-repr', 'repr-return'])
+    for (const node of before.nodes) {
+      expect(currentNodes().find(current => current.id === node.id)?.position).toEqual({
+        x: node.position.x + (members.has(node.id) ? 80 : 0),
+        y: node.position.y + (members.has(node.id) ? 40 : 0),
+      })
+    }
+    act(() => currentNodes().find(node => node.id === 'point-class')!.data.onToggleCollapse!('point-class'))
+    expect(currentNodes().find(node => node.id === 'point-move')).toMatchObject({ hidden: false, data: { isCollapsed: true } })
+    expect(currentNodes().find(node => node.id === 'move-dx')?.hidden).toBe(true)
+    expect(currentNodes().find(node => node.id === 'repr-return')?.hidden).toBe(false)
+    expect(currentEdges().find(edge => edge.id === 'edge-point-move')?.hidden).toBe(false)
+    expect(currentEdges().find(edge => edge.id === 'edge-move-dx')?.hidden).toBe(true)
+
+    const method = currentNodes().find(node => node.id === 'point-move')!
+    act(() => changeNodes([{ id: method.id, type: 'position', position: { x: method.position.x + 20, y: method.position.y + 10 } }]))
+    act(() => currentNodes().find(node => node.id === method.id)!.data.onToggleCollapse!(method.id))
+    for (const id of ['point-move', 'move-dx', 'move-dy', 'move-x', 'move-return']) {
+      const original = before.nodes.find(node => node.id === id)!
+      expect(currentNodes().find(node => node.id === id)).toMatchObject({
+        hidden: false, position: { x: original.position.x + 100, y: original.position.y + 50 },
+      })
+    }
+  })
+
   it.each([
     { name: 'Return', width: 194, height: 82 },
     { name: 'Process', width: 284, height: 96 },

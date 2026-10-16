@@ -30,7 +30,7 @@ See [Getting started](docs/getting-started.md) for the complete editor and execu
 
 - Drag an executable output wire onto empty canvas to choose a new block that is placed and connected immediately. Double-click an existing wire to insert a Process, Call, Input, or Output block; the same command is available under **Edit > Insert block on selected wire**.
 - Double-click a block outside its text field, buttons, or connection handles to edit its comment. Enter saves the comment and closes the dialog; Shift+Enter adds a line. Clear the comment and save to remove it.
-- Use a Function block's Collapse/Expand button to hide or restore its connected flow. Moving a collapsed Function moves its hidden blocks with it, and its collapsed state is saved with the document.
+- Use the Collapse/Expand button on a Function, Method, or Class to hide or restore its contents. A Class hides its init Inputs, attached Methods, and their flows. Expanding the Class restores each Method's previous collapsed or expanded state. Moving a collapsed block moves its hidden contents with it, and these settings are saved with the document.
 - Use the left sidebar's Build tab for blocks, validation, and imports, and its Notes tab for document notes. Notes are saved with the program and included in draft recovery.
 
 ## Classes and attributes
@@ -72,7 +72,7 @@ Open **FlowLab > Reference** inside the app to look up available functions and s
 - Automatic local draft recovery, visible save status, and support for reopening unfinished programs.
 - File > Clear empties the current canvas while retaining imports and settings, with Undo to restore it.
 - Imports from FlowLab JSON programs plus native math, text, image, and turtle libraries.
-- JSON loading and saving, including block positions and widths, function collapse states, comments, document notes, imports, and queued input.
+- JSON loading and saving, including block positions and widths, Function/Method/Class collapse states, comments, document notes, imports, and queued input.
 - An in-app function reference that updates with your imports, plus draggable and expandable image and turtle panels.
 
 ## Documentation
