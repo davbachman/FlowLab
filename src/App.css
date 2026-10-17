@@ -912,16 +912,6 @@ button:disabled {
   padding: 7px 7px 10px;
 }
 
-/* Keep handles registered while removing the collapsed Class's connector row. */
-.class-method-handles[aria-hidden='true'] {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  right: 10px;
-  visibility: hidden;
-  pointer-events: none;
-}
-
 .class-method-slot {
   position: relative;
   min-width: 0;
@@ -938,6 +928,10 @@ button:disabled {
   font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.class-method-slot-attached {
+  padding-right: 22px;
 }
 
 .class-method-slot-new {
@@ -1289,15 +1283,46 @@ button:disabled {
 }
 
 .node-collapse-toggle {
-  display: block;
-  margin: 0 auto 6px;
-  padding: 2px 7px;
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
   border: 1px solid #cbd5e1;
-  border-radius: 999px;
+  border-radius: 50%;
   color: #475467;
   background: #f8fafc;
-  font-size: 11px;
-  line-height: 1.3;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.node-collapse-toggle::before {
+  position: absolute;
+  inset: -3px;
+  content: '';
+}
+
+.node-collapse-toggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.function-collapse-toggle {
+  top: 0;
+  right: 12px;
+}
+
+.method-collapse-toggle {
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  border-color: #c3b5fd;
+  color: #5925dc;
+  font-size: 13px;
 }
 
 .node-collapse-toggle[aria-expanded='false'] {

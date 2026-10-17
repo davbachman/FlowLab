@@ -90,7 +90,7 @@ import { OutputDrawer } from './components/OutputDrawer'
 import { cleanUpProgram } from './lib/codeCleanup'
 import { adaptiveFlowNodeWidth, minimumFlowNodeWidth } from './lib/flowLayout'
 import { combineNodesIntoProcess } from './lib/processConsolidation'
-import { collapsedBlockBodies, isCollapsibleNodeType } from './lib/blockCollapse'
+import { collapsedBlockBodies, collapsedBlockNodeIds, isCollapsibleNodeType } from './lib/blockCollapse'
 import {
   DELETE_KEY_CODES,
   programToEdges,
@@ -159,6 +159,7 @@ interface FlowNodeData extends Record<string, unknown> {
 interface AttachedMethodHandle {
   nodeId: string
   name: string
+  isCollapsed: boolean
 }
 
 type EditorNode = Node<FlowNodeData, 'flowNode'>
@@ -1106,15 +1107,16 @@ function App() {
     () => collapsedBlockBodies(program),
     [program],
   )
-  const hiddenNodeIds = useMemo(() => new Set([...collapsedBodies.values()].flatMap((body) => [...body])), [collapsedBodies])
+  const hiddenNodeIds = useMemo(() => collapsedBlockNodeIds(program, collapsedBodies), [program, collapsedBodies])
   const toggleBlockCollapse = useCallback((nodeId: string) => {
+    const root = nodesRef.current.find(node => node.id === nodeId)
+    if (!root || !isCollapsibleNodeType(root.data.nodeType)) return
     pushHistorySnapshot()
     const updated = nodesRef.current.map((node) => node.id === nodeId
       ? { ...node, data: { ...node.data, isCollapsed: !node.data.isCollapsed } }
       : node)
     // Hidden selections must not remain targets of Delete, Copy, or Combine.
-    const bodies = collapsedBlockBodies(toProgram(updated, edgesRef.current))
-    const hidden = new Set([...bodies.values()].flatMap((body) => [...body]))
+    const hidden = collapsedBlockNodeIds(toProgram(updated, edgesRef.current))
     setNodes(updated.map((node) => hidden.has(node.id) && node.selected ? { ...node, selected: false } : node))
     setEdges((current) => current.map((edge) => (hidden.has(edge.source) || hidden.has(edge.target)) && edge.selected ? { ...edge, selected: false } : edge))
   }, [pushHistorySnapshot])
@@ -1210,7 +1212,8 @@ function App() {
     setNodes((current) => current.map((node) => ({
       ...node,
       selected: node.id === issue.nodeId,
-      ...(collapsedBodies.get(node.id)?.has(issue.nodeId!) ? { data: { ...node.data, isCollapsed: false } } : {}),
+      ...(collapsedBodies.has(node.id) && (node.id === issue.nodeId || collapsedBodies.get(node.id)?.has(issue.nodeId!))
+        ? { data: { ...node.data, isCollapsed: false } } : {}),
     })))
     setEdges((current) => current.map((edge) => ({ ...edge, selected: edge.id === issue.edgeId })))
     window.requestAnimationFrame(() => {
@@ -4861,20 +4864,20 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
         />
       ) : null}
       {data.nodeType !== 'class' ? <button type="button" className="node-breakpoint nodrag nopan" aria-pressed={!!data.hasBreakpoint} aria-label={`${data.hasBreakpoint ? 'Remove' : 'Add'} breakpoint on ${data.text.trim().split('\n')[0] || label}`} title={data.hasBreakpoint ? 'Remove breakpoint' : 'Pause before this block'} onClick={(event) => { event.stopPropagation(); data.onToggleBreakpoint?.(id) }}>●</button> : null}
+      {isFunctionRoot ? (
+        <button
+          type="button"
+          className="node-collapse-toggle function-collapse-toggle nodrag nopan"
+          aria-label={`${data.isCollapsed ? 'Expand' : 'Collapse'} ${label.toLowerCase()} ${data.text.trim() || 'unnamed'}`}
+          aria-expanded={!data.isCollapsed}
+          title={`${data.isCollapsed ? 'Expand' : 'Collapse'} this function’s flow`}
+          onClick={(event) => { event.stopPropagation(); if (event.detail < 2) data.onToggleCollapse?.(id) }}
+        >
+          {data.isCollapsed ? '+' : '−'}
+        </button>
+      ) : null}
       <div className="node-content" ref={contentRef}>
         <div className="node-label">{label}</div>
-        {isCollapsibleNodeType(data.nodeType) ? (
-          <button
-            type="button"
-            className="node-collapse-toggle nodrag nopan"
-            aria-label={`${data.isCollapsed ? 'Expand' : 'Collapse'} ${label.toLowerCase()} ${data.text.trim() || 'unnamed'}`}
-            aria-expanded={!data.isCollapsed}
-            title={`${data.isCollapsed ? 'Expand' : 'Collapse'} this ${label.toLowerCase()}’s ${isDeclaration ? 'contents' : 'flow'}`}
-            onClick={(event) => { event.stopPropagation(); if (event.detail < 2) data.onToggleCollapse?.(id) }}
-          >
-            {data.isCollapsed ? '▸ Collapsed' : '▾ Collapse'}
-          </button>
-        ) : null}
         {data.comment ? <div className="node-comment">{data.comment}</div> : null}
         {editable ? (
           <>
@@ -4897,10 +4900,10 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
         )}
       </div>
       {isDeclaration ? (
-        <div className="class-method-handles" aria-label="Method connections" aria-hidden={data.isCollapsed || undefined}>
+        <div className="class-method-handles" aria-label="Method connections">
           <div className="class-method-slot" title="Connect Input blocks to initialize attributes">
             <span className="class-method-name">init</span>
-            <Handle id={CLASS_INIT_HANDLE} className="node-handle class-method-handle" type="source" position={Position.Bottom} isConnectable={!data.isCollapsed} aria-label="Initialize attributes" />
+            <Handle id={CLASS_INIT_HANDLE} className="node-handle class-method-handle" type="source" position={Position.Bottom} aria-label="Initialize attributes" />
           </div>
           {attachedMethods.map((method) => (
             <div
@@ -4909,13 +4912,22 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
               title={`Connected to ${method.name}`}
             >
               <span className="class-method-name">{method.name}</span>
+              <button
+                type="button"
+                className="node-collapse-toggle method-collapse-toggle nodrag nopan"
+                aria-label={`${method.isCollapsed ? 'Expand' : 'Collapse'} method ${method.name}`}
+                aria-expanded={!method.isCollapsed}
+                title={`${method.isCollapsed ? 'Expand' : 'Collapse'} this Method and its flow`}
+                onClick={(event) => { event.stopPropagation(); if (event.detail < 2) data.onToggleCollapse?.(method.nodeId) }}
+              >
+                {method.isCollapsed ? '+' : '−'}
+              </button>
               <Handle
                 id={classMethodHandleId(method.nodeId)}
                 className="node-handle class-method-handle"
                 type="source"
                 position={Position.Bottom}
                 isConnectableStart={false}
-                isConnectable={!data.isCollapsed}
                 aria-label={`${method.name} method connection`}
               />
             </div>
@@ -4930,7 +4942,6 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
               className="node-handle class-method-handle"
               type="source"
               position={Position.Bottom}
-              isConnectable={!data.isCollapsed}
               aria-label="Attach another method"
             />
           </div>
@@ -6088,6 +6099,7 @@ function attachedMethodsForClass(
       {
         nodeId: methodNode.id,
         name: methodNode.data.text.trim() || 'unnamed',
+        isCollapsed: !!methodNode.data.isCollapsed,
       },
     ]
   })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collapsedBlockBodies } from './blockCollapse'
+import { collapsedBlockBodies, collapsedBlockNodeIds } from './blockCollapse'
 import { objectSampleProgram } from './objectSampleProgram'
 import type { Program } from './types'
 
@@ -33,7 +33,7 @@ describe('collapsed block bodies', () => {
     expect(collapsedBlockBodies(program, new Set())).toEqual(new Map())
   })
 
-  it('hides a class init, all attached Methods, and their flows without changing nested collapse flags', () => {
+  it('ignores Class collapse flags and hides only collapsed Methods and their flows', () => {
     const program: Program = {
       ...objectSampleProgram,
       nodes: objectSampleProgram.nodes.map(node => ['point-class', 'point-move'].includes(node.id)
@@ -41,12 +41,10 @@ describe('collapsed block bodies', () => {
     }
     const before = structuredClone(program)
     const bodies = collapsedBlockBodies(program)
-    expect(bodies.get('point-class')).toEqual(new Set([
-      'point-init', 'point-move', 'move-dx', 'move-dy', 'move-x', 'move-return',
-      'point-repr', 'repr-return',
-    ]))
+    expect(bodies.has('point-class')).toBe(false)
     expect(bodies.get('point-move')).toEqual(new Set(['move-dx', 'move-dy', 'move-x', 'move-return']))
     expect(program).toEqual(before)
+    expect(collapsedBlockNodeIds(program, bodies)).toEqual(new Set(['point-move', 'move-dx', 'move-dy', 'move-x', 'move-return']))
 
     const expanded = { ...program, nodes: program.nodes.map(node => node.id === 'point-class' ? { ...node, collapsed: false } : node) }
     expect(collapsedBlockBodies(expanded)).toEqual(new Map([
@@ -71,14 +69,14 @@ describe('collapsed block bodies', () => {
         { id: 'invalid-loop', source: 'move-x', target: 'point-class' },
       ],
     }
-    const body = collapsedBlockBodies(program, new Set(['point-class'])).get('point-class')!
+    const body = collapsedBlockBodies(program, new Set(['point-move'])).get('point-move')!
     for (const id of ['point-class', 'object-main', 'other-class', 'other-method']) expect(body.has(id)).toBe(false)
     expect(body.has('move-return')).toBe(true)
     expect(collapsedBlockBodies(program, new Set(['point-move'])).get('point-move'))
       .toEqual(new Set(['move-dx', 'move-dy', 'move-x', 'move-return']))
   })
 
-  it('supports empty classes and methods', () => {
+  it('keeps unattached collapsed Methods visible, including after removing their Class or wire', () => {
     const program: Program = {
       version: 1,
       nodes: [
@@ -87,6 +85,11 @@ describe('collapsed block bodies', () => {
       ],
       edges: [],
     }
-    expect(collapsedBlockBodies(program)).toEqual(new Map([['class', new Set()], ['method', new Set()]]))
+    expect(collapsedBlockBodies(program)).toEqual(new Map())
+    const attached = { ...program, edges: [{ id: 'owner', source: 'class', target: 'method' }] }
+    expect(collapsedBlockBodies(attached)).toEqual(new Map([['method', new Set()]]))
+    expect(collapsedBlockNodeIds(attached)).toEqual(new Set(['method']))
+    expect(collapsedBlockNodeIds(program)).toEqual(new Set())
+    expect(collapsedBlockNodeIds({ ...attached, nodes: attached.nodes.filter(node => node.id !== 'class') })).toEqual(new Set())
   })
 })

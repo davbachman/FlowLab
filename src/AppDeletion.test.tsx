@@ -57,7 +57,7 @@ describe('deleting collapsed blocks', () => {
     delete (window as SaveWindow).showSaveFilePicker
   })
 
-  it.each(roots.flatMap(root => ['Delete', 'Backspace'].map(key => ({ ...root, key }))))(
+  it.each(['Delete', 'Backspace'].map(key => ({ ...roots[0], key })))(
     'deletes a collapsed $kind and its hidden contents with $key, with one Undo and Redo',
     async ({ kind, name, id, removed, key }) => {
       const user = userEvent.setup()
@@ -65,15 +65,8 @@ describe('deleting collapsed blocks', () => {
       await loadObjectExample(user)
       const save = saveGraph(user)
 
-      // Keep an unrelated collapsed group, or a nested collapsed Method, in the graph.
-      if (kind === 'function') {
-        fireEvent.click(screen.getByLabelText('Collapse method move'))
-        fireEvent.click(screen.getByLabelText('Collapse class Point'))
-      } else if (kind === 'method') {
-        fireEvent.click(screen.getByLabelText('Collapse method __repr__'))
-      } else {
-        fireEvent.click(screen.getByLabelText('Collapse method move'))
-      }
+      // Keep an unrelated collapsed Method and its Class in the graph.
+      fireEvent.click(screen.getByLabelText('Collapse method move'))
       fireEvent.click(screen.getByLabelText(`Collapse ${kind} ${name}`))
       const before = await save()
       fireEvent.click(screen.getByTestId(`flow-node-${id}`))
@@ -97,11 +90,10 @@ describe('deleting collapsed blocks', () => {
     },
   )
 
-  it.each(roots)('keeps an expanded $kind body when deleting only its root', async ({ kind, name, id }) => {
+  it.each(roots)('keeps an expanded $kind body when deleting only its root', async ({ id }) => {
     const user = userEvent.setup()
     render(<App />)
     await loadObjectExample(user)
-    expect(screen.getByLabelText(`Collapse ${kind} ${name}`)).toBeInTheDocument()
     fireEvent.click(screen.getByTestId(`flow-node-${id}`))
 
     await user.keyboard('{Delete}')
@@ -112,12 +104,12 @@ describe('deleting collapsed blocks', () => {
     expect(after.edges).toEqual(objectSampleProgram.edges.filter(edge => edge.source !== id && edge.target !== id))
   })
 
-  it('deletes multiple collapsed roots together and restores their nested settings with one Undo', async () => {
+  it('reveals collapsed Methods when their Class is deleted and restores their settings with Undo', async () => {
     const user = userEvent.setup()
     render(<App />)
     await loadObjectExample(user)
     fireEvent.click(screen.getByLabelText('Collapse method move'))
-    fireEvent.click(screen.getByLabelText('Collapse class Point'))
+    fireEvent.click(screen.getByLabelText('Collapse method __repr__'))
     fireEvent.click(screen.getByLabelText('Collapse function main'))
     const save = saveGraph(user)
     const before = await save()
@@ -128,14 +120,19 @@ describe('deleting collapsed blocks', () => {
 
     await waitFor(() => expect(screen.queryByTestId('flow-node-point-class')).not.toBeInTheDocument())
     const after = await save()
-    expect(after.nodes).toEqual([])
-    expect(after.edges).toEqual([])
+    const removed = new Set(['point-class', ...roots[0].removed])
+    expect(after.nodes).toEqual(before.nodes.filter(node => !removed.has(node.id)))
+    expect(after.edges).toEqual(before.edges.filter(edge => !removed.has(edge.source) && !removed.has(edge.target)))
+    for (const id of ['point-move', 'move-dx', 'move-return', 'point-repr', 'repr-return', 'point-init']) {
+      expect(screen.getByTestId(`flow-node-${id}`)).toBeInTheDocument()
+    }
     await menuAction(user, 'Edit', 'Undo')
     expect(await save()).toEqual(before)
-    fireEvent.click(screen.getByLabelText('Expand class Point'))
-    expect(screen.getByTestId('flow-node-point-move')).toHaveAttribute('data-collapsed', 'true')
+    expect(screen.queryByTestId('flow-node-point-move')).not.toBeInTheDocument()
     expect(screen.queryByTestId('flow-node-move-dx')).not.toBeInTheDocument()
-    expect(screen.getByTestId('flow-node-repr-return')).toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-repr-return')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Expand method move')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByLabelText('Expand method __repr__')).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByTestId('flow-node-object-main')).toHaveAttribute('data-collapsed', 'true')
   })
 })

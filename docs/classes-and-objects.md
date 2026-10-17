@@ -20,7 +20,7 @@
 - Class names and attribute names follow the [language's naming rules](language-reference.md#names-and-dictionary-keys). Init names must be unique, and `self` cannot be an init name. Function and Class names share one callable namespace.
 - A Class is a declaration outside the executable flow: it has no incoming wire and connects to its init Inputs and optional Methods. Construct objects from an expression in `main` or another Function or Method.
 - Attribute names appear in the init Inputs; attribute chips are no longer displayed in the Class block.
-- Use the Class's Collapse/Expand button to hide or restore its init Inputs, attached Methods, and their flows. Each Method also has its own Collapse/Expand button for its executable flow. Expanding a Class preserves the previous collapse setting of every Method. Moving a collapsed Class or Method moves its hidden contents with it; all collapse settings are saved with the document and draft recovery.
+- Each attached Method has a small **−/+** button on its name tile in the Class block. Click **−** to hide the Method block and its flow, and **+** to restore them at their original positions. Classes and their init Inputs always stay visible. Method collapse settings are saved with the document and draft recovery. Removing a Class or a Method's attachment wire reveals the affected Methods and their flows.
 - Fields may contain any FlowLab value, including Lists, Dictionaries, Images, or other objects.
 
 ## Attach and run methods
