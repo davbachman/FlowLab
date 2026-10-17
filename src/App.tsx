@@ -90,7 +90,7 @@ import { OutputDrawer } from './components/OutputDrawer'
 import { cleanUpProgram } from './lib/codeCleanup'
 import { adaptiveFlowNodeWidth, minimumFlowNodeWidth } from './lib/flowLayout'
 import { combineNodesIntoProcess } from './lib/processConsolidation'
-import { collapsedBlockBodies, collapsedBlockNodeIds, isCollapsibleNodeType } from './lib/blockCollapse'
+import { collapsedBlockBodies, collapsedBlockNodeIds, collapsedInitBodies, isCollapsibleNodeType } from './lib/blockCollapse'
 import {
   DELETE_KEY_CODES,
   programToEdges,
@@ -153,7 +153,8 @@ interface FlowNodeData extends Record<string, unknown> {
   hasBreakpoint?: boolean
   onToggleBreakpoint?: (nodeId: string) => void
   isCollapsed?: boolean
-  onToggleCollapse?: (nodeId: string) => void
+  isInitCollapsed?: boolean
+  onToggleCollapse?: (nodeId: string, part?: 'init') => void
 }
 
 interface AttachedMethodHandle {
@@ -1107,13 +1108,15 @@ function App() {
     () => collapsedBlockBodies(program),
     [program],
   )
-  const hiddenNodeIds = useMemo(() => collapsedBlockNodeIds(program, collapsedBodies), [program, collapsedBodies])
-  const toggleBlockCollapse = useCallback((nodeId: string) => {
+  const collapsedInits = useMemo(() => collapsedInitBodies(program), [program])
+  const hiddenNodeIds = useMemo(() => collapsedBlockNodeIds(program, collapsedBodies, collapsedInits), [program, collapsedBodies, collapsedInits])
+  const toggleBlockCollapse = useCallback((nodeId: string, part?: 'init') => {
     const root = nodesRef.current.find(node => node.id === nodeId)
-    if (!root || !isCollapsibleNodeType(root.data.nodeType)) return
+    if (!root || (part === 'init' ? root.data.nodeType !== 'class' : !isCollapsibleNodeType(root.data.nodeType))) return
+    const field = part === 'init' ? 'isInitCollapsed' : 'isCollapsed'
     pushHistorySnapshot()
     const updated = nodesRef.current.map((node) => node.id === nodeId
-      ? { ...node, data: { ...node.data, isCollapsed: !node.data.isCollapsed } }
+      ? { ...node, data: { ...node.data, [field]: !node.data[field] } }
       : node)
     // Hidden selections must not remain targets of Delete, Copy, or Combine.
     const hidden = collapsedBlockNodeIds(toProgram(updated, edgesRef.current))
@@ -1214,6 +1217,8 @@ function App() {
       selected: node.id === issue.nodeId,
       ...(collapsedBodies.has(node.id) && (node.id === issue.nodeId || collapsedBodies.get(node.id)?.has(issue.nodeId!))
         ? { data: { ...node.data, isCollapsed: false } } : {}),
+      ...(collapsedInits.get(node.id)?.has(issue.nodeId!)
+        ? { data: { ...node.data, isInitCollapsed: false } } : {}),
     })))
     setEdges((current) => current.map((edge) => ({ ...edge, selected: edge.id === issue.edgeId })))
     window.requestAnimationFrame(() => {
@@ -1228,7 +1233,7 @@ function App() {
         }
       }
     })
-  }, [flowInstance, collapsedBodies])
+  }, [flowInstance, collapsedBodies, collapsedInits])
   const executionIsBusy =
     execution?.status === 'asking' || execution?.status === 'loading'
   const canResetExecution = validation.valid && !executionIsBusy
@@ -1511,11 +1516,18 @@ function App() {
         : null
 
       pushHistorySnapshot()
-      if (newNode) {
-        setNodes((currentNodes) => [
-          ...currentNodes.map((node) => ({ ...node, selected: false })),
-          { ...newNode, data: { ...newNode.data, autoFocus: true }, selected: true },
-        ])
+      const connectsInit = sourceNode?.data.nodeType === 'class' && connection.sourceHandle === CLASS_INIT_HANDLE
+      if (newNode || connectsInit) {
+        setNodes((currentNodes) => {
+          const updated = currentNodes.map((node) => ({
+            ...node,
+            ...(newNode ? { selected: false } : {}),
+            ...(connectsInit && node.id === connection.source && node.data.isInitCollapsed ? { data: { ...node.data, isInitCollapsed: false } } : {}),
+          }))
+          return newNode
+            ? [...updated, { ...newNode, data: { ...newNode.data, autoFocus: true }, selected: true }]
+            : updated
+        })
       }
       setEdges((currentEdges) => {
         const branchLabel =
@@ -4901,8 +4913,18 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
       </div>
       {isDeclaration ? (
         <div className="class-method-handles" aria-label="Method connections">
-          <div className="class-method-slot" title="Connect Input blocks to initialize attributes">
+          <div className="class-method-slot class-init-slot" title="Connect Input blocks to initialize attributes">
             <span className="class-method-name">init</span>
+            <button
+              type="button"
+              className="node-collapse-toggle method-collapse-toggle nodrag nopan"
+              aria-label={`${data.isInitCollapsed ? 'Expand' : 'Collapse'} init ${data.text.trim() || 'unnamed'}`}
+              aria-expanded={!data.isInitCollapsed}
+              title={`${data.isInitCollapsed ? 'Expand' : 'Collapse'} this Class’s init Inputs`}
+              onClick={(event) => { event.stopPropagation(); if (event.detail < 2) data.onToggleCollapse?.(id, 'init') }}
+            >
+              {data.isInitCollapsed ? '+' : '−'}
+            </button>
             <Handle id={CLASS_INIT_HANDLE} className="node-handle class-method-handle" type="source" position={Position.Bottom} aria-label="Initialize attributes" />
           </div>
           {attachedMethods.map((method) => (
@@ -5827,6 +5849,7 @@ function programToNodes(program: Program): EditorNode[] {
         text: node.text,
         comment: node.comment,
         isCollapsed: isCollapsibleNodeType(node.type) ? node.collapsed : undefined,
+        isInitCollapsed: node.type === 'class' ? node.initCollapsed : undefined,
       },
     }
   })
@@ -5902,6 +5925,7 @@ function toProgram(nodes: EditorNode[], edges: EditorEdge[]): Program {
         text: node.data.text,
         ...(comment ? { comment: node.data.comment } : {}),
         ...(isCollapsibleNodeType(node.data.nodeType) && node.data.isCollapsed !== undefined ? { collapsed: node.data.isCollapsed } : {}),
+        ...(node.data.nodeType === 'class' && node.data.isInitCollapsed !== undefined ? { initCollapsed: node.data.isInitCollapsed } : {}),
         ...(node.width === undefined ? {} : { width: node.width }),
         position: node.position,
       }

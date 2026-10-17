@@ -12,7 +12,7 @@ interface TestNode {
   hidden?: boolean
   selected?: boolean
   width?: number
-  data: { nodeType: string; text: string; onToggleCollapse?: (id: string) => void }
+  data: { nodeType: string; text: string; onToggleCollapse?: (id: string, part?: 'init') => void }
 }
 
 const flowProps: Record<string, unknown>[] = []
@@ -180,12 +180,22 @@ describe('connected block insertion', () => {
     await user.click(screen.getByRole('button', { name: 'Examples' }))
     await user.click(screen.getByRole('menuitem', { name: 'Object' }))
     const source = currentNodes().find((node) => node.data.nodeType === 'class')!
+    const changeNodes = flowProps.at(-1)?.onNodesChange as (changes: unknown[]) => void
+    const changeEdges = flowProps.at(-1)?.onEdgesChange as (changes: unknown[]) => void
+    act(() => {
+      changeNodes([{ id: 'point-init', type: 'select', selected: true }])
+      changeEdges([{ id: 'edge-point-init', type: 'select', selected: true }])
+    })
+    act(() => source.data.onToggleCollapse!(source.id, 'init'))
+    expect(currentNodes().find(node => node.id === 'point-init')).toMatchObject({ hidden: true, selected: false })
+    expect(currentEdges().find(edge => edge.id === 'edge-point-init')).toMatchObject({ hidden: true, selected: false })
     const before = graphSnapshot()
     const methods = currentEdges().filter((edge) => edge.source === source.id && edge.sourceHandle !== CLASS_INIT_HANDLE)
 
     dragOutputIntoBlankCanvas(source.id, CLASS_INIT_HANDLE, { x: 800, y: 500 })
     const input = currentNodes().at(-1)!
-    expect(input).toMatchObject({ position: { x: 703, y: 459 }, selected: true, data: { nodeType: 'input', text: '', autoFocus: true } })
+    expect(input).toMatchObject({ hidden: false, position: { x: 703, y: 459 }, selected: true, data: { nodeType: 'input', text: '', autoFocus: true } })
+    expect(currentNodes().find(node => node.id === source.id)?.data).toMatchObject({ isInitCollapsed: false })
     expect(currentEdges().filter((edge) => edge.source === source.id && edge.sourceHandle === CLASS_INIT_HANDLE)).toEqual([
       expect.objectContaining({ target: input.id }),
     ])
@@ -196,9 +206,11 @@ describe('connected block insertion', () => {
     await user.click(screen.getByRole('button', { name: 'Edit' }))
     await user.click(screen.getByRole('menuitem', { name: 'Undo' }))
     expect(graphSnapshot()).toEqual(before)
+    expect(currentNodes().find(node => node.id === 'point-init')?.hidden).toBe(true)
     await user.click(screen.getByRole('button', { name: 'Edit' }))
     await user.click(screen.getByRole('menuitem', { name: 'Redo' }))
     expect(graphSnapshot()).toEqual(connected)
+    expect(currentNodes().find(node => node.id === input.id)?.hidden).toBe(false)
 
     dragOutputIntoBlankCanvas(input.id, null, { x: 800, y: 700 })
     expect(screen.getAllByRole('option')).toHaveLength(1)

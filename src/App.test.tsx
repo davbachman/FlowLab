@@ -4061,6 +4061,64 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
+  it('collapses chained init Inputs from the Class card independently of Methods, preserving execution and positions', async () => {
+    const user = userEvent.setup()
+    const program: Program = {
+      ...objectSampleProgram,
+      nodes: [
+        ...objectSampleProgram.nodes.map(node => node.id === 'point-init' ? { ...node, text: 'x' } : node),
+        { id: 'point-init-y', type: 'input', text: 'y', position: { x: -240, y: 340 } },
+      ],
+      edges: [...objectSampleProgram.edges, { id: 'init-y', source: 'point-init', target: 'point-init-y' }],
+    }
+    render(<App />)
+    importProgramFromFileMenu(new File([JSON.stringify(program)], 'init.json', { type: 'application/json' }))
+    const classBlock = await screen.findByTestId('flow-node-point-class')
+    const before = screen.getByTestId('flow-node-point-init').closest('.react-flow__node')?.getAttribute('style')
+    const initToggle = within(classBlock).getByLabelText('Collapse init Point')
+    expect(initToggle.closest('.class-init-slot')).toHaveTextContent('init')
+    expect(initToggle).toHaveTextContent('−')
+    fireEvent.click(initToggle)
+    expect(within(classBlock).getByLabelText('Expand init Point')).toHaveTextContent('+')
+    expect(screen.queryByTestId('flow-node-point-init')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-point-init-y')).not.toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-point-move')).toBeInTheDocument()
+    expect(classBlock).toHaveAttribute('data-collapsed', 'false')
+    expect(screen.getByLabelText('Initialize attributes')).toHaveClass('connectable')
+
+    await user.click(executionButton(/^Run$/i))
+    await screen.findByText(/^Completed$/i)
+    expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent('Point(7, 2)')
+    await chooseToolbarAction(user, 'Edit', 'Undo')
+    expect(screen.getByTestId('flow-node-point-init-y')).toBeInTheDocument()
+    await chooseToolbarAction(user, 'Edit', 'Redo')
+    expect(screen.queryByTestId('flow-node-point-init-y')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Collapse method move'))
+    await user.dblClick(within(classBlock).getByLabelText('Expand init Point'))
+    expect(screen.getByTestId('flow-node-point-init-y')).toBeInTheDocument()
+    expect(screen.getByTestId('flow-node-point-init').closest('.react-flow__node')?.getAttribute('style')).toBe(before)
+    expect(screen.queryByTestId('flow-node-point-move')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('reveals an invalid hidden init Input without expanding Methods', async () => {
+    const user = userEvent.setup()
+    const program: Program = {
+      ...objectSampleProgram,
+      nodes: objectSampleProgram.nodes.map(node => node.id === 'point-init' ? { ...node, text: 'x +' } : node),
+    }
+    render(<App />)
+    importProgramFromFileMenu(new File([JSON.stringify(program)], 'invalid-init.json', { type: 'application/json' }))
+    await screen.findByTestId('flow-node-point-class')
+    fireEvent.click(screen.getByLabelText('Collapse init Point'))
+    fireEvent.click(screen.getByLabelText('Collapse method move'))
+    await user.click(screen.getByTitle(/Input node "point-init" has invalid text/))
+    const input = await screen.findByTestId('flow-node-point-init')
+    expect(screen.getByLabelText('Collapse init Point')).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByTestId('flow-node-point-move')).not.toBeInTheDocument()
+    await waitFor(() => expect(within(input).getByLabelText('Input text')).toHaveFocus())
+  })
+
   it.each([
     { id: 'move-x', type: 'Process', text: 'x <- (' },
     { id: 'point-move', type: 'Method', text: 'Point.move' },

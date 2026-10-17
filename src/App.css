@@ -930,7 +930,8 @@ button:disabled {
   white-space: nowrap;
 }
 
-.class-method-slot-attached {
+.class-method-slot-attached,
+.class-init-slot {
   padding-right: 22px;
 }
 

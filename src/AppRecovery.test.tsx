@@ -327,7 +327,7 @@ describe('document recovery and editable drafts', () => {
     expect(screen.getByTestId('flow-node-helper-end')).toBeInTheDocument()
   })
 
-  it('saves and recovers Method collapse states while always showing Classes', async () => {
+  it('saves and recovers init and Method collapse states while always showing Classes', async () => {
     const write = vi.fn<(blob: Blob) => Promise<void>>().mockResolvedValue(undefined)
     const close = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
     ;(window as TestSaveWindow).showSaveFilePicker = async () => ({
@@ -343,15 +343,18 @@ describe('document recovery and editable drafts', () => {
     expect(screen.getByTestId('flow-node-point-init')).toBeInTheDocument()
     expect(screen.queryByLabelText('Expand class Point')).not.toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Collapse method move'))
+    fireEvent.click(screen.getByLabelText('Collapse init Point'))
     fileAction('Save')
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1))
     const saved = JSON.parse(await write.mock.calls[0][0].text()) as Program
     expect(saved.nodes).toEqual(objectSampleProgram.nodes.map(node =>
-      node.id === 'point-move' ? { ...node, collapsed: true } : node,
+      node.id === 'point-move' ? { ...node, collapsed: true }
+        : node.id === 'point-class' ? { ...node, initCollapsed: true } : node,
     ))
     expect(saved.edges).toEqual(objectSampleProgram.edges)
 
     fireEvent.click(screen.getByLabelText('Expand method move'))
+    fireEvent.click(screen.getByLabelText('Expand init Point'))
     loadFile(JSON.stringify(saved), 'collapsed-class.json')
     await waitFor(() => expect(screen.queryByTestId('flow-node-point-move')).not.toBeInTheDocument())
     await screen.findByText('Recovery saved')
@@ -359,6 +362,8 @@ describe('document recovery and editable drafts', () => {
     render(<App />)
     expect(screen.getByTestId('flow-node-point-class')).toHaveAttribute('data-collapsed', 'false')
     expect(screen.getByLabelText('Expand method move')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByLabelText('Expand init Point')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByTestId('flow-node-point-init')).not.toBeInTheDocument()
     expect(screen.queryByTestId('flow-node-point-move')).not.toBeInTheDocument()
     expect(screen.queryByTestId('flow-node-move-dx')).not.toBeInTheDocument()
     expect(screen.getByTestId('flow-node-point-repr')).toHaveAttribute('data-collapsed', 'false')
@@ -368,10 +373,14 @@ describe('document recovery and editable drafts', () => {
     await waitFor(() => expect(close).toHaveBeenCalledTimes(2))
     const expanded = JSON.parse(await write.mock.calls[1][0].text()) as Program
     expect(expanded.nodes.find(node => node.id === 'point-class')?.collapsed).toBeUndefined()
+    expect(expanded.nodes.find(node => node.id === 'point-class')?.initCollapsed).toBe(true)
     expect(expanded.nodes.find(node => node.id === 'point-move')?.collapsed).toBe(true)
     expect(expanded.nodes.map(node => node.position)).toEqual(objectSampleProgram.nodes.map(node => node.position))
     fireEvent.click(screen.getByLabelText('Expand method move'))
     expect(screen.getByTestId('flow-node-move-dx')).toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-point-init')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Expand init Point'))
+    expect(screen.getByTestId('flow-node-point-init')).toBeInTheDocument()
   })
 
   it('reopens a named browser draft from File Recover draft', async () => {

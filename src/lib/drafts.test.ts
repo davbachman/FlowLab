@@ -77,6 +77,7 @@ describe('draft loading', () => {
     { version: 1, nodes: [null], edges: [] },
     { ...incompleteProgram, imports: ['wrong type'] },
     { ...incompleteProgram, nodes: [{ ...incompleteProgram.nodes[0], collapsed: 'true' }] },
+    { ...incompleteProgram, nodes: [{ ...incompleteProgram.nodes[0], initCollapsed: 'true' }] },
     { ...incompleteProgram, nodes: [{ ...incompleteProgram.nodes[0], position: { x: Infinity, y: 0 } }] },
     { ...incompleteProgram, nodes: [incompleteProgram.nodes[0], incompleteProgram.nodes[0]] },
     { ...incompleteProgram, edges: [{ id: 'edge', source: 'condition', target: 'condition', label: 'maybe' }] },
@@ -161,6 +162,17 @@ describe('browser recovery', () => {
 })
 
 describe('saved-file fingerprint', () => {
+  it('preserves init collapse settings and treats changing them as an edit', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [{ id: 'class', type: 'class', text: 'Point', initCollapsed: true, position: { x: 10, y: 20 } }],
+      edges: [],
+    }
+    expect(parseProgramDraft(program)).toEqual(program)
+    expect(documentFingerprint(program, 'Class')).not.toBe(documentFingerprint({
+      ...program, nodes: program.nodes.map(node => ({ ...node, initCollapsed: false })),
+    }, 'Class'))
+  })
   it('treats omitted empty metadata and explicit empty metadata identically', () => {
     const emptyProgram: Program = { version: 1, nodes: [], edges: [] }
     expect(documentFingerprint(emptyProgram, 'Untitled')).toBe(

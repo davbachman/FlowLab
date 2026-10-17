@@ -55,6 +55,7 @@ export interface ProgramNode {
   text: string
   comment?: string
   collapsed?: boolean
+  initCollapsed?: boolean
   width?: number
   position: ProgramPosition
 }

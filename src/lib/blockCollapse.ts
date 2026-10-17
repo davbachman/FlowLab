@@ -40,8 +40,37 @@ export function collapsedBlockBodies(
   return bodies
 }
 
-export function collapsedBlockNodeIds(program: Program, bodies = collapsedBlockBodies(program)): Set<string> {
-  const hidden = new Set([...bodies.values()].flatMap(body => [...body]))
+/** Init cards hide only their Input chain, even while the graph is unfinished. */
+export function collapsedInitBodies(program: Program): Map<string, Set<string>> {
+  const nodes = new Map(program.nodes.map(node => [node.id, node]))
+  const outgoing = new Map<string, string[]>()
+  for (const edge of program.edges) {
+    const targets = outgoing.get(edge.source) ?? []
+    targets.push(edge.target)
+    outgoing.set(edge.source, targets)
+  }
+  const bodies = new Map<string, Set<string>>()
+  for (const root of program.nodes) {
+    if (root.type !== 'class' || !root.initCollapsed) continue
+    const body = new Set<string>()
+    const pending = [...(outgoing.get(root.id) ?? [])]
+    while (pending.length) {
+      const id = pending.pop()!
+      if (body.has(id) || nodes.get(id)?.type !== 'input') continue
+      body.add(id)
+      pending.push(...(outgoing.get(id) ?? []))
+    }
+    bodies.set(root.id, body)
+  }
+  return bodies
+}
+
+export function collapsedBlockNodeIds(
+  program: Program,
+  bodies = collapsedBlockBodies(program),
+  initBodies = collapsedInitBodies(program),
+): Set<string> {
+  const hidden = new Set([...bodies.values(), ...initBodies.values()].flatMap(body => [...body]))
   for (const node of program.nodes) {
     if (node.type === 'method' && bodies.has(node.id)) hidden.add(node.id)
   }

@@ -376,6 +376,7 @@ function isNodeShape(node: unknown): node is ProgramNode {
     typeof candidate.text === 'string' &&
     (candidate.comment === undefined || typeof candidate.comment === 'string') &&
     (candidate.collapsed === undefined || typeof candidate.collapsed === 'boolean') &&
+    (candidate.initCollapsed === undefined || typeof candidate.initCollapsed === 'boolean') &&
     (candidate.width === undefined ||
       (typeof candidate.width === 'number' &&
         Number.isFinite(candidate.width) &&

@@ -31,8 +31,8 @@ See [Getting started](docs/getting-started.md) for the complete editor and execu
 - Use `^` for exponents in expressions, such as `squared <- x^2` or `root <- x^0.5`, with no library import needed. Powers group right to left: `2^3^2` is `512`. See the [expression rules](docs/language-reference.md#expression-rules) for precedence and numeric limits.
 - Drag an executable output wire onto empty canvas to choose a new block that is placed and connected immediately. Double-click an existing wire to insert a Process, Call, Input, or Output block; the same command is available under **Edit > Insert block on selected wire**.
 - Double-click a block outside its text field, buttons, or connection handles to edit its comment. Enter saves the comment and closes the dialog; Shift+Enter adds a line. Clear the comment and save to remove it.
-- Use the small **−/+** button in a Function's upper-right corner to hide or restore its flow. Each Method has its own **−/+** button on its name tile in the Class block; collapsing it hides the Method block and its flow. Classes and their init Inputs stay visible. Collapse settings and block positions are saved with the document.
-- Deleting a collapsed Function also deletes its hidden flow and connected wires. Undo restores the entire group. Deleting a Class leaves its init Inputs and Methods on the canvas and reveals any collapsed Methods.
+- Use the small **−/+** button in a Function's upper-right corner to hide or restore its flow. Each Method has its own **−/+** button on its name tile in the Class block; collapsing it hides the Method block and its flow. The **−/+** button on the init card independently hides or restores its Input blocks. Classes stay visible. Collapse settings and block positions are saved with the document.
+- Deleting a collapsed Function also deletes its hidden flow and connected wires. Undo restores the entire group. Deleting a Class leaves its init Inputs and Methods on the canvas and reveals any that were collapsed.
 - Use the left sidebar's Build tab for blocks, validation, and imports, and its Notes tab for document notes. Notes are saved with the program and included in draft recovery.
 
 ## Classes and attributes
@@ -74,7 +74,7 @@ Open **FlowLab > Reference** inside the app to look up available functions and s
 - Automatic local draft recovery, visible save status, and support for reopening unfinished programs.
 - File > Clear empties the current canvas while retaining imports and settings, with Undo to restore it.
 - Imports from FlowLab JSON programs plus native math, text, image, and turtle libraries.
-- JSON loading and saving, including block positions and widths, Function/Method collapse states, comments, document notes, imports, and queued input.
+- JSON loading and saving, including block positions and widths, Function/Method/init collapse states, comments, document notes, imports, and queued input.
 - An in-app function reference that updates with your imports, plus draggable and expandable image and turtle panels.
 
 ## Documentation

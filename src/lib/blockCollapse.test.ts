@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collapsedBlockBodies, collapsedBlockNodeIds } from './blockCollapse'
+import { collapsedBlockBodies, collapsedBlockNodeIds, collapsedInitBodies } from './blockCollapse'
 import { objectSampleProgram } from './objectSampleProgram'
 import type { Program } from './types'
 
@@ -91,5 +91,38 @@ describe('collapsed block bodies', () => {
     expect(collapsedBlockNodeIds(attached)).toEqual(new Set(['method']))
     expect(collapsedBlockNodeIds(program)).toEqual(new Set())
     expect(collapsedBlockNodeIds({ ...attached, nodes: attached.nodes.filter(node => node.id !== 'class') })).toEqual(new Set())
+  })
+
+  it('hides an entire init Input chain independently of Methods, stopping at invalid executable links', () => {
+    const program: Program = {
+      ...objectSampleProgram,
+      nodes: [
+        ...objectSampleProgram.nodes.map(node => node.id === 'point-class' ? { ...node, initCollapsed: true } : node),
+        { id: 'init-y', type: 'input', text: 'y', position: { x: 0, y: 200 } },
+      ],
+      edges: [
+        ...objectSampleProgram.edges,
+        { id: 'init-chain', source: 'point-init', target: 'init-y' },
+        { id: 'init-cycle', source: 'init-y', target: 'point-init' },
+        { id: 'unfinished', source: 'init-y', target: 'move-x' },
+      ],
+    }
+    expect(collapsedInitBodies(program)).toEqual(new Map([['point-class', new Set(['point-init', 'init-y'])]]))
+    expect(collapsedBlockNodeIds(program)).toEqual(new Set(['point-init', 'init-y']))
+    expect(collapsedBlockBodies(program)).toEqual(new Map())
+    const withoutClass = { ...program, nodes: program.nodes.filter(node => node.id !== 'point-class') }
+    expect(collapsedBlockNodeIds(withoutClass)).toEqual(new Set())
+    const disconnected = { ...program, edges: program.edges.filter(edge => edge.source !== 'point-class') }
+    expect(collapsedBlockNodeIds(disconnected)).toEqual(new Set())
+  })
+
+  it('allows empty init cards to keep their own collapse setting', () => {
+    const program: Program = {
+      version: 1,
+      nodes: [{ id: 'class', type: 'class', text: 'Empty', initCollapsed: true, position: { x: 0, y: 0 } }],
+      edges: [],
+    }
+    expect(collapsedInitBodies(program)).toEqual(new Map([['class', new Set()]]))
+    expect(collapsedBlockNodeIds(program)).toEqual(new Set())
   })
 })

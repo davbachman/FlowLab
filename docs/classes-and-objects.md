@@ -20,7 +20,7 @@
 - Class names and attribute names follow the [language's naming rules](language-reference.md#names-and-dictionary-keys). Init names must be unique, and `self` cannot be an init name. Function and Class names share one callable namespace.
 - A Class is a declaration outside the executable flow: it has no incoming wire and connects to its init Inputs and optional Methods. Construct objects from an expression in `main` or another Function or Method.
 - Attribute names appear in the init Inputs; attribute chips are no longer displayed in the Class block.
-- Each attached Method has a small **−/+** button on its name tile in the Class block. Click **−** to hide the Method block and its flow, and **+** to restore them at their original positions. Classes and their init Inputs always stay visible. Method collapse settings are saved with the document and draft recovery. Removing a Class or a Method's attachment wire reveals the affected Methods and their flows.
+- Each attached Method has a small **−/+** button on its name tile in the Class block. Click **−** to hide the Method block and its flow, and **+** to restore them at their original positions. The init card has an independent **−/+** button for its Input chain. Classes stay visible, and hidden init Inputs still initialize attributes normally. Init and Method collapse settings are saved with the document and draft recovery. Removing a Class or an attachment wire reveals the affected blocks. Dragging a new wire from a collapsed init card expands it for text input.
 - Fields may contain any FlowLab value, including Lists, Dictionaries, Images, or other objects.
 
 ## Attach and run methods

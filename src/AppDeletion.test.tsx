@@ -104,12 +104,13 @@ describe('deleting collapsed blocks', () => {
     expect(after.edges).toEqual(objectSampleProgram.edges.filter(edge => edge.source !== id && edge.target !== id))
   })
 
-  it('reveals collapsed Methods when their Class is deleted and restores their settings with Undo', async () => {
+  it('reveals collapsed init Inputs and Methods when their Class is deleted and restores their settings with Undo', async () => {
     const user = userEvent.setup()
     render(<App />)
     await loadObjectExample(user)
     fireEvent.click(screen.getByLabelText('Collapse method move'))
     fireEvent.click(screen.getByLabelText('Collapse method __repr__'))
+    fireEvent.click(screen.getByLabelText('Collapse init Point'))
     fireEvent.click(screen.getByLabelText('Collapse function main'))
     const save = saveGraph(user)
     const before = await save()
@@ -131,6 +132,8 @@ describe('deleting collapsed blocks', () => {
     expect(screen.queryByTestId('flow-node-point-move')).not.toBeInTheDocument()
     expect(screen.queryByTestId('flow-node-move-dx')).not.toBeInTheDocument()
     expect(screen.queryByTestId('flow-node-repr-return')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('flow-node-point-init')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Expand init Point')).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByLabelText('Expand method move')).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByLabelText('Expand method __repr__')).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByTestId('flow-node-object-main')).toHaveAttribute('data-collapsed', 'true')
