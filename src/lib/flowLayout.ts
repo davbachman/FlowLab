@@ -1428,7 +1428,7 @@ function requiredDimensions(
 
 function estimatedNodeHeight(node: ProgramNode, width: number): number {
   const contentWidth = isBranchNodeType(node.type) ? (width - 30) * 0.55 : width - 24
-  const inputWidth = node.type === 'function' || node.type === 'return'
+  const inputWidth = node.type === 'function' || node.type === 'method' || node.type === 'return'
     ? contentWidth * 0.75
     : node.type === 'input' || node.type === 'output' ? contentWidth - 24 : contentWidth
   const textLines = Math.max(1, estimatedWrappedLineCount(

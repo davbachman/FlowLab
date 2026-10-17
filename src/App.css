@@ -1322,6 +1322,7 @@ button:disabled {
 }
 
 .flow-node-function .node-input,
+.flow-node-method .node-input,
 .flow-node-return .node-input {
   width: 75%;
 }
