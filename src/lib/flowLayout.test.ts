@@ -126,6 +126,18 @@ function expectNonBackEdgesDownward(
 }
 
 describe('deterministic control-flow layout', () => {
+  it.each(['function', 'method', 'return', 'if', 'while', 'for'] as const)(
+    'allows enough text width inside an inset %s block',
+    (type) => {
+      const text = 'a_long_name_that_should_fit'
+      const current = node('block', type, text)
+      const width = adaptiveFlowNodeWidth(program([current], []), current)
+      const isDiamond = type === 'if' || type === 'while' || type === 'for'
+      const fieldWidth = isDiamond ? (width - 30) * 0.55 : (width - 24) * 0.75
+      expect(fieldWidth - 18).toBeGreaterThan(text.length * 7.83)
+    },
+  )
+
   it('lays out a linear main flow on one vertical spine', () => {
     const input = program(
       [

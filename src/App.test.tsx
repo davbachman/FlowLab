@@ -21,6 +21,7 @@ import {
   targetHandleForProgramEdge,
 } from './lib/flowRouting'
 import { sampleProgram } from './lib/sampleProgram'
+import { minimumFlowNodeWidth } from './lib/flowLayout'
 import type { Program } from './lib/types'
 
 type TestSaveFilePicker = (options: unknown) => Promise<{
@@ -1759,6 +1760,50 @@ describe('App', () => {
     await user.click(executionButton(/^Run$/i))
     await screen.findByText(/^Completed$/i)
     expect(screen.getByRole('region', { name: /Output/i })).toHaveTextContent(message.trim())
+  })
+
+  it('fits loaded block text before editing and retains that width when text is deleted', async () => {
+    render(<App />)
+    const nodeTypes = ['function', 'class', 'method', 'return', 'process', 'call', 'input', 'output', 'if', 'while', 'for'] as const
+    const text = 'a_long_variable_name_that_needs_more_room'
+    const program: Program = {
+      version: 1,
+      nodes: nodeTypes.map((type, index) => ({
+        id: type,
+        type,
+        text,
+        position: { x: index * 800, y: 0 },
+      })),
+      edges: [],
+    }
+    importProgramFromFileMenu(new File([JSON.stringify(program)], 'long-blocks.json', { type: 'application/json' }))
+    await screen.findByTestId('flow-node-process')
+
+    for (const type of nodeTypes) {
+      const block = screen.getByTestId(`flow-node-${type}`).closest('.react-flow__node') as HTMLElement
+      expect(Number.parseFloat(block.style.width)).toBeGreaterThan(minimumFlowNodeWidth(type))
+    }
+    expect(screen.getByLabelText('Save status')).toHaveTextContent('Saved to file')
+    const process = screen.getByTestId('flow-node-process')
+    const width = process.closest('.react-flow__node')!.getAttribute('style')
+    fireEvent.change(within(process).getByLabelText('Process text'), { target: { value: 'x <- 1' } })
+    expect(process.closest('.react-flow__node')).toHaveAttribute('style', width)
+  })
+
+  it.each([
+    { id: 'main', fraction: 0.75, inset: 24 },
+    { id: 'return', fraction: 0.75, inset: 24 },
+    { id: 'while-n', fraction: 0.55, inset: 30 },
+  ])('widens the inset field in $id enough to fit text while editing', async ({ id, fraction, inset }) => {
+    const user = userEvent.setup()
+    render(<App />)
+    await chooseToolbarAction(user, 'Examples', 'Basic')
+    const node = screen.getByTestId(`flow-node-${id}`)
+    const field = within(node).getByLabelText(/text$/)
+    const text = 'a_long_name_that_should_fit'
+    fireEvent.change(field, { target: { value: text } })
+    const width = Number.parseFloat((node.closest('.react-flow__node') as HTMLElement).style.width)
+    expect((width - inset) * fraction - 18).toBeGreaterThan(text.length * 7.83)
   })
 
   it.each([

@@ -143,7 +143,6 @@ interface FlowNodeData extends Record<string, unknown> {
   autoFocus?: boolean
   comment?: string
   isCurrent?: boolean
-  isWidthCustomized?: boolean
   trueBranchHandle?: string
   attachedMethods?: AttachedMethodHandle[]
   onTextChange?: (nodeId: string, text: string) => void
@@ -1389,16 +1388,14 @@ function App() {
         const currentProgram = toProgram(currentNodes, edgesRef.current)
         return currentNodes.map((node) => {
           if (node.id !== nodeId) return node
-          const editedNode = { ...node, data: { ...node.data, text } }
           const programNode = currentProgram.nodes.find((candidate) => candidate.id === nodeId)!
           const desiredWidth = adaptiveFlowNodeWidth(currentProgram, { ...programNode, text })
-          const currentWidth = node.width ?? node.measured?.width ?? minimumNodeWidth(
-            node.data.nodeType,
-            attachedProgramMethodCount(nodeId, currentProgram),
-          )
-          return desiredWidth > currentWidth
-            ? { ...editedNode, width: desiredWidth }
-            : editedNode
+          const currentWidth = node.width ?? adaptiveFlowNodeWidth(currentProgram, programNode)
+          return {
+            ...node,
+            data: { ...node.data, text },
+            ...(desiredWidth === currentWidth ? {} : { width: Math.max(currentWidth, desiredWidth) }),
+          }
         })
       })
       setExecution(null)
@@ -1414,15 +1411,17 @@ function App() {
 
   const renderNodes = useMemo(
     () =>
-      nodes.map((node) => ({
+      nodes.map((node, index) => ({
         ...node,
+        // Fit loaded text as well as new edits. Keep this display-only until
+        // editing or resizing so opening a file does not mark it as changed.
+        width: node.width ?? adaptiveFlowNodeWidth(program, program.nodes[index]),
         hidden: hiddenNodeIds.has(node.id),
         data: {
           ...node.data,
           isCurrent: (node.id === currentNodeId || (currentNodeId !== null && collapsedBodies.get(node.id)?.has(currentNodeId))) && displayedExecution?.program === displayedExecution?.rootProgram,
           isCollapsed: collapsedBodies.has(node.id),
           onToggleCollapse: toggleBlockCollapse,
-          isWidthCustomized: node.width !== undefined,
           trueBranchHandle: trueBranchHandleForNode(node, edges),
           attachedMethods:
             node.data.nodeType === 'class'
@@ -1441,6 +1440,7 @@ function App() {
       displayedExecution,
       edges,
       nodes,
+      program,
       recordCanvasChangeStart,
       updateNodeText,
       finishEditingNode,
@@ -4783,9 +4783,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
 
   return (
     <div
-      className={`flow-node flow-node-${data.nodeType}${
-        data.isWidthCustomized || isBranch ? ' flow-node-width-custom' : ''
-      }`}
+      className={`flow-node flow-node-${data.nodeType} flow-node-width-custom`}
       data-testid={`flow-node-${id}`}
       data-current={data.isCurrent ? 'true' : 'false'}
       data-breakpoint={!!data.hasBreakpoint}
@@ -4808,7 +4806,7 @@ function FlowChartNode({ id, data, selected }: NodeProps<EditorNode>) {
                 attachedMethods.length,
               )}px`,
             } as CSSProperties)
-          : isBranch && !data.isWidthCustomized ? { width: minimumWidth } : undefined
+          : undefined
       }
     >
       {isBranch ? (

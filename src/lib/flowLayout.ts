@@ -33,7 +33,6 @@ const CLASS_TO_METHOD_GUTTER = 170
 const TALL_NODE_VERTICAL_GUTTER = 96
 const MONOSPACE_CHARACTER_WIDTH = 7.8
 const COMMENT_CHARACTER_WIDTH = 6.5
-const COMMENT_AND_NODE_CHROME_WIDTH = 32
 
 const NODE_WIDTH_RANGE: Record<FlowNodeType, { min: number; max: number }> = {
   function: { min: 194, max: 680 },
@@ -244,20 +243,24 @@ export function adaptiveFlowNodeWidth(
   const maximum = node.type === 'class' ? Math.max(range.max, minimum) : range.max
   const codeLineLength = longestLineLength(node.text)
   const commentLineLength = longestLineLength(node.comment ?? '')
-  // Include the narrower text area inside diamonds and parallelograms.
-  const inputAndNodeChromeWidth = isBranchNodeType(node.type)
-    ? 104
-    : node.type === 'input' || node.type === 'output'
-      ? 64
-      : 48
+  // Match the CSS insets and field widths, leaving a little room for font
+  // rounding. Diamonds use 55% of their width; rounded blocks inset fields
+  // to 75% of the content width.
+  const isBranch = isBranchNodeType(node.type)
+  const isRounded = node.type === 'function' || node.type === 'method' || node.type === 'return'
+  const contentFraction = isBranch ? 0.55 : 1
+  const inputFraction = isRounded ? 0.75 : 1
+  const contentInset = isBranch ? 30 : 24
+  const inputInset = node.type === 'input' || node.type === 'output' ? 16 : 0
   const contentWidth = Math.max(
-    codeLineLength * MONOSPACE_CHARACTER_WIDTH + inputAndNodeChromeWidth,
-    Math.min(commentLineLength, 72) * COMMENT_CHARACTER_WIDTH +
-      COMMENT_AND_NODE_CHROME_WIDTH,
+    (codeLineLength * MONOSPACE_CHARACTER_WIDTH + 24 + inputInset) /
+      inputFraction / contentFraction + contentInset,
+    (Math.min(commentLineLength, 72) * COMMENT_CHARACTER_WIDTH + 8) /
+      contentFraction + contentInset,
   )
   const requestedWidth = Math.max(node.width ?? 0, contentWidth, minimum)
 
-  return Math.round(clamp(requestedWidth, minimum, maximum))
+  return Math.ceil(clamp(requestedWidth, minimum, maximum))
 }
 
 export function estimateProgramNodeDimensions(
