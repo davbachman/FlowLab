@@ -10,12 +10,9 @@ import {
   setDictionaryValue,
 } from './runtimeValues'
 import {
-  parseAssignment,
+  type parseAssignment,
   parseClassDeclaration,
-  parseForLoop,
-  parseInputVariables,
-  splitProcessStatements,
-  splitOutputExpressions,
+  type parseForLoop,
   type AssignmentTarget,
   type ProcessStatementSource,
   type OutputExpressionSource,
@@ -72,6 +69,7 @@ import {
 } from './turtle'
 import { validateProgram } from './validation'
 import { classAttributeNames } from './classInitialization'
+import { preparedDefinition, preparedProgram, refreshDefinitions, refreshProgram } from './runtimePreparation'
 
 export type ExecutionStatus =
   | 'running'
@@ -463,9 +461,8 @@ export function createExecution(
       importedClasses.map((definition) => definition.name),
     ),
   })
-  const mainFunction = program.nodes.find(
-    (node) => node.type === 'function' && node.text.trim() === 'main',
-  )
+  refreshProgram(program)
+  const mainFunction = preparedProgram(program).functions.get('main')
   const turtle = nativeLibraries.includes(TURTLE_LIBRARY_NAME)
     ? initialTurtleState()
     : undefined
@@ -538,17 +535,33 @@ export function replaceExecutionInputQueue(
   }
 }
 
+function refreshRuntime(state: ExecutionState): void {
+  const programs = new Set([state.rootProgram, state.program])
+  for (const definitions of [state.importedFunctions, state.importedClasses, state.importedMethods]) {
+    refreshDefinitions(definitions)
+    for (const definition of definitions) programs.add(definition.program)
+  }
+  for (const frame of state.callStack) programs.add(frame.program)
+  for (const program of programs) refreshProgram(program)
+}
+
 export function runExecution(state: ExecutionState): ExecutionState {
+  refreshRuntime(state)
   let nextState = state
 
   while (nextState.status === 'running' && nextState.currentNodeId) {
-    nextState = stepExecution(nextState)
+    nextState = stepPreparedExecution(nextState)
   }
 
   return nextState
 }
 
 export function stepExecution(state: ExecutionState): ExecutionState {
+  refreshRuntime(state)
+  return stepPreparedExecution(state)
+}
+
+function stepPreparedExecution(state: ExecutionState): ExecutionState {
   if (state.status === 'halted' || state.status === 'error') {
     return state
   }
@@ -573,9 +586,7 @@ export function stepExecution(state: ExecutionState): ExecutionState {
     }
   }
 
-  const node = state.program.nodes.find(
-    (candidate) => candidate.id === state.currentNodeId,
-  )
+  const node = preparedProgram(state.program).nodes.get(state.currentNodeId)
 
   if (!node) {
     return fail(state, `Current node "${state.currentNodeId}" is missing.`)
@@ -734,7 +745,7 @@ function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
   }
 
   if (node.type === 'assignment') {
-    const assignment = parseAssignment(node.text)
+    const assignment = preparedProgram(state.program).assignment(node.text)
     return executeAssignmentNode(state, {
       kind: 'assignment',
       node,
@@ -748,7 +759,7 @@ function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
   }
 
   if (node.type === 'process') {
-    const statements = splitProcessStatements(node.text)
+    const statements = preparedProgram(state.program).process(node.text)
 
     if (!statements.length) {
       return fail(state, `Process node "${node.id}" has no statements.`)
@@ -766,7 +777,7 @@ function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
   }
 
   if (node.type === 'input') {
-    const variables = parseInputVariables(node.text)
+    const variables = preparedProgram(state.program).inputs(node.text)
     const startIndex = state.inputProgress?.nodeId === node.id
       ? state.inputProgress.variableIndex
       : 0
@@ -792,7 +803,7 @@ function executeNode(state: ExecutionState, node: ProgramNode): ExecutionState {
   }
 
   if (node.type === 'output') {
-    const expressions = splitOutputExpressions(node.text)
+    const expressions = preparedProgram(state.program).output(node.text)
     if (!expressions.length) return fail(state, `Output node "${node.id}" has no expressions.`)
     return executeOutputNode(state, {
       kind: 'output',
@@ -822,7 +833,7 @@ function advance(
   node: ProgramNode,
   branchLabel?: BranchLabel,
 ): ExecutionState {
-  const edge = findNextEdge(state.program.edges, node, branchLabel)
+  const edge = findNextEdge(state.program, node, branchLabel)
 
   if (!edge) {
     return fail(
@@ -854,11 +865,11 @@ function advance(
 }
 
 function findNextEdge(
-  edges: ProgramEdge[],
+  program: Program,
   node: ProgramNode,
   branchLabel?: BranchLabel,
 ): ProgramEdge | undefined {
-  const outgoing = edges.filter((edge) => edge.source === node.id)
+  const outgoing = preparedProgram(program).outgoing.get(node.id) ?? []
 
   if (branchLabel) {
     return outgoing.find((edge) => edge.label === branchLabel)
@@ -900,6 +911,7 @@ function resumePendingNode(
   state: ExecutionState,
   pendingNode: PendingNode,
 ): ExecutionState {
+  refreshRuntime(state)
   try {
     return withStepFeedback(
       state,
@@ -922,7 +934,7 @@ function executeProcessStatement(
 
   try {
     if (statement.kind === 'assignment') {
-      const assignment = parseAssignment(statement.text)
+      const assignment = preparedProgram(state.program).assignment(statement.text)
       return executeAssignmentNode(state, {
         kind: 'assignment',
         node,
@@ -1379,7 +1391,7 @@ function evaluateProgramExpression(
   let nextObjectId = state.nextObjectId
 
   try {
-    const value = evaluateExpression(progress.source, environment, {
+    const value = preparedProgram(state.program).expression(progress.source)(environment, {
       getVariable: (name) => {
         throw undefinedLocalVariable(state, name, objectHeap)
       },
@@ -1931,7 +1943,7 @@ function executeForNode(
   state: ExecutionState,
   node: ProgramNode,
 ): ExecutionState {
-  const forLoop = parseForLoop(node.text)
+  const forLoop = preparedProgram(state.program).forLoop(node.text)
   const existingFrame = state.forLoops[node.id]
   if (!existingFrame) {
     return executeForPendingNode(state, {
@@ -2466,16 +2478,11 @@ function findFunctionNode(
   program: Program,
   name: string,
 ): ProgramNode | undefined {
-  return program.nodes.find(
-    (candidate) =>
-      candidate.type === 'function' && candidate.text.trim() === name,
-  )
+  return preparedProgram(program).functions.get(name)
 }
 
 function findMethodNode(program: Program, name: string): ProgramNode | undefined {
-  return program.nodes.find((candidate) => {
-    return attachedMethodDefinition(program, candidate)?.qualifiedName === name
-  })
+  return preparedProgram(program).methods.get(name)
 }
 
 function findMethodTarget(
@@ -2588,48 +2595,28 @@ function findClassDefinition(
     return undefined
   }
 
-  return state.importedClasses.find((definition) => definition.name === name)
+  return preparedDefinition(state.importedClasses, name)
 }
 
 function findClassDefinitionInProgram(
   program: Program,
   name: string,
 ): ImportedClassDefinition | undefined {
-  for (const node of program.nodes) {
-    if (node.type !== 'class') {
-      continue
-    }
-
-    try {
-      const declaration = parseClassDeclaration(node.text)
-      if (declaration.name === name) {
-        return {
-          name,
-          fields: classAttributeNames(program, node),
-          program,
-          node,
-        }
-      }
-    } catch {
-      // Invalid declarations are reported before execution starts.
-    }
-  }
-
-  return undefined
+  return preparedProgram(program).classes.get(name)
 }
 
 function findImportedFunction(
   state: ExecutionState,
   name: string,
 ): ImportedFunctionDefinition | undefined {
-  return state.importedFunctions.find((definition) => definition.name === name)
+  return preparedDefinition(state.importedFunctions, name)
 }
 
 function findImportedMethod(
   state: ExecutionState,
   name: string,
 ): ImportedMethodDefinition | undefined {
-  return state.importedMethods.find((definition) => definition.name === name)
+  return preparedDefinition(state.importedMethods, name)
 }
 
 function normalizeNativeLibraries(nativeLibraries: string[]): string[] {
@@ -2680,10 +2667,7 @@ function isNativeFunctionAvailable(state: ExecutionState, name: string): boolean
 }
 
 function hasFlowLabFunctionTarget(state: ExecutionState, name: string): boolean {
-  const functionNode = state.program.nodes.find(
-    (candidate) =>
-      candidate.type === 'function' && candidate.text.trim() === name,
-  )
+  const functionNode = findFunctionNode(state.program, name)
   const rootFunctionNode =
     state.program === state.rootProgram
       ? functionNode

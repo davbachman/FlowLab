@@ -147,6 +147,14 @@ export function evaluateExpression(
   return evaluate(parseExpression(source), environment, context)
 }
 
+/** Internal runtime entry point: the closed-over tree contains syntax only. */
+export function prepareExpression(source: string): (
+  environment: Environment, context?: ExpressionEvaluationContext,
+) => RuntimeValue {
+  const expression = parseExpression(source)
+  return (environment, context = {}) => evaluate(expression, environment, context)
+}
+
 export function findExpressionCallNames(source: string): string[] {
   const names = new Set<string>()
   collectCallNames(parseExpression(source), names)
