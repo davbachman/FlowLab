@@ -38,6 +38,8 @@ try {
       if (debuggerApi) {
         while (state.status === 'running') state = debuggerApi.runExecutionChunk(state, { maxSteps: 10000, maxMilliseconds: Infinity, collectFeedback: false }).state
       } else state = interpreter.runExecution(state)
+      // Include the cost of exposing the final plain public heap in both versions.
+      void state.objectHeap
       const elapsed = performance.now() - start
       assert.equal(state.status, 'halted', state.error)
       const images = Object.values(state.image?.images ?? {}).map(img => ({ width: img.width, height: img.height, pixels: Array.from(img.pixels) }))

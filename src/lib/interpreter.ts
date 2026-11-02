@@ -70,6 +70,7 @@ import {
 import { validateProgram } from './validation'
 import { classAttributeNames } from './classInitialization'
 import { preparedDefinition, preparedProgram, refreshDefinitions, refreshProgram } from './runtimePreparation'
+import { exposeExecutionState, heapInstance, withHeapInstance, withHeapSnapshot } from './objectStorage'
 
 export type ExecutionStatus =
   | 'running'
@@ -441,6 +442,14 @@ export function createExecution(
   inputQueue: string[],
   options: ExecutionOptions = {},
 ): ExecutionState {
+  return exposeExecutionState(createInitialExecution(program, inputQueue, options))
+}
+
+function createInitialExecution(
+  program: Program,
+  inputQueue: string[],
+  options: ExecutionOptions = {},
+): ExecutionState {
   const nativeLibraries = normalizeNativeLibraries(options.nativeLibraries ?? [])
   const importedDefinitions = buildImportedDefinitions(
     program,
@@ -525,7 +534,11 @@ export function createExecution(
  * rules as execution startup. The caller controls when the execution resumes;
  * a waiting state deliberately stays waiting while the user is still typing.
  */
-export function replaceExecutionInputQueue(
+export function replaceExecutionInputQueue(state: ExecutionState, rawValues: readonly string[]): ExecutionState {
+  return withHeapSnapshot(state, internal => replaceExecutionInputQueueInternal(internal, rawValues))
+}
+
+function replaceExecutionInputQueueInternal(
   state: ExecutionState,
   rawValues: readonly string[],
 ): ExecutionState {
@@ -546,6 +559,10 @@ function refreshRuntime(state: ExecutionState): void {
 }
 
 export function runExecution(state: ExecutionState): ExecutionState {
+  return withHeapSnapshot(state, runInternalExecution)
+}
+
+function runInternalExecution(state: ExecutionState): ExecutionState {
   refreshRuntime(state)
   let nextState = state
 
@@ -557,8 +574,10 @@ export function runExecution(state: ExecutionState): ExecutionState {
 }
 
 export function stepExecution(state: ExecutionState): ExecutionState {
-  refreshRuntime(state)
-  return stepPreparedExecution(state)
+  return withHeapSnapshot(state, internal => {
+    refreshRuntime(internal)
+    return stepPreparedExecution(internal)
+  })
 }
 
 function stepPreparedExecution(state: ExecutionState): ExecutionState {
@@ -606,7 +625,11 @@ function stepPreparedExecution(state: ExecutionState): ExecutionState {
   }
 }
 
-export function answerAskExecution(
+export function answerAskExecution(state: ExecutionState, rawValue: string): ExecutionState {
+  return withHeapSnapshot(state, internal => answerAskExecutionInternal(internal, rawValue))
+}
+
+function answerAskExecutionInternal(
   state: ExecutionState,
   rawValue: string,
 ): ExecutionState {
@@ -631,7 +654,11 @@ export function answerAskExecution(
   )
 }
 
-export function completeTextLoadExecution(
+export function completeTextLoadExecution(state: ExecutionState, text: string): ExecutionState {
+  return withHeapSnapshot(state, internal => completeTextLoadExecutionInternal(internal, text))
+}
+
+function completeTextLoadExecutionInternal(
   state: ExecutionState,
   text: string,
 ): ExecutionState {
@@ -656,7 +683,11 @@ export function completeTextLoadExecution(
   )
 }
 
-export function failTextLoadExecution(
+export function failTextLoadExecution(state: ExecutionState, error: string): ExecutionState {
+  return withHeapSnapshot(state, internal => failTextLoadExecutionInternal(internal, error))
+}
+
+function failTextLoadExecutionInternal(
   state: ExecutionState,
   error: string,
 ): ExecutionState {
@@ -673,7 +704,11 @@ export function failTextLoadExecution(
   )
 }
 
-export function completeImageLoadExecution(
+export function completeImageLoadExecution(state: ExecutionState, loaded: LoadedImageData): ExecutionState {
+  return withHeapSnapshot(state, internal => completeImageLoadExecutionInternal(internal, loaded))
+}
+
+function completeImageLoadExecutionInternal(
   state: ExecutionState,
   loaded: LoadedImageData,
 ): ExecutionState {
@@ -710,7 +745,11 @@ export function completeImageLoadExecution(
   }
 }
 
-export function failImageLoadExecution(
+export function failImageLoadExecution(state: ExecutionState, error: string): ExecutionState {
+  return withHeapSnapshot(state, internal => failImageLoadExecutionInternal(internal, error))
+}
+
+function failImageLoadExecutionInternal(
   state: ExecutionState,
   error: string,
 ): ExecutionState {
@@ -1420,16 +1459,13 @@ function evaluateProgramExpression(
             id: nextObjectId,
             className: name,
           }
-          objectHeap = {
-            ...objectHeap,
-            [object.id]: {
-              id: object.id,
-              className: name,
-              fields: Object.fromEntries(
-                classDefinition.fields.map((field, index) => [field, args[index]]),
-              ),
-            },
-          }
+          objectHeap = withHeapInstance(objectHeap, {
+            id: object.id,
+            className: name,
+            fields: Object.fromEntries(
+              classDefinition.fields.map((field, index) => [field, args[index]]),
+            ),
+          })
           nextObjectId += 1
           progress.completedCalls[currentCallIndex] = object
           return object
@@ -1896,7 +1932,11 @@ function addCompletedCallResult(
     ...progress.completedCalls,
     [callIndex]: value,
   }
-  const nextProgress = { ...progress, completedCalls }
+  const nextProgress = {
+    ...progress, completedCalls,
+    completedMemberReads: { ...progress.completedMemberReads },
+    completedRandomValues: { ...progress.completedRandomValues },
+  }
 
   switch (key) {
     case 'expression':
@@ -1905,7 +1945,17 @@ function addCompletedCallResult(
       if (pendingNode.kind !== 'assignment') {
         throw new Error('Only Assignment nodes have value expressions.')
       }
-      return { ...pendingNode, valueExpression: nextProgress }
+      return {
+        ...pendingNode, valueExpression: nextProgress,
+        // Evaluating a completed RHS may now start the index expression. Its
+        // progress was also visible in the older suspended caller snapshot.
+        indexExpression: pendingNode.indexExpression ? {
+          ...pendingNode.indexExpression,
+          completedCalls: { ...pendingNode.indexExpression.completedCalls },
+          completedMemberReads: { ...pendingNode.indexExpression.completedMemberReads },
+          completedRandomValues: { ...pendingNode.indexExpression.completedRandomValues },
+        } : undefined,
+      }
     case 'indexExpression':
       if (pendingNode.kind !== 'assignment') {
         throw new Error('Only Assignment nodes have index expressions.')
@@ -2218,23 +2268,20 @@ function setObjectField(
 ): ObjectHeap {
   const instance = requireObjectInstance(objectHeap, object)
 
-  return {
-    ...objectHeap,
-    [instance.id]: {
-      ...instance,
-      fields: {
-        ...instance.fields,
-        [field]: value,
-      },
+  return withHeapInstance(objectHeap, {
+    ...instance,
+    fields: {
+      ...instance.fields,
+      [field]: value,
     },
-  }
+  })
 }
 
 function requireObjectInstance(
   objectHeap: ObjectHeap,
   object: RuntimeObject,
 ): RuntimeObjectInstance {
-  const instance = objectHeap[object.id]
+  const instance = heapInstance(objectHeap, object.id)
 
   if (!instance) {
     throw new Error(
@@ -2263,7 +2310,7 @@ function stringifyHeapValue(
   }
 
   if (isRuntimeObject(value)) {
-    const instance = state.objectHeap[value.id]
+    const instance = heapInstance(state.objectHeap, value.id)
     if (!instance) {
       return `${value.className} #${value.id} <missing>`
     }
@@ -2817,8 +2864,8 @@ function debugValuesEqual(
     if (before.id !== after.id || before.className !== after.className) return false
     if (seenObjects.has(before.id)) return true
     seenObjects.add(before.id)
-    const previous = beforeHeap[before.id]?.fields
-    const next = afterHeap[after.id]?.fields
+    const previous = heapInstance(beforeHeap, before.id)?.fields
+    const next = heapInstance(afterHeap, after.id)?.fields
     if (previous === next) return true
     if (!previous || !next) return false
     const names = new Set([...Object.keys(previous), ...Object.keys(next)])

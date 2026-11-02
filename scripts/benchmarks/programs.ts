@@ -70,10 +70,29 @@ export const mandelbrot = program([
   ['complex', 'mul'], ['mul', 'mul-input'], ['mul-input', 'mul-result'],
   ['complex', 'add'], ['add', 'add-input'], ['add-input', 'add-result']])
 
+export const allocations = program([
+  ['main', 'function', 'main'], ['init', 'process', 'i <- 0'], ['loop', 'while', 'i < 30000'],
+  ['body', 'process', 'item <- Cell(i)\ni <- i + 1'], ['end', 'return', 'item.value'],
+  ['cell', 'class', 'Cell(value)'],
+], [['main', 'init'], ['init', 'loop'], ['loop', 'body', 'true'], ['body', 'loop'], ['loop', 'end', 'false']])
+
+export const aliasMutations = program([
+  ['main', 'function', 'main'], ['init', 'process', 'items <- []\ni <- 0'],
+  ['allocate', 'while', 'i < 6000'], ['add', 'process', 'items <- items + [Cell(i)]\ni <- i + 1'],
+  ['reset', 'process', 'i <- 0'], ['mutate', 'while', 'i < 18000'],
+  ['body', 'process', 'alias <- items[i % 6000]\nalias.bump()\ni <- i + 1'],
+  ['end', 'return', '[items[0].value, items[5999].value]'], ['cell', 'class', 'Cell(value)'],
+  ['bump', 'method', 'bump'], ['change', 'process', 'self.value <- self.value + 1'], ['result', 'return', 'self'],
+], [['main', 'init'], ['init', 'allocate'], ['allocate', 'add', 'true'], ['add', 'allocate'], ['allocate', 'reset', 'false'],
+  ['reset', 'mutate'], ['mutate', 'body', 'true'], ['body', 'mutate'], ['mutate', 'end', 'false'],
+  ['cell', 'bump'], ['bump', 'change'], ['change', 'result']])
+
 export const workloads = [
   { name: 'procedural', program: procedural, inputs: ['20000'], options: {} },
   { name: 'recursive', program: recursive, inputs: [], options: {} },
   { name: 'mutating-object', program: mutating, inputs: [], options: {} },
   { name: 'imported-library', program: imported, inputs: [], options: { importedPrograms: [libraryA, libraryB] } },
   { name: 'mandelbrot-51x51-30', program: mandelbrot, inputs: [], options: { nativeLibraries: ['image'] } },
+  { name: 'many-allocations', program: allocations, inputs: [], options: {} },
+  { name: 'many-alias-mutations', program: aliasMutations, inputs: [], options: {} },
 ]

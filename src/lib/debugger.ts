@@ -1,7 +1,12 @@
 import { executionVariableChanges, stepExecution, type ExecutionState } from './interpreter'
+import { withHeapSnapshot } from './objectStorage'
 
 /** Keep the caller visible while stepping over a call, including waits/errors. */
 export function visibleExecution(state: ExecutionState): ExecutionState {
+  return withHeapSnapshot(state, visibleInternalExecution)
+}
+
+function visibleInternalExecution(state: ExecutionState): ExecutionState {
   const current = finishStepOverCall(state)
   const caller = current.stepOverCall?.caller
   return {
@@ -118,6 +123,18 @@ export function hasPendingStepOver(result: ExecutionChunkResult): boolean {
 export function runExecutionChunk(
   state: ExecutionState,
   options: ExecutionChunkOptions = {},
+): ExecutionChunkResult {
+  let result!: ExecutionChunkResult
+  const next = withHeapSnapshot(state, internal => {
+    result = runInternalExecutionChunk(internal, options)
+    return result.state
+  })
+  return { ...result, state: next }
+}
+
+function runInternalExecutionChunk(
+  state: ExecutionState,
+  options: ExecutionChunkOptions,
 ): ExecutionChunkResult {
   const collectFeedback = options.collectFeedback ?? state.collectFeedback
   const limit = Math.max(1, Math.floor(options.maxSteps ?? (collectFeedback === false ? 10000 : 100)))

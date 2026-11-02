@@ -1,0 +1,1121 @@
+{
+  "date": "2026-11-02",
+  "baselineCommit": "e140bdf",
+  "optimizedRevision": "e140bdf plus the object-storage working tree; identify exact runtime sources by optimizedManifest.sha256",
+  "baselineManifest": {
+    "sha256": "2472cdcf0409f6df87382d4475d652f1e706dfbace4141bedf849cccf59e9c39",
+    "files": {
+      "src/lib/adaptiveSmoothStep.ts": "8b2fc1307846025d6a5a457f9288714d9c41cc6a802cd08b8d9a9b857c53eb3f",
+      "src/lib/additionalSamplePrograms.ts": "e271f26207d46f37796e69c8314d43afa3c1fc73ef59d802710005b1b6162a6f",
+      "src/lib/blockCollapse.ts": "aa3e35c76fb14c304b2f7a31424deadcfca17fe8281395b3dd9c781c526d4304",
+      "src/lib/classInitialization.ts": "5b32f7d4b6b361d2403eabd5383ad2bea040c0d391ce4e4bf1d1aa74eebdc3ed",
+      "src/lib/classMethods.ts": "d8796327b72ab39b93f67775c1fab5bb11f29df4fe4c48f18b2368e0ab99c82c",
+      "src/lib/codeCleanup.ts": "02c82f62e2217419b2dad0e9c673209324557efe7cf046c079818400c93f0026",
+      "src/lib/debugger.ts": "025e37ef047846b611033b8f4f2cd988aaad84a01d58ae8d22f3e304eba9f666",
+      "src/lib/documentRecovery.ts": "7323a3e14d99b34745d27e522e7aa7333df4ba73f611b2aeff4701c2afbc2306",
+      "src/lib/drafts.ts": "96a51096c982a3066bb652d83a7b647e6bf212922a8f4b16cf46b16a2408ebca",
+      "src/lib/editorEdges.ts": "4d84595472ce47c4b67ab9fc1097640dd91977ee4b8511fc4633daca277ed6af",
+      "src/lib/examples.ts": "05bca9434ba290155316df9271b4a7d43a98c4551bd044f0d2a0fb19379dee2a",
+      "src/lib/expression.ts": "2de8571fdb77dd026c9848c034e3f8489c5a3869c3fed347774acdfa8233700e",
+      "src/lib/flowLayout.ts": "795360a31024664970d032ddaea9646be5d00933513f7765261474d5bc2e5b17",
+      "src/lib/flowRouting.ts": "4fa6a4b768b21c8e056050da197b6191a71f307fdb753f1bee3a91e53c1d64fb",
+      "src/lib/functionReference.ts": "b0198f815aa868e0771e3b324f2c1ce2f8267c1a5c310f6efd1a45acb301f4ab",
+      "src/lib/image.ts": "9a2ed76c640233d9f8b4312a389f752120fd595ba63fabdceeb4cef8c1add870",
+      "src/lib/imports.ts": "8ab34ae04807aa68eea0f16c9ecd92f80bde55a3ab3aa95a55ed060ede30e223",
+      "src/lib/interpreter.ts": "61ac277abe31823a159ee5a507d7b2e5e8126872dc0091cf006a4e2cc417a70a",
+      "src/lib/math.ts": "bf435d26e49e44a30b077e00097a0ed7376e6dfcad28cd7f78f6604fa93f9021",
+      "src/lib/objectSampleProgram.ts": "e4161e833c6e9a9e88cb3adbe0bf22432578d5025dddc28a83738ed7231c2bc0",
+      "src/lib/processConsolidation.ts": "043fc4698c41222333f1ca081c3b4fc12fbf496d5ddda3f38127cca292655ffb",
+      "src/lib/runtimePreparation.ts": "708c649c93531fee7ca2c55b886f14f75178a3c5cd9d9afe7c66945e3e29546a",
+      "src/lib/runtimeValues.ts": "2e2776e6754024f093d3bb0ea09ced83bddd2d7ae4c8c1cb639548da0077b7c6",
+      "src/lib/sampleProgram.ts": "24546bf58c256139ced9585adc1233e7ae453ad5029cdae19d458a82e65b7df4",
+      "src/lib/statements.ts": "77aeb3dc0446a87470cf9e19be19e0153eacd2af16b2be211dd69d6c3d7ea952",
+      "src/lib/text.ts": "d2524eff17b8e2ef2e8b3b2ca83f4a777760d357a8bf788cce2c73fe57a9b53f",
+      "src/lib/turtle.ts": "67a12adfdb98f2894e65cbceea0e1a829c99550fa5a78be80e20a1bb63796fb4",
+      "src/lib/types.ts": "f37b85fd5bfc87d865e55a652f8c572b5b41681780fcac84dbf570e900f3201c",
+      "src/lib/validation.ts": "7dad7a1f58e55477ac7bec11fc45ab9623d287e6122916002900606f8448caa1",
+      "src/lib/validationFeedback.ts": "1843da5204872a00851f880e82c3cf66be14101e8b7960df03e358c52743081c",
+      "src/lib/wireInsertion.ts": "8c6914efed700d94589c591de52cd065f6736892c9663e7333b2d507a2969fba"
+    }
+  },
+  "optimizedManifest": {
+    "sha256": "29432603be6950e0ba207a0e921eb737ffa2cde4304b4cc7edd5e5e95950fc55",
+    "files": {
+      "src/lib/adaptiveSmoothStep.ts": "8b2fc1307846025d6a5a457f9288714d9c41cc6a802cd08b8d9a9b857c53eb3f",
+      "src/lib/additionalSamplePrograms.ts": "e271f26207d46f37796e69c8314d43afa3c1fc73ef59d802710005b1b6162a6f",
+      "src/lib/blockCollapse.ts": "aa3e35c76fb14c304b2f7a31424deadcfca17fe8281395b3dd9c781c526d4304",
+      "src/lib/classInitialization.ts": "5b32f7d4b6b361d2403eabd5383ad2bea040c0d391ce4e4bf1d1aa74eebdc3ed",
+      "src/lib/classMethods.ts": "d8796327b72ab39b93f67775c1fab5bb11f29df4fe4c48f18b2368e0ab99c82c",
+      "src/lib/codeCleanup.ts": "02c82f62e2217419b2dad0e9c673209324557efe7cf046c079818400c93f0026",
+      "src/lib/debugger.ts": "0a257041bf62fa40fe062d70bf4e1ba7902cb3c642062d6c55079a91782fc85e",
+      "src/lib/documentRecovery.ts": "7323a3e14d99b34745d27e522e7aa7333df4ba73f611b2aeff4701c2afbc2306",
+      "src/lib/drafts.ts": "96a51096c982a3066bb652d83a7b647e6bf212922a8f4b16cf46b16a2408ebca",
+      "src/lib/editorEdges.ts": "4d84595472ce47c4b67ab9fc1097640dd91977ee4b8511fc4633daca277ed6af",
+      "src/lib/examples.ts": "05bca9434ba290155316df9271b4a7d43a98c4551bd044f0d2a0fb19379dee2a",
+      "src/lib/expression.ts": "2de8571fdb77dd026c9848c034e3f8489c5a3869c3fed347774acdfa8233700e",
+      "src/lib/flowLayout.ts": "795360a31024664970d032ddaea9646be5d00933513f7765261474d5bc2e5b17",
+      "src/lib/flowRouting.ts": "4fa6a4b768b21c8e056050da197b6191a71f307fdb753f1bee3a91e53c1d64fb",
+      "src/lib/functionReference.ts": "b0198f815aa868e0771e3b324f2c1ce2f8267c1a5c310f6efd1a45acb301f4ab",
+      "src/lib/image.ts": "9a2ed76c640233d9f8b4312a389f752120fd595ba63fabdceeb4cef8c1add870",
+      "src/lib/imports.ts": "8ab34ae04807aa68eea0f16c9ecd92f80bde55a3ab3aa95a55ed060ede30e223",
+      "src/lib/interpreter.ts": "d799f994b407f3234987d72c3c9c102f1c45d8d615300389a785273beffa0843",
+      "src/lib/math.ts": "bf435d26e49e44a30b077e00097a0ed7376e6dfcad28cd7f78f6604fa93f9021",
+      "src/lib/objectSampleProgram.ts": "e4161e833c6e9a9e88cb3adbe0bf22432578d5025dddc28a83738ed7231c2bc0",
+      "src/lib/objectStorage.ts": "8609da4039d7deb005201d158f617d743ee3bdbe97aebbd29ba4a2106275f11c",
+      "src/lib/processConsolidation.ts": "043fc4698c41222333f1ca081c3b4fc12fbf496d5ddda3f38127cca292655ffb",
+      "src/lib/runtimePreparation.ts": "708c649c93531fee7ca2c55b886f14f75178a3c5cd9d9afe7c66945e3e29546a",
+      "src/lib/runtimeValues.ts": "2e2776e6754024f093d3bb0ea09ced83bddd2d7ae4c8c1cb639548da0077b7c6",
+      "src/lib/sampleProgram.ts": "24546bf58c256139ced9585adc1233e7ae453ad5029cdae19d458a82e65b7df4",
+      "src/lib/statements.ts": "77aeb3dc0446a87470cf9e19be19e0153eacd2af16b2be211dd69d6c3d7ea952",
+      "src/lib/text.ts": "d2524eff17b8e2ef2e8b3b2ca83f4a777760d357a8bf788cce2c73fe57a9b53f",
+      "src/lib/turtle.ts": "67a12adfdb98f2894e65cbceea0e1a829c99550fa5a78be80e20a1bb63796fb4",
+      "src/lib/types.ts": "f37b85fd5bfc87d865e55a652f8c572b5b41681780fcac84dbf570e900f3201c",
+      "src/lib/validation.ts": "7dad7a1f58e55477ac7bec11fc45ab9623d287e6122916002900606f8448caa1",
+      "src/lib/validationFeedback.ts": "1843da5204872a00851f880e82c3cf66be14101e8b7960df03e358c52743081c",
+      "src/lib/wireInsertion.ts": "8c6914efed700d94589c591de52cd065f6736892c9663e7333b2d507a2969fba"
+    }
+  },
+  "method": "Serial Node/Vite SSR execution; same unchanged fixtures on each source revision; fresh program/import clone per execution; 2 warmups and 5 samples; medians. Final ordinary public heap materialization is inside each timed interval. Deep observations and instrumentation are outside the execution timing comparison.",
+  "headless": {
+    "before": {
+      "environment": {
+        "node": "v25.6.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4"
+      },
+      "mode": "headless",
+      "repeats": 5,
+      "warmups": 2,
+      "workloads": [
+        {
+          "name": "procedural",
+          "durationsMs": [
+            17.76345900000001,
+            17.59383299999996,
+            17.535000000000025,
+            17.689584000000025,
+            17.946000000000026
+          ],
+          "medianMs": 17.689584000000025,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 40005,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "recursive",
+          "durationsMs": [
+            26.62254200000001,
+            26.24270899999999,
+            27.590292000000034,
+            28.21220799999992,
+            26.83212500000002
+          ],
+          "medianMs": 26.83212500000002,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 12774,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "mutating-object",
+          "durationsMs": [
+            33.72245899999996,
+            31.775875000000042,
+            35.373707999999965,
+            36.68983300000002,
+            35.17270800000006
+          ],
+          "medianMs": 35.17270800000006,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 18004,
+          "objects": 1,
+          "imageBytes": 0
+        },
+        {
+          "name": "imported-library",
+          "durationsMs": [
+            39.24879099999998,
+            38.28979099999992,
+            37.750125000000025,
+            37.29991599999994,
+            39.039833000000044
+          ],
+          "medianMs": 38.28979099999992,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 16004,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "durationsMs": [
+            1591.9014159999997,
+            1551.1578330000002,
+            1525.8206249999994,
+            1525.7056659999998,
+            1506.3124580000003
+          ],
+          "medianMs": 1525.8206249999994,
+          "pixelSha256": "cc1372e6db5b652bfbfc49a8c14e89a03409b091bd4384c39d0138d9cb912cb3",
+          "steps": 187253,
+          "objects": 49362,
+          "imageBytes": 10404
+        },
+        {
+          "name": "many-allocations",
+          "durationsMs": [
+            438.59208299999955,
+            419.93491600000016,
+            423.3357500000002,
+            419.4617500000004,
+            413.0920839999999
+          ],
+          "medianMs": 419.93491600000016,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 60004,
+          "objects": 30000,
+          "imageBytes": 0
+        },
+        {
+          "name": "many-alias-mutations",
+          "durationsMs": [
+            321.7607919999991,
+            319.585833000001,
+            318.8963750000021,
+            317.2493749999994,
+            320.26766599999974
+          ],
+          "medianMs": 319.585833000001,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 102006,
+          "objects": 6000,
+          "imageBytes": 0
+        }
+      ]
+    },
+    "after": {
+      "environment": {
+        "node": "v25.6.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4"
+      },
+      "mode": "headless",
+      "repeats": 5,
+      "warmups": 2,
+      "workloads": [
+        {
+          "name": "procedural",
+          "durationsMs": [
+            17.695208000000008,
+            17.755584000000027,
+            17.41345799999999,
+            17.421875,
+            17.788542000000007
+          ],
+          "medianMs": 17.695208000000008,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 0.999682173840512,
+          "steps": 40005,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "recursive",
+          "durationsMs": [
+            28.10387499999996,
+            29.95658400000002,
+            28.586792000000003,
+            29.2885,
+            28.784249999999986
+          ],
+          "medianMs": 28.784249999999986,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 0.9321807933157902,
+          "steps": 12774,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "mutating-object",
+          "durationsMs": [
+            34.75304099999994,
+            33.784374999999955,
+            33.49354200000005,
+            33.803833000000054,
+            33.48391700000002
+          ],
+          "medianMs": 33.784374999999955,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 1.0410939376560941,
+          "steps": 18004,
+          "objects": 1,
+          "imageBytes": 0
+        },
+        {
+          "name": "imported-library",
+          "durationsMs": [
+            41.04987500000004,
+            39.14512500000001,
+            39.01558299999999,
+            38.77099999999996,
+            40.22637499999996
+          ],
+          "medianMs": 39.14512500000001,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 0.9781496674234638,
+          "steps": 16004,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "durationsMs": [
+            566.1106249999998,
+            571.0049170000002,
+            610.8642500000001,
+            575.4822500000005,
+            579.5242079999998
+          ],
+          "medianMs": 575.4822500000005,
+          "pixelSha256": "cc1372e6db5b652bfbfc49a8c14e89a03409b091bd4384c39d0138d9cb912cb3",
+          "speedup": 2.6513773882687053,
+          "steps": 187253,
+          "objects": 49362,
+          "imageBytes": 10404
+        },
+        {
+          "name": "many-allocations",
+          "durationsMs": [
+            84.86308300000019,
+            77.05641700000069,
+            77.23275000000012,
+            77.89954200000011,
+            79.73466700000063
+          ],
+          "medianMs": 77.89954200000011,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 5.390723811957708,
+          "steps": 60004,
+          "objects": 30000,
+          "imageBytes": 0
+        },
+        {
+          "name": "many-alias-mutations",
+          "durationsMs": [
+            306.15850000000046,
+            307.8337080000001,
+            305.4270410000008,
+            302.37987499999963,
+            303.9379170000002
+          ],
+          "medianMs": 305.4270410000008,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 1.0463573623135751,
+          "steps": 102006,
+          "objects": 6000,
+          "imageBytes": 0
+        }
+      ]
+    }
+  },
+  "chunks": {
+    "before": {
+      "environment": {
+        "node": "v25.6.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4"
+      },
+      "mode": "chunks",
+      "repeats": 5,
+      "warmups": 2,
+      "workloads": [
+        {
+          "name": "procedural",
+          "durationsMs": [
+            29.46562499999999,
+            25.604916000000003,
+            27.00933299999997,
+            25.806666000000007,
+            26.07329199999998
+          ],
+          "medianMs": 26.07329199999998,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 40005,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "recursive",
+          "durationsMs": [
+            36.30975000000001,
+            35.598957999999925,
+            36.78724999999997,
+            35.45595800000001,
+            35.97708299999999
+          ],
+          "medianMs": 35.97708299999999,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 12774,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "mutating-object",
+          "durationsMs": [
+            44.86129200000005,
+            44.42208400000004,
+            43.70179200000007,
+            44.67283299999997,
+            44.97870899999998
+          ],
+          "medianMs": 44.67283299999997,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 18004,
+          "objects": 1,
+          "imageBytes": 0
+        },
+        {
+          "name": "imported-library",
+          "durationsMs": [
+            60.39920899999993,
+            56.79045899999983,
+            56.803333000000066,
+            56.92104199999994,
+            55.055458000000044
+          ],
+          "medianMs": 56.803333000000066,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 16004,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "durationsMs": [
+            1793.2879589999993,
+            1781.4153749999996,
+            1775.987792,
+            1775.930083000001,
+            1766.1990409999999
+          ],
+          "medianMs": 1775.987792,
+          "pixelSha256": "cc1372e6db5b652bfbfc49a8c14e89a03409b091bd4384c39d0138d9cb912cb3",
+          "steps": 187253,
+          "objects": 49362,
+          "imageBytes": 10404
+        },
+        {
+          "name": "many-allocations",
+          "durationsMs": [
+            492.5894589999989,
+            489.17504199999894,
+            489.6404999999977,
+            488.2574170000007,
+            491.56554099999994
+          ],
+          "medianMs": 489.6404999999977,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 60004,
+          "objects": 30000,
+          "imageBytes": 0
+        },
+        {
+          "name": "many-alias-mutations",
+          "durationsMs": [
+            402.2215419999993,
+            396.68141599999944,
+            398.2952499999992,
+            398.7662500000006,
+            403.7781670000004
+          ],
+          "medianMs": 398.7662500000006,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "steps": 102006,
+          "objects": 6000,
+          "imageBytes": 0
+        }
+      ]
+    },
+    "after": {
+      "environment": {
+        "node": "v25.6.0",
+        "platform": "darwin",
+        "arch": "arm64",
+        "cpu": "Apple M4"
+      },
+      "mode": "chunks",
+      "repeats": 5,
+      "warmups": 2,
+      "workloads": [
+        {
+          "name": "procedural",
+          "durationsMs": [
+            27.34254100000004,
+            26.135625000000005,
+            25.510125000000016,
+            25.694834000000014,
+            25.654791999999986
+          ],
+          "medianMs": 25.694834000000014,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 1.0147289529093657,
+          "steps": 40005,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "recursive",
+          "durationsMs": [
+            36.97170799999998,
+            37.93579199999999,
+            37.26770799999997,
+            37.340625000000045,
+            38.28387500000008
+          ],
+          "medianMs": 37.340625000000045,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 0.9634836856640709,
+          "steps": 12774,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "mutating-object",
+          "durationsMs": [
+            47.64300000000003,
+            48.199250000000006,
+            49.11841700000002,
+            51.57879200000002,
+            49.12491699999998
+          ],
+          "medianMs": 49.11841700000002,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 0.9094925229369657,
+          "steps": 18004,
+          "objects": 1,
+          "imageBytes": 0
+        },
+        {
+          "name": "imported-library",
+          "durationsMs": [
+            58.3413750000002,
+            57.813499999999976,
+            60.165750000000116,
+            60.3062910000001,
+            58.88087500000006
+          ],
+          "medianMs": 58.88087500000006,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 0.964716183310795,
+          "steps": 16004,
+          "objects": 0,
+          "imageBytes": 0
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "durationsMs": [
+            822.1278750000001,
+            885.0958339999997,
+            815.1897920000001,
+            816.9962919999998,
+            819.0190420000008
+          ],
+          "medianMs": 819.0190420000008,
+          "pixelSha256": "cc1372e6db5b652bfbfc49a8c14e89a03409b091bd4384c39d0138d9cb912cb3",
+          "speedup": 2.1684328457896807,
+          "steps": 187253,
+          "objects": 49362,
+          "imageBytes": 10404
+        },
+        {
+          "name": "many-allocations",
+          "durationsMs": [
+            153.80762500000037,
+            152.52750000000015,
+            150.42058400000042,
+            150.83170900000005,
+            150.15308299999924
+          ],
+          "medianMs": 150.83170900000005,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 3.2462703183983517,
+          "steps": 60004,
+          "objects": 30000,
+          "imageBytes": 0
+        },
+        {
+          "name": "many-alias-mutations",
+          "durationsMs": [
+            401.39858300000014,
+            401.464750000001,
+            401.50608400000056,
+            402.9582499999997,
+            403.89024999999856
+          ],
+          "medianMs": 401.50608400000056,
+          "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "speedup": 0.993176108384948,
+          "steps": 102006,
+          "objects": 6000,
+          "imageBytes": 0
+        }
+      ]
+    }
+  },
+  "profiles": {
+    "before": {
+      "source": "/private/tmp/flowlab-e140bdf",
+      "note": "Temporary instrumentation includes replacement instance/field construction and final public heap exposure; timer overhead perturbs execution. copiedEntries counts baseline table entries; copiedSlots counts paged array slots, not bytes.",
+      "samples": [
+        {
+          "name": "mutating-object",
+          "elapsedMs": 32.036249999999995,
+          "steps": 18004,
+          "createMs": 0.00329200000001606,
+          "updateMs": 0.5064830000004577,
+          "creates": 1,
+          "updates": 3000,
+          "copiedEntries": 3000
+        },
+        {
+          "name": "mutating-object",
+          "elapsedMs": 30.797875000000033,
+          "steps": 18004,
+          "createMs": 0.0029170000000249274,
+          "updateMs": 0.46133199999923136,
+          "creates": 1,
+          "updates": 3000,
+          "copiedEntries": 3000
+        },
+        {
+          "name": "mutating-object",
+          "elapsedMs": 30.369624999999985,
+          "steps": 18004,
+          "createMs": 0.0029170000000249274,
+          "updateMs": 0.43419400000260566,
+          "creates": 1,
+          "updates": 3000,
+          "copiedEntries": 3000
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "elapsedMs": 1564.116416,
+          "steps": 187253,
+          "createMs": 1061.6446559999865,
+          "updateMs": 0,
+          "creates": 49362,
+          "updates": 0,
+          "copiedEntries": 1218278841
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "elapsedMs": 1541.5546669999999,
+          "steps": 187253,
+          "createMs": 1039.0995369999869,
+          "updateMs": 0,
+          "creates": 49362,
+          "updates": 0,
+          "copiedEntries": 1218278841
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "elapsedMs": 1573.1593750000002,
+          "steps": 187253,
+          "createMs": 1069.346832000051,
+          "updateMs": 0,
+          "creates": 49362,
+          "updates": 0,
+          "copiedEntries": 1218278841
+        },
+        {
+          "name": "many-allocations",
+          "elapsedMs": 426.00095800000054,
+          "steps": 60004,
+          "createMs": 366.42197600014515,
+          "updateMs": 0,
+          "creates": 30000,
+          "updates": 0,
+          "copiedEntries": 449985000
+        },
+        {
+          "name": "many-allocations",
+          "elapsedMs": 431.3587499999994,
+          "steps": 60004,
+          "createMs": 372.2221890000101,
+          "updateMs": 0,
+          "creates": 30000,
+          "updates": 0,
+          "copiedEntries": 449985000
+        },
+        {
+          "name": "many-allocations",
+          "elapsedMs": 430.70566599999984,
+          "steps": 60004,
+          "createMs": 372.46820399987337,
+          "updateMs": 0,
+          "creates": 30000,
+          "updates": 0,
+          "copiedEntries": 449985000
+        },
+        {
+          "name": "many-alias-mutations",
+          "elapsedMs": 309.2532919999994,
+          "steps": 102006,
+          "createMs": 5.645877000042674,
+          "updateMs": 30.028205999875354,
+          "creates": 6000,
+          "updates": 18000,
+          "copiedEntries": 125997000
+        },
+        {
+          "name": "many-alias-mutations",
+          "elapsedMs": 311.2912919999999,
+          "steps": 102006,
+          "createMs": 5.653539000106321,
+          "updateMs": 29.96495699989464,
+          "creates": 6000,
+          "updates": 18000,
+          "copiedEntries": 125997000
+        },
+        {
+          "name": "many-alias-mutations",
+          "elapsedMs": 312.2084169999998,
+          "steps": 102006,
+          "createMs": 5.846791000029043,
+          "updateMs": 30.223000999951182,
+          "creates": 6000,
+          "updates": 18000,
+          "copiedEntries": 125997000
+        }
+      ]
+    },
+    "after": {
+      "source": "/Users/davidbachman/Documents/FlowLab",
+      "note": "Temporary instrumentation includes replacement instance/field construction and final public heap exposure; timer overhead perturbs execution. copiedEntries counts baseline table entries; copiedSlots counts paged array slots, not bytes.",
+      "samples": [
+        {
+          "name": "mutating-object",
+          "elapsedMs": 35.420083000000005,
+          "steps": 18004,
+          "createMs": 0.009917000000001508,
+          "updateMs": 0.8443759999998974,
+          "creates": 1,
+          "updates": 3000,
+          "copiedEntries": 0,
+          "copiedSlots": 6000,
+          "materializationMs": 0.006708000000003267,
+          "materializations": 1,
+          "materializedEntries": 1
+        },
+        {
+          "name": "mutating-object",
+          "elapsedMs": 34.61266599999999,
+          "steps": 18004,
+          "createMs": 0.002999999999985903,
+          "updateMs": 0.83796400000017,
+          "creates": 1,
+          "updates": 3000,
+          "copiedEntries": 0,
+          "copiedSlots": 6000,
+          "materializationMs": 0.005334000000004835,
+          "materializations": 1,
+          "materializedEntries": 1
+        },
+        {
+          "name": "mutating-object",
+          "elapsedMs": 33.66445900000002,
+          "steps": 18004,
+          "createMs": 0.003291999999987638,
+          "updateMs": 0.7784690000004844,
+          "creates": 1,
+          "updates": 3000,
+          "copiedEntries": 0,
+          "copiedSlots": 6000,
+          "materializationMs": 0.00541699999996581,
+          "materializations": 1,
+          "materializedEntries": 1
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "elapsedMs": 581.9183750000001,
+          "steps": 187253,
+          "createMs": 23.94576700002915,
+          "updateMs": 0,
+          "creates": 49362,
+          "updates": 0,
+          "copiedEntries": 0,
+          "copiedSlots": 2982742,
+          "materializationMs": 3.4617090000001554,
+          "materializations": 1,
+          "materializedEntries": 49362
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "elapsedMs": 581.4477500000003,
+          "steps": 187253,
+          "createMs": 23.92081200000689,
+          "updateMs": 0,
+          "creates": 49362,
+          "updates": 0,
+          "copiedEntries": 0,
+          "copiedSlots": 2982742,
+          "materializationMs": 4.380833000000166,
+          "materializations": 1,
+          "materializedEntries": 49362
+        },
+        {
+          "name": "mandelbrot-51x51-30",
+          "elapsedMs": 581.2465420000003,
+          "steps": 187253,
+          "createMs": 23.611494000007042,
+          "updateMs": 0,
+          "creates": 49362,
+          "updates": 0,
+          "copiedEntries": 0,
+          "copiedSlots": 2982742,
+          "materializationMs": 3.561500000000251,
+          "materializations": 1,
+          "materializedEntries": 49362
+        },
+        {
+          "name": "many-allocations",
+          "elapsedMs": 78.44758299999967,
+          "steps": 60004,
+          "createMs": 12.147937000047477,
+          "updateMs": 0,
+          "creates": 30000,
+          "updates": 0,
+          "copiedEntries": 0,
+          "copiedSlots": 1664601,
+          "materializationMs": 1.8659170000000813,
+          "materializations": 1,
+          "materializedEntries": 30000
+        },
+        {
+          "name": "many-allocations",
+          "elapsedMs": 78.2328749999997,
+          "steps": 60004,
+          "createMs": 10.763478999998824,
+          "updateMs": 0,
+          "creates": 30000,
+          "updates": 0,
+          "copiedEntries": 0,
+          "copiedSlots": 1664601,
+          "materializationMs": 1.9167090000000826,
+          "materializations": 1,
+          "materializedEntries": 30000
+        },
+        {
+          "name": "many-allocations",
+          "elapsedMs": 83.23204200000009,
+          "steps": 60004,
+          "createMs": 11.526538999949935,
+          "updateMs": 0,
+          "creates": 30000,
+          "updates": 0,
+          "copiedEntries": 0,
+          "copiedSlots": 1664601,
+          "materializationMs": 3.4690420000001723,
+          "materializations": 1,
+          "materializedEntries": 30000
+        },
+        {
+          "name": "many-alias-mutations",
+          "elapsedMs": 307.5142500000002,
+          "steps": 102006,
+          "createMs": 2.5596090000035474,
+          "updateMs": 6.176186000044254,
+          "creates": 6000,
+          "updates": 18000,
+          "copiedEntries": 0,
+          "copiedSlots": 2063574,
+          "materializationMs": 0.3509169999997539,
+          "materializations": 1,
+          "materializedEntries": 6000
+        },
+        {
+          "name": "many-alias-mutations",
+          "elapsedMs": 308.244541,
+          "steps": 102006,
+          "createMs": 2.6262769999998454,
+          "updateMs": 6.092503999997007,
+          "creates": 6000,
+          "updates": 18000,
+          "copiedEntries": 0,
+          "copiedSlots": 2063574,
+          "materializationMs": 0.38379200000008495,
+          "materializations": 1,
+          "materializedEntries": 6000
+        },
+        {
+          "name": "many-alias-mutations",
+          "elapsedMs": 304.7306250000006,
+          "steps": 102006,
+          "createMs": 2.491760000008526,
+          "updateMs": 6.104635000081998,
+          "creates": 6000,
+          "updates": 18000,
+          "copiedEntries": 0,
+          "copiedSlots": 2063574,
+          "materializationMs": 0.4227920000002996,
+          "materializations": 1,
+          "materializedEntries": 6000
+        }
+      ]
+    }
+  },
+  "retainedMemory": {
+    "before": {
+      "source": "/private/tmp/flowlab-e140bdf",
+      "observe": false,
+      "note": "Node heapUsed delta after forced test-harness GC; includes retained states, fields, private pages and any observed flat heaps; not peak RSS or browser memory.",
+      "samples": [
+        {
+          "retainedBytes": 11181984,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        },
+        {
+          "retainedBytes": 11100256,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        },
+        {
+          "retainedBytes": 11067280,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        }
+      ]
+    },
+    "before-observed": {
+      "source": "/private/tmp/flowlab-e140bdf",
+      "observe": true,
+      "note": "Node heapUsed delta after forced test-harness GC; includes retained states, fields, private pages and any observed flat heaps; not peak RSS or browser memory.",
+      "samples": [
+        {
+          "retainedBytes": 11181280,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        },
+        {
+          "retainedBytes": 11096072,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        },
+        {
+          "retainedBytes": 11067280,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        }
+      ]
+    },
+    "after": {
+      "source": "/Users/davidbachman/Documents/FlowLab",
+      "observe": false,
+      "note": "Node heapUsed delta after forced test-harness GC; includes retained states, fields, private pages and any observed flat heaps; not peak RSS or browser memory.",
+      "samples": [
+        {
+          "retainedBytes": 1502272,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        },
+        {
+          "retainedBytes": 1615072,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        },
+        {
+          "retainedBytes": 1501432,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        }
+      ]
+    },
+    "after-observed": {
+      "source": "/Users/davidbachman/Documents/FlowLab",
+      "observe": true,
+      "note": "Node heapUsed delta after forced test-harness GC; includes retained states, fields, private pages and any observed flat heaps; not peak RSS or browser memory.",
+      "samples": [
+        {
+          "retainedBytes": 23724776,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        },
+        {
+          "retainedBytes": 23790976,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        },
+        {
+          "retainedBytes": 23732752,
+          "snapshots": 241,
+          "objects": 6000,
+          "steps": 24006
+        }
+      ]
+    }
+  },
+  "compatibility": {
+    "scenarios": 15,
+    "modes": [
+      "run",
+      "step",
+      "debugger",
+      "breakpoints",
+      "cloned-step",
+      "external-step"
+    ],
+    "completeSnapshotsCompared": 1779,
+    "retainedOriginalChecks": 3558,
+    "baselineProgressDriftSnapshots": 117,
+    "randomSeed": 12345,
+    "testsBefore": 738,
+    "testsAfter": 754,
+    "pixelBytesCompared": 10404,
+    "pixelSha256": "cc1372e6db5b652bfbfc49a8c14e89a03409b091bd4384c39d0138d9cb912cb3"
+  },
+  "page256Candidate": {
+    "environment": {
+      "node": "v25.6.0",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M4"
+    },
+    "mode": "headless",
+    "repeats": 5,
+    "warmups": 2,
+    "workloads": [
+      {
+        "name": "procedural",
+        "durationsMs": [
+          17.61291700000004,
+          17.15329200000002,
+          17.37258300000002,
+          17.488999999999976,
+          17.476165999999978
+        ],
+        "medianMs": 17.476165999999978,
+        "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "speedup": 1.0122119462586958,
+        "steps": 40005,
+        "objects": 0,
+        "imageBytes": 0
+      },
+      {
+        "name": "recursive",
+        "durationsMs": [
+          27.21191699999997,
+          27.00758400000001,
+          28.488040999999953,
+          27.27129100000002,
+          27.75812499999995
+        ],
+        "medianMs": 27.27129100000002,
+        "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "speedup": 0.9838963985973381,
+        "steps": 12774,
+        "objects": 0,
+        "imageBytes": 0
+      },
+      {
+        "name": "mutating-object",
+        "durationsMs": [
+          33.90941600000008,
+          33.620708000000036,
+          34.45866699999999,
+          35.80591699999991,
+          36.62058300000001
+        ],
+        "medianMs": 34.45866699999999,
+        "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "speedup": 1.02072166633724,
+        "steps": 18004,
+        "objects": 1,
+        "imageBytes": 0
+      },
+      {
+        "name": "imported-library",
+        "durationsMs": [
+          38.75358300000005,
+          39.290500000000065,
+          39.87900000000002,
+          40.360333999999966,
+          39.8782920000001
+        ],
+        "medianMs": 39.8782920000001,
+        "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "speedup": 0.9601662729186051,
+        "steps": 16004,
+        "objects": 0,
+        "imageBytes": 0
+      },
+      {
+        "name": "mandelbrot-51x51-30",
+        "durationsMs": [
+          566.7163340000002,
+          580.914041,
+          579.2133330000001,
+          572.8125410000002,
+          580.4759169999998
+        ],
+        "medianMs": 579.2133330000001,
+        "pixelSha256": "cc1372e6db5b652bfbfc49a8c14e89a03409b091bd4384c39d0138d9cb912cb3",
+        "speedup": 2.63429817317413,
+        "steps": 187253,
+        "objects": 49362,
+        "imageBytes": 10404
+      },
+      {
+        "name": "many-allocations",
+        "durationsMs": [
+          82.35362500000065,
+          83.13425000000007,
+          87.35725000000002,
+          85.2569999999996,
+          87.0580829999999
+        ],
+        "medianMs": 85.2569999999996,
+        "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "speedup": 4.925518326940921,
+        "steps": 60004,
+        "objects": 30000,
+        "imageBytes": 0
+      },
+      {
+        "name": "many-alias-mutations",
+        "durationsMs": [
+          321.4189580000002,
+          312.43020799999977,
+          313.7639999999992,
+          314.3496670000004,
+          310.7145410000003
+        ],
+        "medianMs": 313.7639999999992,
+        "pixelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "speedup": 1.0185548150839543,
+        "steps": 102006,
+        "objects": 6000,
+        "imageBytes": 0
+      }
+    ]
+  },
+  "fixtureManifest": {
+    "scripts/benchmarks/compatibility.ts": "ad560f949a204148534075ba103b0acf50716d4d78e684130a13f5b1b57c33f2",
+    "scripts/benchmarks/programs.ts": "2e0796a15109d2b34138f05590de57460e5d44ef14b7d63b8e7dbdbfc528f614"
+  }
+}

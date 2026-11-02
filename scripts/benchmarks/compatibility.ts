@@ -48,6 +48,28 @@ const numeric = program([
   ['main', 'function', 'main'], ['end', 'return', '[-0, (-1)^3, 2^3^2, -7 % 3, False and ask(), True or ask(), [1, {"x": [2]}]]'],
 ], [['main', 'end']])
 
+export const cellLibrary = program([
+  ['cell', 'class', 'Cell(value)'], ['bump', 'method', 'bump'],
+  ['bump-body', 'process', 'self.value <- self.value + 1\nself.dynamic <- [self, {"self": self}]'], ['bump-return', 'return', 'self.value'],
+], [['cell', 'bump'], ['bump', 'bump-body'], ['bump-body', 'bump-return']])
+
+export const references = program([
+  ['main', 'function', 'main'],
+  ['init', 'process', 'a <- Cell(1)\nb <- Cell(2)\nalias <- a\nnested <- [{"objects": [a, b, a]}]\na.peer <- b\nb.peer <- a\na.self <- a'],
+  ['change', 'process', 'returned <- touch(alias)\nvalue <- a.bump()\nnew <- Cell(5)\nb.extra <- new'],
+  ['load', 'process', 'answers <- [a.value, a.bump(), rand(), ask(), text_from_url("https://example.com"), imload()]'],
+  ['show', 'output', 'a\nnested'],
+  ['end', 'return', '[a.value, alias.value, nested[0]["objects"][0] = a, b.peer = a, a.peer = b, a.self = a, returned = a]'],
+  ['touch', 'function', 'touch'], ['input', 'input', 'item'],
+  ['touch-body', 'process', 'item.value <- item.value + 10'], ['touch-return', 'return', 'item'],
+], [['main', 'init'], ['init', 'change'], ['change', 'load'], ['load', 'show'], ['show', 'end'],
+  ['touch', 'input'], ['input', 'touch-body'], ['touch-body', 'touch-return']])
+
+export const indexedResumption = program([
+  ['main', 'function', 'main'], ['init', 'process', 'a <- Cell(1)\nitems <- [0]'],
+  ['assign', 'assignment', 'items[rand() * 0 + ask()] <- a.bump()'], ['end', 'return', '[items, a.value]'],
+], [['main', 'init'], ['init', 'assign'], ['assign', 'end']])
+
 export const scenarios = [
   { name: 'procedural', program: procedural, inputs: ['20'], options: {} },
   { name: 'recursive', program: small(recursive, 'fib(16)', 'fib(5)'), inputs: [], options: {} },
@@ -58,6 +80,8 @@ export const scenarios = [
   { name: 'async-loads', program: loading, inputs: [], options: { nativeLibraries: ['text', 'image'] } },
   { name: 'partial-input', program: queued, inputs: ['1'], options: {} },
   { name: 'numeric-literals', program: numeric, inputs: [], options: {} },
+  { name: 'object-references', program: references, inputs: [], options: { importedPrograms: [cellLibrary], nativeLibraries: ['text', 'image'] } },
+  { name: 'indexed-resumption', program: indexedResumption, inputs: [], options: { importedPrograms: [cellLibrary] } },
   { name: 'process-error', program: program([
     ['main', 'function', 'main'], ['end', 'process', 'x <- 1\n\nx <- 1 / 0'], ['return', 'return', 'x'],
   ], [['main', 'end'], ['end', 'return']]), inputs: [], options: {} },
